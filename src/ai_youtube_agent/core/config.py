@@ -22,7 +22,10 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ai_youtube_agent.core.flags import FeatureFlags
+
 ENV_PREFIX = "AI_YOUTUBE_AGENT_"
+ENV_NESTED_DELIMITER = "__"
 ENVIRONMENT_VARIABLE = f"{ENV_PREFIX}ENVIRONMENT"
 
 
@@ -35,6 +38,7 @@ class Environment(StrEnum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
+        env_nested_delimiter=ENV_NESTED_DELIMITER,
         env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
@@ -43,11 +47,22 @@ class Settings(BaseSettings):
     environment: Environment = Environment.DEVELOPMENT
     app_name: str = Field(default="ai_youtube_agent", min_length=1)
     debug: bool = False
+    flags: FeatureFlags = Field(default_factory=FeatureFlags)
 
     @model_validator(mode="after")
     def _forbid_debug_in_production(self) -> "Settings":
         if self.environment is Environment.PRODUCTION and self.debug:
             raise ValueError("debug must be false in production")
+        return self
+
+    @model_validator(mode="after")
+    def _require_control_stages_in_production(self) -> "Settings":
+        if self.environment is Environment.PRODUCTION and not (
+            self.flags.test_required and self.flags.approval_required
+        ):
+            raise ValueError(
+                "test_required and approval_required must be true in production"
+            )
         return self
 
 

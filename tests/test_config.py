@@ -12,6 +12,7 @@ from ai_youtube_agent.core.config import (
     get_settings,
     load_settings,
 )
+from ai_youtube_agent.core.flags import FeatureFlags
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECRET_MARKERS = ("secret", "token", "password", "key", "credential")
@@ -140,5 +141,8 @@ def test_env_example_lists_only_known_settings() -> None:
         if line.strip() and not line.lstrip().startswith("#")
     }
     known = {f"{ENV_PREFIX}{name.upper()}" for name in Settings.model_fields}
+    known |= {
+        f"{ENV_PREFIX}FLAGS__{name.upper()}" for name in FeatureFlags.model_fields
+    }
 
     assert keys <= known

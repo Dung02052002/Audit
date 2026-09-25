@@ -38,7 +38,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 | A-003 | Architecture Map | A-2 | PASS. See `docs/ARCHITECTURE.md`. It has 8 open questions (Q1â€“Q8). |
 | A-004 | Folder Structure | A-3 | PASS. Added the backend packages `core/`, `content/`, `providers/` and `pipeline/` under `src/ai_youtube_agent/`, plus `dashboard/` at the root. Tests: 8 passed. |
 | A-005 | Configuration Contract | A-4 | PASS. Added `core/config.py`, `.env.example` and 14 config tests. New dependency: `pydantic-settings`. Tests: 22 passed. |
-| A-006 | Feature Flags | A-5 | NOT_STARTED |
+| A-006 | Feature Flags | A-5 | PASS. Added `core/flags.py` with the 6 required flags and safe defaults, wired into `Settings`, with 14 flag tests. Tests: 36 passed. |
 | A-007 | Logging Contract | A-5 | NOT_STARTED |
 | A-008 | Error Model | A-7 | NOT_STARTED |
 | A-009 | Dependency Injection | A-8 | NOT_STARTED |
@@ -56,4 +56,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 - A-003 Architecture Map has PASSED.
 - A-004 Folder Structure has PASSED.
 - A-005 Configuration Contract has PASSED.
-- Next task: **A-006 Feature Flags**. It is NOT_STARTED.
+- A-006 Feature Flags has PASSED.
+- Next task: **A-007 Logging Contract**. It is NOT_STARTED.

@@ -109,7 +109,7 @@ The requirements define each of these as an abstraction with a mock.
 | Contract | Defined by | Purpose | Implemented by |
 |---|---|---|---|
 | Configuration contract | #005 | Typed loading, validation and environment separation. Implemented in `core/config.py` | X1 |
-| Feature flags | #006 | `SHORTS_ENABLED`, `LONGFORM_ENABLED`, `PUBLISH_ENABLED`, `TEST_REQUIRED`, `APPROVAL_REQUIRED`, `AUTO_REPLY_ENABLED=false` | X1 |
+| Feature flags | #006 | `SHORTS_ENABLED`, `LONGFORM_ENABLED`, `PUBLISH_ENABLED`, `TEST_REQUIRED`, `APPROVAL_REQUIRED`, `AUTO_REPLY_ENABLED=false`. Implemented in `core/flags.py` | X1 |
 | Logging contract | #007 | Structured logs with correlation, session and job IDs | X1 |
 | Error model | #008 | Typed application, domain and provider errors with safe user-facing messages | X1 |
 | DI registry | #009 | Registers core interfaces and providers | X1 |
@@ -198,14 +198,14 @@ Every gate implements the Pipeline Gate Contract (#033). The Pipeline Runner (#2
 
 ## 6. Feature flags in the flow
 
-| Flag | Effect in the flow | Source |
-|---|---|---|
-| `SHORTS_ENABLED` | Enables the C8 path | #006 |
-| `LONGFORM_ENABLED` | Enables the C9 path. It stays locked until the LongForm unlock | #006, #237 |
-| `PUBLISH_ENABLED` | Enables C12 publishing | #006 |
-| `TEST_REQUIRED` | Requires the C10 stage | #006 |
-| `APPROVAL_REQUIRED` | Requires the C11 approval | #006 |
-| `AUTO_REPLY_ENABLED` | Default `false`, enforced. Replies are drafts only | #006, #188 |
+| Flag | Default (A-006) | Effect in the flow | Source |
+|---|---|---|---|
+| `SHORTS_ENABLED` | `true` | Enables the C8 path | #006, REQUIREMENTS §5 |
+| `LONGFORM_ENABLED` | `false` | Enables the C9 path. It stays locked until the LongForm unlock | #006, #237 |
+| `PUBLISH_ENABLED` | `false` | Enables C12 publishing. It requires `TEST_REQUIRED` and `APPROVAL_REQUIRED` | #006, R-08 |
+| `TEST_REQUIRED` | `true` | Requires the C10 stage. Always true in production | #006, REQUIREMENTS §4 |
+| `APPROVAL_REQUIRED` | `true` | Requires the C11 approval. Always true in production | #006, R-08 |
+| `AUTO_REPLY_ENABLED` | `false` | Replies are drafts only. Enforcement comes in #188 | #006, #188 |
 
 ## 7. Folder structure (set by A-004)
 

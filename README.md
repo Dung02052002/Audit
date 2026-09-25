@@ -19,6 +19,7 @@ Settings are typed and validated in `src/ai_youtube_agent/core/config.py`. Every
 
 - Choose the environment (`development`, `test` or `production`) with `AI_YOUTUBE_AGENT_ENVIRONMENT` in the process environment. The default is `development`.
 - Values are read from `.env`, then `.env.<environment>`, then process environment variables. A later source wins.
+- Feature flags live in `src/ai_youtube_agent/core/flags.py` and are set with `AI_YOUTUBE_AGENT_FLAGS__<NAME>`, for example `AI_YOUTUBE_AGENT_FLAGS__PUBLISH_ENABLED=true`. The defaults are the safe choice: publishing, LongForm and auto-reply are off, and test and approval are required.
 - `.env` and `.env.*` files are git-ignored. Only `.env.example` is committed, and it must never hold secrets.
 
 ## Run

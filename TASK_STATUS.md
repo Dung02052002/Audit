@@ -34,7 +34,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 | Task | Name | Dependency | Status |
 |---|---|---|---|
 | A-001 | Project Audit | None | PASS. See `docs/A-001_PROJECT_AUDIT.md`. |
-| A-002 | Requirements Freeze | A-1 | NOT_STARTED |
+| A-002 | Requirements Freeze | A-1 | PASS. See `docs/REQUIREMENTS.md` (FROZEN). |
 | A-003 | Architecture Map | A-2 | NOT_STARTED |
 | A-004 | Folder Structure | A-3 | NOT_STARTED |
 | A-005 | Configuration Contract | A-4 | NOT_STARTED |
@@ -52,4 +52,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 - `BASELINE_COMMIT = 3b41416`
 - Phase 0 (000â€“011) is complete.
 - A-001 Project Audit has PASSED.
-- Next task: **A-002 Requirements Freeze**. It is NOT_STARTED.
+- A-002 Requirements Freeze has PASSED.
+- Next task: **A-003 Architecture Map**. It is NOT_STARTED.

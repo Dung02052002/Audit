@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `PROJECT_STATE.md` became the handoff document. It now includes known failures (none), invariants, repository status, how to resume, and the next task (A-001).
 - The Phase A task list (A-001 to A-012) was added to `TASK_STATUS.md`.
 - A-001 Project Audit is complete. The report `docs/A-001_PROJECT_AUDIT.md` covers architecture, state and dependency risks, with no code changes. The project state stays `READY_FOR_PHASE_A`, and the next task is A-002.
+- A-002 Requirements Freeze is complete. `docs/REQUIREMENTS.md` freezes the v7 requirements from Prompt Pack v8. It confirms SHORTS and LONGFORM as the only content types and TEST, QC, PREVIEW and APPROVAL as shared control stages, and it includes the 238-prompt catalog verbatim. No code changes. The next task is A-003.
 
 ## [0.1.0] - 2026-09-25
 

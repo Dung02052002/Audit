@@ -21,6 +21,7 @@ Settings are typed and validated in `src/ai_youtube_agent/core/config.py`. Every
 - Values are read from `.env`, then `.env.<environment>`, then process environment variables. A later source wins.
 - Feature flags live in `src/ai_youtube_agent/core/flags.py` and are set with `AI_YOUTUBE_AGENT_FLAGS__<NAME>`, for example `AI_YOUTUBE_AGENT_FLAGS__PUBLISH_ENABLED=true`. The defaults are the safe choice: publishing, LongForm and auto-reply are off, and test and approval are required.
 - Logging is structured JSON (`src/ai_youtube_agent/core/log.py`). Call `configure_logging(settings.log_level)` once, and wrap work in `log_context(correlation_id=..., session_id=..., job_id=...)` so every record carries those IDs. Set the level with `AI_YOUTUBE_AGENT_LOG_LEVEL`.
+- Errors (`src/ai_youtube_agent/core/errors.py`) are `ApplicationError`, `DomainError` or `ProviderError`. Show users only `to_public(exc)`. The internal `detail` goes to logs through `exc.log_fields()`.
 - `.env` and `.env.*` files are git-ignored. Only `.env.example` is committed, and it must never hold secrets.
 
 ## Run

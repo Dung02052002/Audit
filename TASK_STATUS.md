@@ -40,7 +40,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 | A-005 | Configuration Contract | A-4 | PASS. Added `core/config.py`, `.env.example` and 14 config tests. New dependency: `pydantic-settings`. Tests: 22 passed. |
 | A-006 | Feature Flags | A-5 | PASS. Added `core/flags.py` with the 6 required flags and safe defaults, wired into `Settings`, with 14 flag tests. Tests: 36 passed. |
 | A-007 | Logging Contract | A-5 | PASS. Added `core/log.py` (JSON records, `Severity`, `log_context` for correlation, session and job IDs) and `Settings.log_level`, with 16 logging tests. Tests: 52 passed. |
-| A-008 | Error Model | A-7 | NOT_STARTED |
+| A-008 | Error Model | A-7 | PASS. Added `core/errors.py` (the categories Application, Domain and Provider, `PublicError` and `to_public`) with 16 tests. Tests: 68 passed. |
 | A-009 | Dependency Injection | A-8 | NOT_STARTED |
 | A-010 | Health Check | A-9 | NOT_STARTED |
 | A-011 | Audit Event Model | A-10 | NOT_STARTED |
@@ -58,4 +58,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 - A-005 Configuration Contract has PASSED.
 - A-006 Feature Flags has PASSED.
 - A-007 Logging Contract has PASSED.
-- Next task: **A-008 Error Model**. It is NOT_STARTED.
+- A-008 Error Model has PASSED.
+- Next task: **A-009 Dependency Injection**. It is NOT_STARTED.

@@ -1,0 +1,241 @@
+# Architecture Map
+
+| Item | Value |
+|---|---|
+| Produced by | A-003 Architecture Map |
+| Date | 2026-09-25 |
+| Source | `docs/REQUIREMENTS.md` (frozen in A-002) |
+| Status | Documentation only. Nothing in this document is implemented yet. |
+
+This map describes the bounded contexts, interfaces and data flow of the AI YouTube Autonomous Agent. Every element names the prompts it comes from, written as `#NNN` for a prompt in the catalog in `docs/REQUIREMENTS.md`. Where the requirements leave a decision open, it is listed in section 8 instead of being decided here.
+
+## 1. Current implementation
+
+Only the Phase 0 bootstrap exists: a FastAPI app (`ai_youtube_agent.main:app`) with `GET /health`. No context below has code yet. The backend stack is fixed: Python 3.11, FastAPI, uv, pytest and ruff.
+
+## 2. Architectural principles
+
+These come directly from the frozen requirements.
+
+| Principle | Source |
+|---|---|
+| Exactly two content types, `SHORTS` and `LONGFORM`, sharing one lifecycle and one set of gates | REQUIREMENTS §3–4, #015 |
+| `TEST`, `QC`, `PREVIEW` and `APPROVAL` are shared control stages, not content types | REQUIREMENTS §4 |
+| External services sit behind provider interfaces. Most of them require a mock (see 4.1) | #009, #054, #086, #147, #158, #170, #182 |
+| Implementations are registered through dependency injection, never hard-coded | #009 |
+| Publishing is blocked unless every gate passes. There is no auto-publish | #033, #034, #084, R-08 |
+| An approval is bound to one exact artifact version and becomes invalid when that version changes | #021, #035, #137 |
+| The AI never changes strategy (market, language, niche, format, budget, channel) | #014, #028, #044, #059, R-09 |
+| Important actions produce immutable audit events | #011, #143, #156, #189, #214 |
+| Jobs are resumable and idempotent | #027, #041, #088, #151, #211 |
+| Secrets stay outside source control | #005, #216, R-07 |
+
+## 3. Bounded contexts
+
+### 3.1 Domain contexts
+
+| # | Context | Responsibility | Owns (entities) | Prompts |
+|---|---|---|---|---|
+| C1 | Channel & Strategy | User-controlled channel and strategy configuration, and its validation | Channel, StrategyProfile | #013, #014, #043–#053 |
+| C2 | Content Lifecycle | The common content item, versioned artifacts, and lifecycle status and transitions | ContentItem, Artifact | #015, #016, #031, #032 |
+| C3 | Control Gates | The shared gate contract and every blocking gate | (gate results) | #033–#042 |
+| C4 | Research | Collecting, deduplicating and scoring sources and topics, and producing research reports | Source, ResearchReport | #054–#063 |
+| C5 | Script & Fact Check | Script generation, claim extraction, evidence matching, fact checking, originality and versioning | Script, Claim, FactCheckResult | #017, #064–#074 |
+| C6 | Rights & Policy | Asset registry, provenance, rights risk, policy rules, AI disclosure and blocking reports | Asset, Provenance, RightsReport, PolicyReport | #019, #075–#085 |
+| C7 | Voice & Audio | Voice profiles, TTS jobs, audio artifacts, validation and cost | VoiceProfile, AudioArtifact | #018, #086–#093 |
+| C8 | Shorts Production | Shorts project, timeline, captions, subtitles, audio mix, render, thumbnail, metadata and bundle | ShortsProject | #094–#104 |
+| C9 | LongForm Production | LongForm project, timeline, chapters, B-roll, subtitles, audio mix, render, thumbnail, metadata and bundle | LongFormProject | #105–#115 |
+| C10 | Quality (Test & QC) | Technical tests of rendered artifacts and the aggregated QC report | QCResult | #020, #116–#130 |
+| C11 | Review (Preview & Approval) | Preview of the exact artifact version and the approval workflow | ApprovalRequest | #021, #131–#144 |
+| C12 | Publishing | YouTube OAuth, upload, publish paths, idempotency and publish results | PublishJob, PublishResult | #022, #145–#157 |
+| C13 | Analytics | Channel and video metrics with freshness, and the experiment registry | MetricSnapshot, Experiment | #023, #028, #158–#169 |
+| C14 | Economics | Estimated and final revenue, the cost ledger, contribution margin and budget guard | RevenueRecord, CostRecord | #024, #025, #170–#181 |
+| C15 | Community | Comment sync, classification, reply drafts and reply approval | Comment, ReplyDraft | #026, #182–#190 |
+| C16 | Orchestration | Job queue, scheduler, pipeline runner, sessions, retries, daily stop, crash resume and kill switch | AIJob, Session | #027, #204–#215 |
+
+### 3.2 Cross-cutting areas
+
+| # | Area | Responsibility | Prompts |
+|---|---|---|---|
+| X1 | Foundation & Governance | Audit, requirements, architecture, folders, configuration, feature flags, logging, error model, DI, health check, audit events and build baseline | #001–#012 |
+| X2 | Persistence | Migrations, schema creation, rollback strategy and repository tests for all entities | #029, #030 |
+| X3 | Command Center (presentation) | The dashboard. It reads from the domain contexts and triggers user actions such as approval and settings. It owns no domain rules | #191–#203 |
+| X4 | Security & Recovery | Secret boundary, token storage, least privilege, log redaction, backup, restore and failure injection | #216–#223 |
+| X5 | Integration & Readiness | End-to-end tests, the pilot, LongForm unlock and the production audit | #224–#238 |
+
+### 3.3 Context relationships
+
+```
+                      C1 Channel & Strategy  (read-only for every other context)
+                                 │
+   C4 Research → C5 Script → C6 Rights & Policy → C7 Voice → C8 Shorts / C9 LongForm
+                                                                   │
+                                                             C2 Artifact (versioned)
+                                                                   │
+                                        C10 Quality → C11 Review → C12 Publishing
+                                                                   │
+                                        C13 Analytics → C14 Economics      C15 Community
+
+   C3 Control Gates      guard the transitions of C2 and the publish step of C12
+   C16 Orchestration     runs the pipeline one gate at a time (#206)
+   X3 Command Center     reads every context and sends user actions only
+```
+
+- **Upstream / downstream:** each production step consumes the previous step's output. Strategy (C1) is upstream of everything and is never written by the AI.
+- **Shared kernel:** C2 (ContentItem, Artifact, status) is shared by every context in the pipeline.
+- **Conformist to external systems:** C12, C13, C14 and C15 adapt YouTube data through provider interfaces (section 4).
+
+## 4. Interfaces
+
+### 4.1 Provider interfaces (external systems)
+
+The requirements define each of these as an abstraction with a mock.
+
+| Interface | Defined by | Purpose | Mock required | Used by |
+|---|---|---|---|---|
+| Research Provider | #054 | Search and fetch sources | Yes (#054) | C4 |
+| Voice (TTS) Provider | #086 | Generate speech audio | Yes (#086) | C7 |
+| Render provider abstraction | #100, #111 | Render vertical and long-form MP4 | Not stated | C8, C9 |
+| Policy Rule Interface | #079 | Versioned policy rules | Yes, mock rules (#079) | C6 |
+| OAuth / token interface | #145 | Secure YouTube authorization | Not stated | C12, X4 (#217) |
+| Channel Provider | #146 | Read channel data | Not stated | C12, C13 |
+| Upload Provider | #147 | Upload videos | Yes (#147) | C12 |
+| Analytics Provider | #158 | Read metrics | Yes, mock data source (#158) | C13 |
+| Revenue Provider | #170 | Read revenue | Yes (#170) | C14 |
+| Comment Provider | #182 | Read comments and post replies | Yes (#182) | C15 |
+
+### 4.2 Internal contracts
+
+| Contract | Defined by | Purpose | Implemented by |
+|---|---|---|---|
+| Configuration contract | #005 | Typed loading, validation and environment separation | X1 |
+| Feature flags | #006 | `SHORTS_ENABLED`, `LONGFORM_ENABLED`, `PUBLISH_ENABLED`, `TEST_REQUIRED`, `APPROVAL_REQUIRED`, `AUTO_REPLY_ENABLED=false` | X1 |
+| Logging contract | #007 | Structured logs with correlation, session and job IDs | X1 |
+| Error model | #008 | Typed application, domain and provider errors with safe user-facing messages | X1 |
+| DI registry | #009 | Registers core interfaces and providers | X1 |
+| Health / status model | #010 | Application and provider health checks | X1 |
+| Audit event | #011 | Immutable record of actor, timestamp, entity and result | X1, used by C11, C12, C15, C16 |
+| Pipeline Gate Contract | #033 | One shared gate interface for Test, QC, Rights, Policy and Approval | C3 |
+| Job queue | #204 | Durable queue abstraction | C16 |
+| Repositories | #029, #030 | Persistence for every entity | X2 |
+
+### 4.3 External-facing interfaces
+
+| Interface | Source | Notes |
+|---|---|---|
+| HTTP API (FastAPI) | Current stack; #043 "configuration UI/API" | Serves the Command Center and user actions. Only `/health` exists today (#010 extends it) |
+| Approval email | #138, #228 | Sends a safe preview reference and the exact artifact ID |
+| Command Center UI | #191–#203 | Dashboard client. See open question Q4 |
+
+## 5. Data flow
+
+### 5.1 Production pipeline (one content item)
+
+```
+StrategyProfile (C1, user-owned)
+  │  research request
+  ▼
+Research (C4): collect #056 → deduplicate #057 → extract topics #058 → score #059
+  │  ResearchReport (claims, evidence, uncertainty) #060
+  ▼
+Script (C5): hook #065 → Shorts #066 or LongForm #067 script
+  │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
+  │        → originality #071 → validate #072 → version #073
+  ▼
+Rights & Policy (C6): register assets #076 → provenance #077 → rights risk #078
+  │        → policy check #080 → AI disclosure #081 → reports #082, #083
+  ▼
+Voice (C7): TTS job #088 → audio artifact #089 → validate #090
+  ▼
+Production (C8 Shorts or C9 LongForm): timeline → subtitles → audio mix → render → thumbnail → metadata
+  │  Artifact bundle #103 / #114 (MP4 + subtitles + thumbnail + metadata + reports), versioned in C2
+  ▼
+Quality (C10): container, resolution, FPS, duration, audio, subtitles, black frames, integrity, metadata
+  │        + rights QC #126 + policy QC #127 + disclosure QC #128 → QC report #129
+  ▼
+Review (C11): preview the exact version #131 → approval request #137 → email #138
+  │        → approve #139 / reject #140 / request changes #141
+  │        (a change loops back: change → rerender → retest → new preview, #136)
+  ▼
+Publishing (C12): gates pass → Shorts #149 or LongForm #150 publisher → upload → result with YouTube video ID #155
+  ▼
+Analytics (C13) → Economics (C14)          Community (C15) reads comments on published videos
+```
+
+### 5.2 Lifecycle status (C2)
+
+The statuses are defined in #031: `Draft`, `Generating`, `Testing`, `PreviewReady`, `AwaitingApproval`, `Approved`, `Publishing`, `Published`, `Rejected` and `Failed`.
+
+```
+Draft → Generating → Testing → PreviewReady → AwaitingApproval → Approved → Publishing → Published
+                                                     │
+                                                     └→ Rejected           (any step can end in Failed)
+```
+
+This is the order implied by #031. The exact allowed and blocked transitions are defined in #032, not here. An artifact change after approval invalidates the approval (#035), so the item must return through testing and preview.
+
+### 5.3 Gates (C3)
+
+| Gate | Blocks | Prompt |
+|---|---|---|
+| Approval gate | Publish without an explicit approval of the current artifact version | #034 |
+| Version invalidation | An approval whose artifact has changed | #035 |
+| Daily limit gate | Production or publishing beyond the configured daily limit | #036 |
+| Budget gate | Cost-incurring jobs beyond budget thresholds | #037 |
+| Rights gate | Publish with unresolved high-risk rights | #038 |
+| Policy gate | Publish with configured policy failures | #039 |
+| Kill switch gate | All new production actions while the emergency stop is active | #040 |
+| Idempotency gate | Duplicate publish or generation jobs | #041 |
+
+Every gate implements the Pipeline Gate Contract (#033). The Pipeline Runner (#206) runs the lifecycle one gate at a time.
+
+### 5.4 Control and observability flows
+
+- **Orchestration (C16):** the job queue (#204) and scheduler (#205) feed the pipeline runner (#206). Jobs wait and resume across human approval (#207), retry with bounded backoff (#208), and resume after a crash from the last safe checkpoint (#211).
+- **Audit:** approval decisions (#143), publishes (#156), comment drafts and posts (#189), and job events (#214) all produce audit events (#011).
+- **Cost:** TTS (#092, #176), LLM (#175), render (#177) and storage/API (#178) costs flow into the cost ledger (#174). The budget guard (#180) and budget gate (#037) read from it.
+- **Command Center (X3):** reads jobs, content, analytics, revenue, comments and approvals. It writes only user actions, such as approve, reject, request changes and settings.
+
+## 6. Feature flags in the flow
+
+| Flag | Effect in the flow | Source |
+|---|---|---|
+| `SHORTS_ENABLED` | Enables the C8 path | #006 |
+| `LONGFORM_ENABLED` | Enables the C9 path. It stays locked until the LongForm unlock | #006, #237 |
+| `PUBLISH_ENABLED` | Enables C12 publishing | #006 |
+| `TEST_REQUIRED` | Requires the C10 stage | #006 |
+| `APPROVAL_REQUIRED` | Requires the C11 approval | #006 |
+| `AUTO_REPLY_ENABLED` | Default `false`, enforced. Replies are drafts only | #006, #188 |
+
+## 7. Guidance for A-004 Folder Structure
+
+A-004 must create or normalize folders for Core, Content, Providers, Pipeline, Dashboard, Tests and Docs. This is a proposed mapping only. A-004 decides the final layout.
+
+| A-004 folder | Contexts |
+|---|---|
+| Core | X1 Foundation, C2 Content Lifecycle, C3 Control Gates, X2 Persistence |
+| Content | C1, C4, C5, C6, C7, C8, C9, C10, C11, C13, C14, C15 |
+| Providers | Every provider interface in 4.1 and its mocks |
+| Pipeline | C16 Orchestration, C12 Publishing flow |
+| Dashboard | X3 Command Center |
+| Tests | `tests/` (already exists) |
+| Docs | `docs/` (already exists) |
+
+## 8. Open questions
+
+The requirements do not decide these. Each one must be answered by the user or by the prompt named, and none is decided here.
+
+| # | Question | Where it matters |
+|---|---|---|
+| Q1 | There is no dedicated **LLM provider interface**, although scripts are generated (#065–#067) and LLM cost is tracked (#175). | C5, C14 |
+| Q2 | The **render provider** is required "through provider abstraction" (#100, #111), but no prompt defines the interface itself. | C8, C9 |
+| Q3 | There is no **email provider interface** for approval emails (#138, #228). | C11 |
+| Q4 | The **Command Center platform** is "iOS-style" (#191). Is it a native iOS app or a web dashboard with an iOS-style design system? The backend is FastAPI. | X3 |
+| Q5 | The **database technology** is not specified. Only migrations and rollback are required (#029). | X2 |
+| Q6 | The **durable queue technology** is not specified (#204). | C16 |
+| Q7 | The **thumbnail** generation or selection source is not specified (#101, #112). | C8, C9 |
+| Q8 | The source of **music and SFX** assets is not specified (#099). Any use must pass through the asset registry (#076). | C8, C6 |
+
+## 9. Traceability check
+
+Every prompt from #001 to #238 is assigned to exactly one context or cross-cutting area in section 3. This was verified by a script against `docs/REQUIREMENTS.md` when A-003 was completed.

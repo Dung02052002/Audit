@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Phase A task list (A-001 to A-012) was added to `TASK_STATUS.md`.
 - A-001 Project Audit is complete. The report `docs/A-001_PROJECT_AUDIT.md` covers architecture, state and dependency risks, with no code changes. The project state stays `READY_FOR_PHASE_A`, and the next task is A-002.
 - A-002 Requirements Freeze is complete. `docs/REQUIREMENTS.md` freezes the v7 requirements from Prompt Pack v8. It confirms SHORTS and LONGFORM as the only content types and TEST, QC, PREVIEW and APPROVAL as shared control stages, and it includes the 238-prompt catalog verbatim. No code changes. The next task is A-003.
+- A-003 Architecture Map is complete. `docs/ARCHITECTURE.md` maps 16 bounded contexts and 5 cross-cutting areas, provider and internal interfaces, the production data flow, lifecycle statuses and gates. Every one of the 238 prompts is traced to one context. It lists 8 open questions and makes no code changes. The next task is A-004.
 
 ## [0.1.0] - 2026-09-25
 

@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-09-25 (Task 011 Project Handoff)
+Last updated: 2026-09-25 (A-001 Project Audit)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,23 +9,23 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 6ce7d3b
+CURRENT_CHECKPOINT = 1ca4b66
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS
 LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = A-001 Project Audit
+NEXT_TASK          = A-002 Requirements Freeze
 ```
 
 ## Next task
 
-**A-001 Project Audit** (Prompt Pack v8, Phase A, prompt 1). It has no dependency.
+**A-002 Requirements Freeze** (Prompt Pack v8, Phase A, prompt 2). It depends on A-001, which has PASSED.
 
-> Inspect repository, runtime, existing modules and tests. Do not change code. Produce architecture/state report and dependency risks.
+> Create the v7 source-of-truth requirements document. Confirm Shorts + LongForm as the only content types and Test/QC/Preview/Approval as shared gates.
 
-Phase 0 (000–011) is complete, which meets the pack rule that Phase A may start only after Prompt 011 PASSES. Run the Phase A prompts in order, and do not start a prompt until the previous one has PASSED. The full list is in `TASK_STATUS.md`.
+A-001 Project Audit has PASSED, and its report is `docs/A-001_PROJECT_AUDIT.md`. Phase 0 (000–011) is complete, which meets the pack rule that Phase A may start only after Prompt 011 PASSES. Run the Phase A prompts in order, and do not start a prompt until the previous one has PASSED. The full list is in `TASK_STATUS.md`.
 
 ## Known failures
 
@@ -107,7 +107,7 @@ uv run pytest                 # expect 1 passed
 uv run ruff check . && uv run ruff format --check .
 ```
 
-Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is A-001 right now.
+Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is A-002 right now.
 
 ## State history
 
@@ -120,6 +120,7 @@ Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is A-001
 | Task 007 Clean Baseline Gate | EXISTING_INITIALIZED → READY_FOR_PHASE_A | Gate PASS. Baseline Gate is OPEN. |
 | Tasks 008–010 | READY_FOR_PHASE_A | Bootstrap app, tests and clean gate verified. No code changes. |
 | Task 011 Project Handoff | READY_FOR_PHASE_A | Handoff completed. Phase 0 is complete. |
+| A-001 Project Audit | READY_FOR_PHASE_A | Audit report written to `docs/A-001_PROJECT_AUDIT.md`. No code changes. |
 
 The change from EMPTY to EXISTING is a valid state transition caused by Project Initialization. It is not a pre-existing failure. The files in the baseline were created by that task, so they are not PRE_EXISTING relative to the original empty state.
 

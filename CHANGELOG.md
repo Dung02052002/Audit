@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Phase 0 tasks 008–011 of Prompt Pack v8 were verified and recorded. No code changed.
 - `PROJECT_STATE.md` became the handoff document. It now includes known failures (none), invariants, repository status, how to resume, and the next task (A-001).
 - The Phase A task list (A-001 to A-012) was added to `TASK_STATUS.md`.
+- A-001 Project Audit is complete. The report `docs/A-001_PROJECT_AUDIT.md` covers architecture, state and dependency risks, with no code changes. The project state stays `READY_FOR_PHASE_A`, and the next task is A-002.
 
 ## [0.1.0] - 2026-09-25
 

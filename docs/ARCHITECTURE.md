@@ -207,19 +207,21 @@ Every gate implements the Pipeline Gate Contract (#033). The Pipeline Runner (#2
 | `APPROVAL_REQUIRED` | Requires the C11 approval | #006 |
 | `AUTO_REPLY_ENABLED` | Default `false`, enforced. Replies are drafts only | #006, #188 |
 
-## 7. Guidance for A-004 Folder Structure
+## 7. Folder structure (set by A-004)
 
-A-004 must create or normalize folders for Core, Content, Providers, Pipeline, Dashboard, Tests and Docs. This is a proposed mapping only. A-004 decides the final layout.
+A-004 created these folders and kept the existing `src/` layout.
 
-| A-004 folder | Contexts |
-|---|---|
-| Core | X1 Foundation, C2 Content Lifecycle, C3 Control Gates, X2 Persistence |
-| Content | C1, C4, C5, C6, C7, C8, C9, C10, C11, C13, C14, C15 |
-| Providers | Every provider interface in 4.1 and its mocks |
-| Pipeline | C16 Orchestration, C12 Publishing flow |
-| Dashboard | X3 Command Center |
-| Tests | `tests/` (already exists) |
-| Docs | `docs/` (already exists) |
+| A-004 folder | Path | Contexts |
+|---|---|---|
+| Core | `src/ai_youtube_agent/core/` | X1 Foundation, C2 Content Lifecycle, C3 Control Gates, X2 Persistence |
+| Content | `src/ai_youtube_agent/content/` | C1, C4, C5, C6, C7, C8, C9, C10, C11, C13, C14, C15 |
+| Providers | `src/ai_youtube_agent/providers/` | Every provider interface in 4.1 and its mocks |
+| Pipeline | `src/ai_youtube_agent/pipeline/` | C16 Orchestration, C12 Publishing flow |
+| Dashboard | `dashboard/` (repository root) | X3 Command Center. It is outside the Python package because its platform is still open (Q4) |
+| Tests | `tests/` (existing) | All tests |
+| Docs | `docs/` (existing) | Requirements, architecture and reports |
+
+The four backend folders are empty packages. Each one holds only an `__init__.py` with a docstring. Later prompts add modules inside them. The FastAPI app stays at `src/ai_youtube_agent/main.py`.
 
 ## 8. Open questions
 

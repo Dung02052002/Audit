@@ -36,7 +36,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 | A-001 | Project Audit | None | PASS. See `docs/A-001_PROJECT_AUDIT.md`. |
 | A-002 | Requirements Freeze | A-1 | PASS. See `docs/REQUIREMENTS.md` (FROZEN). |
 | A-003 | Architecture Map | A-2 | PASS. See `docs/ARCHITECTURE.md`. It has 8 open questions (Q1â€“Q8). |
-| A-004 | Folder Structure | A-3 | NOT_STARTED |
+| A-004 | Folder Structure | A-3 | PASS. Added the backend packages `core/`, `content/`, `providers/` and `pipeline/` under `src/ai_youtube_agent/`, plus `dashboard/` at the root. Tests: 8 passed. |
 | A-005 | Configuration Contract | A-4 | NOT_STARTED |
 | A-006 | Feature Flags | A-5 | NOT_STARTED |
 | A-007 | Logging Contract | A-5 | NOT_STARTED |
@@ -54,4 +54,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 - A-001 Project Audit has PASSED.
 - A-002 Requirements Freeze has PASSED.
 - A-003 Architecture Map has PASSED.
-- Next task: **A-004 Folder Structure**. It is NOT_STARTED.
+- A-004 Folder Structure has PASSED.
+- Next task: **A-005 Configuration Contract**. It is NOT_STARTED.

@@ -13,6 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Phase 0 is complete, and the Clean Baseline Gate (Task 007) passed on baseline `3b41416`.
 - The project state moved from `EXISTING_INITIALIZED` to `READY_FOR_PHASE_A`.
+- Phase 0 tasks 008–011 of Prompt Pack v8 were verified and recorded. No code changed.
+- `PROJECT_STATE.md` became the handoff document. It now includes known failures (none), invariants, repository status, how to resume, and the next task (A-001).
+- The Phase A task list (A-001 to A-012) was added to `TASK_STATUS.md`.
 
 ## [0.1.0] - 2026-09-25
 

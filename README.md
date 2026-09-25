@@ -22,6 +22,7 @@ Settings are typed and validated in `src/ai_youtube_agent/core/config.py`. Every
 - Feature flags live in `src/ai_youtube_agent/core/flags.py` and are set with `AI_YOUTUBE_AGENT_FLAGS__<NAME>`, for example `AI_YOUTUBE_AGENT_FLAGS__PUBLISH_ENABLED=true`. The defaults are the safe choice: publishing, LongForm and auto-reply are off, and test and approval are required.
 - Logging is structured JSON (`src/ai_youtube_agent/core/log.py`). Call `configure_logging(settings.log_level)` once, and wrap work in `log_context(correlation_id=..., session_id=..., job_id=...)` so every record carries those IDs. Set the level with `AI_YOUTUBE_AGENT_LOG_LEVEL`.
 - Errors (`src/ai_youtube_agent/core/errors.py`) are `ApplicationError`, `DomainError` or `ProviderError`. Show users only `to_public(exc)`. The internal `detail` goes to logs through `exc.log_fields()`.
+- Dependency injection (`src/ai_youtube_agent/core/di.py`): code resolves interfaces from a `Container` and never builds implementations itself. `src/ai_youtube_agent/bootstrap.py` is the only place that registers implementations. `main.create_app()` builds the container and configures logging. In routes, use `Annotated[Service, provide(Service)]`.
 - `.env` and `.env.*` files are git-ignored. Only `.env.example` is committed, and it must never hold secrets.
 
 ## Run
@@ -50,7 +51,8 @@ uv build
 
 ```
 src/ai_youtube_agent/   application package
-  main.py               FastAPI app
+  main.py               FastAPI app (`create_app()`)
+  bootstrap.py          composition root: registers implementations in the DI container
   core/                 foundation, content lifecycle, control gates, persistence
   content/              domain contexts of the production pipeline
   providers/            external-system interfaces and mocks

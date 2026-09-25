@@ -112,7 +112,7 @@ The requirements define each of these as an abstraction with a mock.
 | Feature flags | #006 | `SHORTS_ENABLED`, `LONGFORM_ENABLED`, `PUBLISH_ENABLED`, `TEST_REQUIRED`, `APPROVAL_REQUIRED`, `AUTO_REPLY_ENABLED=false`. Implemented in `core/flags.py` | X1 |
 | Logging contract | #007 | Structured logs with correlation, session and job IDs. Implemented in `core/log.py` | X1 |
 | Error model | #008 | Typed application, domain and provider errors with safe user-facing messages. Implemented in `core/errors.py` | X1 |
-| DI registry | #009 | Registers core interfaces and providers | X1 |
+| DI registry | #009 | Registers core interfaces and providers. Implemented in `core/di.py`. The composition root is `bootstrap.py`, and `main.create_app()` attaches the container to `app.state` | X1 |
 | Health / status model | #010 | Application and provider health checks | X1 |
 | Audit event | #011 | Immutable record of actor, timestamp, entity and result | X1, used by C11, C12, C15, C16 |
 | Pipeline Gate Contract | #033 | One shared gate interface for Test, QC, Rights, Policy and Approval | C3 |

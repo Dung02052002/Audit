@@ -14,9 +14,10 @@ Last updated: 2026-09-25
 | 000–005 | Re-run after initialization | PASS | EXISTING + CLEAN BASELINE, with no failures. |
 | 006 | Bootstrap Decision | PASS | The repository is EXISTING, so the decision was an Audit Plan and no re-bootstrap. |
 | — | State Drift Audit | PASS | Actual state is EXISTING. The earlier EMPTY classification was correct at the time it was made. |
+| 007 | Clean Baseline Gate | PASS | Clean Baseline Gate = PASS, and the gate is OPEN. Baseline commit is `3b41416`. Test = PASS, lint = PASS, build = PASS. No pre-existing failures and no UNKNOWN blockers. |
 
 ## Current
 
-- `PROJECT_STATE = EXISTING_INITIALIZED`
+- `PROJECT_STATE = READY_FOR_PHASE_A`
 - `BASELINE_COMMIT = 3b41416`
-- Next: the next task in the Prompt Pack. Business logic and Phase A have not started.
+- Next: Phase A has not started yet.

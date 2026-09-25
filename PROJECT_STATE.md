@@ -5,7 +5,7 @@ Last updated: 2026-09-25
 ## Current state
 
 ```
-PROJECT_STATE   = EXISTING_INITIALIZED
+PROJECT_STATE   = READY_FOR_PHASE_A
 BASELINE_COMMIT = 3b41416
 BASELINE_STATUS = CLEAN
 TEST_STATUS     = PASS
@@ -50,6 +50,8 @@ Any failure that appears after this commit comes from a later change. It is not 
 | Tasks 001–005 (initial audit) | EMPTY / CLEAN EMPTY STATE | Correct at that time: the repository had 0 files and no Git. |
 | Project Initialization | EMPTY → EXISTING | The minimal project was created and committed as `3b41416`. |
 | State drift audit | EXISTING | Confirmed from the filesystem. |
+| State tracking (`5821e98`) | EXISTING_INITIALIZED | State files added. Code is unchanged from `3b41416`. |
+| Task 007 Clean Baseline Gate | EXISTING_INITIALIZED → READY_FOR_PHASE_A | Gate PASS. Baseline Gate is OPEN. |
 
 The change from EMPTY to EXISTING is a valid state transition caused by Project Initialization. It is not a pre-existing failure. The files in the baseline were created by that task, so they are not PRE_EXISTING relative to the original empty state.
 

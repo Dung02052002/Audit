@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `PROJECT_STATE.md`, `TASK_STATUS.md` and `CHANGELOG.md` to track the project state and task results.
 
+### Changed
+
+- Phase 0 is complete, and the Clean Baseline Gate (Task 007) passed on baseline `3b41416`.
+- The project state moved from `EXISTING_INITIALIZED` to `READY_FOR_PHASE_A`.
+
 ## [0.1.0] - 2026-09-25
 
 Baseline commit: `3b41416`.

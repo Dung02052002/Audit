@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-09-25 (A-004 Folder Structure)
+Last updated: 2026-09-25 (A-005 Configuration Contract)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,23 +9,23 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 3e5bd76
+CURRENT_CHECKPOINT = 441b816
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS
 LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = A-005 Configuration Contract
+NEXT_TASK          = A-006 Feature Flags
 ```
 
 ## Next task
 
-**A-005 Configuration Contract** (Prompt Pack v8, Phase A, prompt 5). It depends on A-004, which has PASSED.
+**A-006 Feature Flags** (Prompt Pack v8, Phase A, prompt 6). It depends on A-005, which has PASSED.
 
-> Define typed configuration loading, validation and environment separation. No secrets in source.
+> Implement flags for SHORTS_ENABLED, LONGFORM_ENABLED, PUBLISH_ENABLED, TEST_REQUIRED, APPROVAL_REQUIRED and AUTO_REPLY_ENABLED=false.
 
-A-004 Folder Structure has PASSED. The layout is in `docs/ARCHITECTURE.md` section 7 and the README. A-003 Architecture Map has PASSED. The map is in `docs/ARCHITECTURE.md`, and section 8 lists 8 open questions. A-002 Requirements Freeze has PASSED. The frozen requirements are in `docs/REQUIREMENTS.md`, which includes the full 238-prompt catalog copied verbatim from the pack. A-001 Project Audit has PASSED, and its report is `docs/A-001_PROJECT_AUDIT.md`. Phase 0 (000–011) is complete, which meets the pack rule that Phase A may start only after Prompt 011 PASSES. Run the Phase A prompts in order, and do not start a prompt until the previous one has PASSED. The full list is in `TASK_STATUS.md`.
+A-005 Configuration Contract has PASSED. Settings are in `src/ai_youtube_agent/core/config.py`. A-004 Folder Structure has PASSED. The layout is in `docs/ARCHITECTURE.md` section 7 and the README. A-003 Architecture Map has PASSED. The map is in `docs/ARCHITECTURE.md`, and section 8 lists 8 open questions. A-002 Requirements Freeze has PASSED. The frozen requirements are in `docs/REQUIREMENTS.md`, which includes the full 238-prompt catalog copied verbatim from the pack. A-001 Project Audit has PASSED, and its report is `docs/A-001_PROJECT_AUDIT.md`. Phase 0 (000–011) is complete, which meets the pack rule that Phase A may start only after Prompt 011 PASSES. Run the Phase A prompts in order, and do not start a prompt until the previous one has PASSED. The full list is in `TASK_STATUS.md`.
 
 ## Known failures
 
@@ -63,8 +63,8 @@ These checks were last run in Task 010. Any failure that appears after `3b41416`
 | Remote | `origin` = https://github.com/Dung02052002/Audit.git |
 | Branch | `main`, tracking `origin/main` |
 | Pushed checkpoint | `6ce7d3b` (`docs: close clean baseline gate, ready for phase A`) |
-| Tracked code | `src/ai_youtube_agent/` (`__init__.py`, `main.py`, and the empty packages `core/`, `content/`, `providers/`, `pipeline/`), `dashboard/README.md`, `tests/test_health.py`, `tests/test_folder_structure.py` |
-| Ignored | `.venv/`, `dist/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`, `.env` |
+| Tracked code | `src/ai_youtube_agent/` (`__init__.py`, `main.py`, `core/config.py`, and the packages `core/`, `content/`, `providers/`, `pipeline/`), `dashboard/README.md`, `.env.example`, `tests/` (`test_health.py`, `test_folder_structure.py`, `test_config.py`) |
+| Ignored | `.venv/`, `dist/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`, `.env`, `.env.*` (except `.env.example`) |
 
 ## Toolchain
 
@@ -73,7 +73,7 @@ These checks were last run in Task 010. Any failure that appears after `3b41416`
 | OS | Windows 11 Pro. Shells: PowerShell 5.1 and Git Bash |
 | Language / runtime | Python 3.11.9 (`requires-python = ">=3.11,<3.12"`) |
 | Project type | Backend / AI agent |
-| Framework | FastAPI 0.141, served by uvicorn 0.54 |
+| Framework | FastAPI 0.141, served by uvicorn 0.54. Settings use pydantic-settings 2.15 |
 | Package manager | uv 0.12.1 (build backend `uv_build`) |
 | Test runner | pytest 9.1.1, with `httpx2` for `TestClient` |
 | Formatter / linter | ruff 0.16.9 (rules E, F, I, UP, B, SIM; line length 88) |
@@ -107,7 +107,7 @@ uv run pytest                 # expect 1 passed
 uv run ruff check . && uv run ruff format --check .
 ```
 
-Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is A-005 right now.
+Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is A-006 right now.
 
 ## State history
 
@@ -124,6 +124,7 @@ Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is A-005
 | A-002 Requirements Freeze | READY_FOR_PHASE_A | Requirements frozen in `docs/REQUIREMENTS.md`. No code changes. |
 | A-003 Architecture Map | READY_FOR_PHASE_A | Architecture documented in `docs/ARCHITECTURE.md`. No code changes. |
 | A-004 Folder Structure | READY_FOR_PHASE_A | Created `core/`, `content/`, `providers/`, `pipeline/` (empty packages) and `dashboard/`. Tests now 8. |
+| A-005 Configuration Contract | READY_FOR_PHASE_A | Typed settings in `core/config.py` (pydantic-settings). Tests now 22. |
 
 The change from EMPTY to EXISTING is a valid state transition caused by Project Initialization. It is not a pre-existing failure. The files in the baseline were created by that task, so they are not PRE_EXISTING relative to the original empty state.
 

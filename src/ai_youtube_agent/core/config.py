@@ -23,6 +23,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ai_youtube_agent.core.flags import FeatureFlags
+from ai_youtube_agent.core.log import Severity
 
 ENV_PREFIX = "AI_YOUTUBE_AGENT_"
 ENV_NESTED_DELIMITER = "__"
@@ -47,6 +48,7 @@ class Settings(BaseSettings):
     environment: Environment = Environment.DEVELOPMENT
     app_name: str = Field(default="ai_youtube_agent", min_length=1)
     debug: bool = False
+    log_level: Severity = Severity.INFO
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
 
     @model_validator(mode="after")

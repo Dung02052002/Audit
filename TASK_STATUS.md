@@ -46,6 +46,31 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 | A-011 | Audit Event Model | A-10 | PASS. Added `core/audit.py`: a frozen `AuditEvent` (actor, UTC timestamp, action, entity, result, context IDs, read-only metadata), an append-only `AuditSink` protocol, `InMemoryAuditSink` and `AuditLog`, all registered in `bootstrap.py`. 26 new tests. Tests: 132 passed. |
 | A-012 | Build Baseline | A-11 | PASS. See `docs/A-012_BUILD_BASELINE.md`. Full baseline on `59fcd2d`: sync, lock, 132 tests (also with `-W error` and 5 repeated runs), lint, format, build, installed wheel and a uvicorn run all pass. No baseline failures and no infrastructure blockers, so no code changed. |
 
+## Phase B: Domain & Persistence (Prompt Pack v8, prompts 13â€“30)
+
+Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10â€“12, and `docs/REQUIREMENTS.md`. Do not start a prompt until the previous one has PASSED.
+
+| Task | Name | Dependency | Status |
+|---|---|---|---|
+| B-013 | Channel Entity | A-12 | PASS. Added `content/channel.py`: a frozen `Channel` with a stable id, `YouTubeIdentifiers` (validated `channel_id` and an optional `@handle`), `ChannelStatus` (pending, active, paused, disconnected, archived) and UTC `created_at` and `updated_at`. `with_status` and `rename` return a new channel, and an archived channel is read-only (`ChannelArchivedError`). 34 new tests. Tests: 166 passed. |
+| B-014 | StrategyProfile Entity | B-1 | NOT_STARTED |
+| B-015 | ContentItem Entity | B-2 | NOT_STARTED |
+| B-016 | Artifact Entity | B-3 | NOT_STARTED |
+| B-017 | Script Entity | B-4 | NOT_STARTED |
+| B-018 | Voice Entity | B-5 | NOT_STARTED |
+| B-019 | Rights Entity | B-6 | NOT_STARTED |
+| B-020 | QC Entity | B-7 | NOT_STARTED |
+| B-021 | Approval Entity | B-8 | NOT_STARTED |
+| B-022 | Publish Entity | B-9 | NOT_STARTED |
+| B-023 | Analytics Entity | B-10 | NOT_STARTED |
+| B-024 | Revenue Entity | B-11 | NOT_STARTED |
+| B-025 | Cost Entity | B-12 | NOT_STARTED |
+| B-026 | Comment Entity | B-13 | NOT_STARTED |
+| B-027 | AI Job Entity | B-14 | NOT_STARTED |
+| B-028 | Experiment Entity | B-15 | NOT_STARTED |
+| B-029 | Migrations | B-16 | NOT_STARTED |
+| B-030 | Repository Tests | B-17 | NOT_STARTED |
+
 ## Current
 
 - `PROJECT_STATE = READY_FOR_PHASE_A`
@@ -63,4 +88,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 - A-010 Health Check has PASSED.
 - A-011 Audit Event Model has PASSED.
 - A-012 Build Baseline has PASSED. Phase A is complete.
-- Next task: **B-013 Channel Entity** (Phase B, Domain & Persistence). It is NOT_STARTED.
+- B-013 Channel Entity has PASSED.
+- Next task: **B-014 StrategyProfile Entity**. It is NOT_STARTED.

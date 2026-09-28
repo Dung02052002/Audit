@@ -31,7 +31,7 @@ Settings are typed and validated in `src/ai_youtube_agent/core/config.py`. Every
 uv run uvicorn ai_youtube_agent.main:app --reload
 ```
 
-Health check: `GET /health`
+Health check: `GET /health` returns `status` (`ok`, `degraded` or `down`), `version` and one entry per check in `checks`. It answers 503 only when an application check fails. A failing provider check gives `degraded` with 200.
 
 ## Test and lint
 

@@ -1,6 +1,6 @@
 # Task Status
 
-Last updated: 2026-09-25
+Last updated: 2026-09-28
 
 | Task | Name | Result | Notes |
 |---|---|---|---|
@@ -42,7 +42,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 | A-007 | Logging Contract | A-5 | PASS. Added `core/log.py` (JSON records, `Severity`, `log_context` for correlation, session and job IDs) and `Settings.log_level`, with 16 logging tests. Tests: 52 passed. |
 | A-008 | Error Model | A-7 | PASS. Added `core/errors.py` (the categories Application, Domain and Provider, `PublicError` and `to_public`) with 16 tests. Tests: 68 passed. |
 | A-009 | Dependency Injection | A-8 | PASS. Added the container in `core/di.py`, the composition root `bootstrap.py`, and `create_app()` plus `provide()` in `main.py`, with 19 new tests. Tests: 87 passed. |
-| A-010 | Health Check | A-9 | NOT_STARTED |
+| A-010 | Health Check | A-9 | PASS. Added `core/health.py` (status model ok/degraded/down, application and provider checks, `HealthRegistry` with per-check timeouts). The registry is registered in `bootstrap.py`, and `/health` now returns `checks` and answers 503 when down. 19 new tests. Tests: 106 passed. |
 | A-011 | Audit Event Model | A-10 | NOT_STARTED |
 | A-012 | Build Baseline | A-11 | NOT_STARTED |
 
@@ -60,4 +60,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 8â
 - A-007 Logging Contract has PASSED.
 - A-008 Error Model has PASSED.
 - A-009 Dependency Injection has PASSED.
-- Next task: **A-010 Health Check**. It is NOT_STARTED.
+- A-010 Health Check has PASSED.
+- Next task: **A-011 Audit Event Model**. It is NOT_STARTED.

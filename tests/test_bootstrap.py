@@ -52,13 +52,15 @@ def test_create_app_uses_the_given_container(settings: Settings) -> None:
     assert logging.getLogger().level == logging.WARNING
 
 
-def test_health_is_unchanged(settings: Settings) -> None:
+def test_health_keeps_status_and_version(settings: Settings) -> None:
     client = TestClient(create_app(build_container(settings)))
 
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": __version__}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["version"] == __version__
 
 
 def test_provide_resolves_from_the_app_container(settings: Settings) -> None:

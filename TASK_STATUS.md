@@ -65,7 +65,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 | B-023 | Analytics Entity | B-10 | PASS. Added `content/analytics.py`: `MetricScope` and a frozen `MetricSnapshot` with source, UTC period, retrieval time and a read-only name → `Decimal` metric map (missing metrics stay absent). Freshness is derived with `age_at` and `is_stale`. 41 new tests. Tests: 645 passed. |
 | B-024 | Revenue Entity | B-11 | PASS. Added `content/revenue.py`: `RevenueStage` and a frozen `RevenueRecord` (estimated or final, never converted) with scope, revenue type, data source, a non-negative `Decimal` amount, ISO 4217 currency, UTC period and retrieval time, and derived freshness. 37 new tests. Tests: 682 passed. |
 | B-025 | Cost Entity | B-12 | PASS. Added `content/cost.py`: `CostCategory` (production, api, tts, render, storage, llm) and a frozen `CostRecord` attributed to a channel, with provider, a non-negative `Decimal` amount, ISO 4217 currency, UTC `incurred_at`, and optional content item and job/artifact ref. 33 new tests. Tests: 715 passed. |
-| B-026 | Comment Entity | B-13 | NOT_STARTED |
+| B-026 | Comment Entity | B-13 | PASS. Added `content/comment.py`: a minimal synced `Comment` (display name only), `CommentClassification` records with history, and `ReplyDraft` with a `ReplyStatus` that always starts as draft and has no approve or post method yet. 38 new tests. Tests: 753 passed. |
 | B-027 | AI Job Entity | B-14 | NOT_STARTED |
 | B-028 | Experiment Entity | B-15 | NOT_STARTED |
 | B-029 | Migrations | B-16 | NOT_STARTED |
@@ -101,4 +101,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - B-023 Analytics Entity has PASSED.
 - B-024 Revenue Entity has PASSED.
 - B-025 Cost Entity has PASSED.
-- Next task: **B-026 Comment Entity**. It is NOT_STARTED.
+- B-026 Comment Entity has PASSED.
+- Next task: **B-027 AI Job Entity**. It is NOT_STARTED.

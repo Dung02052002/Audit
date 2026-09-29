@@ -54,7 +54,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 |---|---|---|---|
 | B-013 | Channel Entity | A-12 | PASS. Added `content/channel.py`: a frozen `Channel` with a stable id, `YouTubeIdentifiers` (validated `channel_id` and an optional `@handle`), `ChannelStatus` (pending, active, paused, disconnected, archived) and UTC `created_at` and `updated_at`. `with_status` and `rename` return a new channel, and an archived channel is read-only (`ChannelArchivedError`). 34 new tests. Tests: 166 passed. |
 | B-014 | StrategyProfile Entity | B-1 | PASS. Added `content/strategy.py`: a frozen `StrategyProfile` linked to one channel, with typed value objects for market (ISO 3166-1), languages (BCP-47), audience, niche, brand, cadence, budget (ISO 4217, `Decimal`) and monetization. Only a user actor can create or update it (`StrategyChangeNotAllowedError`, R-09), and each change bumps the version. 90 new tests. Tests: 256 passed. |
-| B-015 | ContentItem Entity | B-2 | NOT_STARTED |
+| B-015 | ContentItem Entity | B-2 | PASS. Added `core/content_item.py`: `ContentType` (shorts, longform), `ContentStatus` (the 10 statuses of #031) and a frozen `ContentItem` linked to a channel and a strategy profile version, starting at draft. `with_status` has no transition rules yet (#032). 39 new tests. Tests: 295 passed. |
 | B-016 | Artifact Entity | B-3 | NOT_STARTED |
 | B-017 | Script Entity | B-4 | NOT_STARTED |
 | B-018 | Voice Entity | B-5 | NOT_STARTED |
@@ -90,4 +90,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - A-012 Build Baseline has PASSED. Phase A is complete.
 - B-013 Channel Entity has PASSED.
 - B-014 StrategyProfile Entity has PASSED.
-- Next task: **B-015 ContentItem Entity**. It is NOT_STARTED.
+- B-015 ContentItem Entity has PASSED.
+- Next task: **B-016 Artifact Entity**. It is NOT_STARTED.

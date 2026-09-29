@@ -9,7 +9,7 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 6ac91e9
+CURRENT_CHECKPOINT = 8dc8c63
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS
 LINT_STATUS        = PASS

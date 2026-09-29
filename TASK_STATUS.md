@@ -58,7 +58,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 | B-016 | Artifact Entity | B-3 | PASS. Added `core/artifact.py`: `ArtifactKind` (video, audio, subtitles, thumbnail, metadata) and a frozen `Artifact` version record with uri, sha256, size and media type. `next_version` creates a new record with version + 1 and refuses unchanged content. 37 new tests. Tests: 332 passed. |
 | B-017 | Script Entity | B-4 | PASS. Added `content/script.py`: immutable `Script` version records (`next_version` refuses unchanged text), `Claim` bound to one exact script version, and `Evidence` linking a claim to an opaque research `source_ref`. 37 new tests. Tests: 369 passed. |
 | B-018 | Voice Entity | B-5 | PASS. Added `content/voice.py`: a user-controlled `VoiceProfile` (provider, voice id, BCP-47 language, optional style, version, user-only actor guard) and `AudioMetadata` linking an audio `Artifact`, the exact `Script` version and the voice profile version, with provider and duration in milliseconds. No cost stored. 55 new tests. Tests: 424 passed. |
-| B-019 | Rights Entity | B-6 | NOT_STARTED |
+| B-019 | Rights Entity | B-6 | PASS. Added `content/rights.py`: a frozen `RightsRecord` per asset (opaque `asset_ref`, source, optional licence, `RiskLevel` and `RiskResolution`). Only a user may resolve a risk, and a change of level or licence makes it unresolved again. 41 new tests. Tests: 465 passed. |
 | B-020 | QC Entity | B-7 | NOT_STARTED |
 | B-021 | Approval Entity | B-8 | NOT_STARTED |
 | B-022 | Publish Entity | B-9 | NOT_STARTED |
@@ -94,4 +94,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - B-016 Artifact Entity has PASSED.
 - B-017 Script Entity has PASSED.
 - B-018 Voice Entity has PASSED.
-- Next task: **B-019 Rights Entity**. It is NOT_STARTED.
+- B-019 Rights Entity has PASSED.
+- Next task: **B-020 QC Entity**. It is NOT_STARTED.

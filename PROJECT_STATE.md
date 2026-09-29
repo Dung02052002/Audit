@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-09-29 (B-018 Voice Entity)
+Last updated: 2026-09-29 (B-019 Rights Entity)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -16,16 +16,16 @@ LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = B-019 Rights Entity
+NEXT_TASK          = B-020 QC Entity
 ```
 
 ## Next task
 
-**B-019 Rights Entity** (Prompt Pack v8, Phase B Domain & Persistence, prompt 19). It depends on B-018, which has PASSED.
+**B-020 QC Entity** (Prompt Pack v8, Phase B Domain & Persistence, prompt 20). It depends on B-019, which has PASSED.
 
-> Create asset provenance, source, license and risk status.
+> Create structured QC result with PASS/WARN/FAIL checks.
 
-B-018 Voice Entity has PASSED. The entities are in `src/ai_youtube_agent/content/voice.py`: a user-controlled `VoiceProfile` with a version and a user-only actor guard, and `AudioMetadata` that links an audio `Artifact`, the exact `Script` version and the voice profile version. B-017 Script Entity has PASSED. The entities are in `src/ai_youtube_agent/content/script.py`: immutable `Script` versions, `Claim` bound to one exact script version, and `Evidence` with an opaque `source_ref`, all related by id. B-016 Artifact Entity has PASSED. The entity is in `src/ai_youtube_agent/core/artifact.py`. Each `Artifact` is one immutable version (own id, `content_item_id`, `ArtifactKind`, version from 1, `uri`, `sha256`, `size_bytes`, `media_type`). `next_version` makes a new record and refuses an unchanged sha256. B-015 ContentItem Entity has PASSED. The entity is in `src/ai_youtube_agent/core/content_item.py` (C2 lives in `core/`). It is frozen, links to `channel_id`, `strategy_profile_id` and `strategy_version`, has `ContentType` SHORTS or LONGFORM, and a `ContentStatus` with the 10 values of #031, starting at draft. `with_status` has no transition rules until #032. B-014 StrategyProfile Entity has PASSED. The entity is in `src/ai_youtube_agent/content/strategy.py`. It is frozen, belongs to one channel (`channel_id`), and holds one typed value object per setting. Only a user `Actor` can create or update it (R-09), and every change bumps `version`. Detailed setting rules are left to #044–#053. B-013 Channel Entity has PASSED. The entity is in `src/ai_youtube_agent/content/channel.py`. It is frozen, its id is stable, and its statuses are pending, active, paused, disconnected and archived. Archived is final. No other transition rules exist yet. Phase A (A-001 to A-012) is complete. A-012 Build Baseline has PASSED. The foundation build baseline is `59fcd2d`, and the report is `docs/A-012_BUILD_BASELINE.md`: 132 tests passed, with no failures and no infrastructure blockers. A-011 Audit Event Model has PASSED. The model is in `src/ai_youtube_agent/core/audit.py`. Code records events with `AuditLog.record()`, which it resolves from the container. The sink is `InMemoryAuditSink` until persistence (#029) adds a database sink in `bootstrap.py`. A-010 Health Check has PASSED. The status model and `HealthRegistry` are in `src/ai_youtube_agent/core/health.py`. The registry is a singleton in the container, and providers added later register a `CheckKind.PROVIDER` check in `bootstrap.py`. `GET /health` returns `status`, `version` and `checks`, and answers 503 only when an application check fails. A-009 Dependency Injection has PASSED. The container is in `src/ai_youtube_agent/core/di.py`, the composition root is `src/ai_youtube_agent/bootstrap.py`, and `main.create_app()` puts the container on `app.state.container`. A-008 Error Model has PASSED. Errors are in `src/ai_youtube_agent/core/errors.py`. A-007 Logging Contract has PASSED. Logging is in `src/ai_youtube_agent/core/log.py`. A-006 Feature Flags has PASSED. The flags are in `src/ai_youtube_agent/core/flags.py`, exposed as `Settings.flags`.
+B-019 Rights Entity has PASSED. The entity is in `src/ai_youtube_agent/content/rights.py`: a frozen `RightsRecord` per asset with source, optional licence, `RiskLevel` and `RiskResolution`. Only a user may resolve a risk, and changing the level or licence makes it unresolved again. B-018 Voice Entity has PASSED. The entities are in `src/ai_youtube_agent/content/voice.py`: a user-controlled `VoiceProfile` with a version and a user-only actor guard, and `AudioMetadata` that links an audio `Artifact`, the exact `Script` version and the voice profile version. B-017 Script Entity has PASSED. The entities are in `src/ai_youtube_agent/content/script.py`: immutable `Script` versions, `Claim` bound to one exact script version, and `Evidence` with an opaque `source_ref`, all related by id. B-016 Artifact Entity has PASSED. The entity is in `src/ai_youtube_agent/core/artifact.py`. Each `Artifact` is one immutable version (own id, `content_item_id`, `ArtifactKind`, version from 1, `uri`, `sha256`, `size_bytes`, `media_type`). `next_version` makes a new record and refuses an unchanged sha256. B-015 ContentItem Entity has PASSED. The entity is in `src/ai_youtube_agent/core/content_item.py` (C2 lives in `core/`). It is frozen, links to `channel_id`, `strategy_profile_id` and `strategy_version`, has `ContentType` SHORTS or LONGFORM, and a `ContentStatus` with the 10 values of #031, starting at draft. `with_status` has no transition rules until #032. B-014 StrategyProfile Entity has PASSED. The entity is in `src/ai_youtube_agent/content/strategy.py`. It is frozen, belongs to one channel (`channel_id`), and holds one typed value object per setting. Only a user `Actor` can create or update it (R-09), and every change bumps `version`. Detailed setting rules are left to #044–#053. B-013 Channel Entity has PASSED. The entity is in `src/ai_youtube_agent/content/channel.py`. It is frozen, its id is stable, and its statuses are pending, active, paused, disconnected and archived. Archived is final. No other transition rules exist yet. Phase A (A-001 to A-012) is complete. A-012 Build Baseline has PASSED. The foundation build baseline is `59fcd2d`, and the report is `docs/A-012_BUILD_BASELINE.md`: 132 tests passed, with no failures and no infrastructure blockers. A-011 Audit Event Model has PASSED. The model is in `src/ai_youtube_agent/core/audit.py`. Code records events with `AuditLog.record()`, which it resolves from the container. The sink is `InMemoryAuditSink` until persistence (#029) adds a database sink in `bootstrap.py`. A-010 Health Check has PASSED. The status model and `HealthRegistry` are in `src/ai_youtube_agent/core/health.py`. The registry is a singleton in the container, and providers added later register a `CheckKind.PROVIDER` check in `bootstrap.py`. `GET /health` returns `status`, `version` and `checks`, and answers 503 only when an application check fails. A-009 Dependency Injection has PASSED. The container is in `src/ai_youtube_agent/core/di.py`, the composition root is `src/ai_youtube_agent/bootstrap.py`, and `main.create_app()` puts the container on `app.state.container`. A-008 Error Model has PASSED. Errors are in `src/ai_youtube_agent/core/errors.py`. A-007 Logging Contract has PASSED. Logging is in `src/ai_youtube_agent/core/log.py`. A-006 Feature Flags has PASSED. The flags are in `src/ai_youtube_agent/core/flags.py`, exposed as `Settings.flags`.
 
 A-005 Configuration Contract has PASSED. Settings are in `src/ai_youtube_agent/core/config.py`. A-004 Folder Structure has PASSED. The layout is in `docs/ARCHITECTURE.md` section 7 and the README. A-003 Architecture Map has PASSED. The map is in `docs/ARCHITECTURE.md`, and section 8 lists 8 open questions. A-002 Requirements Freeze has PASSED. The frozen requirements are in `docs/REQUIREMENTS.md`, which includes the full 238-prompt catalog copied verbatim from the pack. A-001 Project Audit has PASSED, and its report is `docs/A-001_PROJECT_AUDIT.md`. Phase 0 (000–011) is complete, which meets the pack rule that Phase A may start only after Prompt 011 PASSES. Run the Phase A prompts in order, and do not start a prompt until the previous one has PASSED. The full list is in `TASK_STATUS.md`.
 
@@ -81,7 +81,7 @@ These checks were last run in Task 010. Any failure that appears after `3b41416`
 | Remote | `origin` = https://github.com/Dung02052002/Audit.git |
 | Branch | `main`, tracking `origin/main` |
 | Pushed checkpoint | `3ebc29c` (`docs: record A-001 project audit`). Later commits are local only |
-| Tracked code | `src/ai_youtube_agent/` (`__init__.py`, `main.py`, `bootstrap.py`, `core/config.py`, `core/flags.py`, `core/log.py`, `core/errors.py`, `core/di.py`, `core/health.py`, `core/audit.py`, `core/content_item.py`, `core/artifact.py`, `content/channel.py`, `content/strategy.py`, `content/script.py`, `content/voice.py`, and the packages `core/`, `content/`, `providers/`, `pipeline/`), `dashboard/README.md`, `.env.example`, `tests/` (`test_health.py`, `test_folder_structure.py`, `test_config.py`, `test_flags.py`, `test_log.py`, `test_errors.py`, `test_di.py`, `test_bootstrap.py`, `test_health_check.py`, `test_audit.py`, `test_channel.py`, `test_strategy.py`, `test_content_item.py`, `test_artifact.py`, `test_script.py`, `test_voice.py`) |
+| Tracked code | `src/ai_youtube_agent/` (`__init__.py`, `main.py`, `bootstrap.py`, `core/config.py`, `core/flags.py`, `core/log.py`, `core/errors.py`, `core/di.py`, `core/health.py`, `core/audit.py`, `core/content_item.py`, `core/artifact.py`, `content/channel.py`, `content/strategy.py`, `content/script.py`, `content/voice.py`, `content/rights.py`, and the packages `core/`, `content/`, `providers/`, `pipeline/`), `dashboard/README.md`, `.env.example`, `tests/` (`test_health.py`, `test_folder_structure.py`, `test_config.py`, `test_flags.py`, `test_log.py`, `test_errors.py`, `test_di.py`, `test_bootstrap.py`, `test_health_check.py`, `test_audit.py`, `test_channel.py`, `test_strategy.py`, `test_content_item.py`, `test_artifact.py`, `test_script.py`, `test_voice.py`, `test_rights.py`) |
 | Ignored | `.venv/`, `dist/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`, `.env`, `.env.*` (except `.env.example`) |
 
 ## Toolchain
@@ -121,11 +121,11 @@ Every future task must keep these true:
 ```sh
 git status --short --branch   # expect a clean tree on main
 uv sync                       # recreate .venv if needed
-uv run pytest                 # expect 424 passed (132 at the A-012 baseline)
+uv run pytest                 # expect 465 passed (132 at the A-012 baseline)
 uv run ruff check . && uv run ruff format --check .
 ```
 
-Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is B-019 right now.
+Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is B-020 right now.
 
 ## State history
 
@@ -156,6 +156,7 @@ Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is B-019
 | B-016 Artifact Entity | READY_FOR_PHASE_A | Immutable `Artifact` version records (video, audio, subtitles, thumbnail, metadata) with uri, sha256, size and media type in `core/artifact.py`. Tests now 332. |
 | B-017 Script Entity | READY_FOR_PHASE_A | Immutable `Script` versions, `Claim` per script version and `Evidence` links in `content/script.py`. Tests now 369. |
 | B-018 Voice Entity | READY_FOR_PHASE_A | User-controlled `VoiceProfile` and `AudioMetadata` linked to an audio artifact, script version and voice version in `content/voice.py`. Tests now 424. |
+| B-019 Rights Entity | READY_FOR_PHASE_A | Frozen `RightsRecord` per asset with provenance, licence, risk level and user-only resolution in `content/rights.py`. Tests now 465. |
 
 The change from EMPTY to EXISTING is a valid state transition caused by Project Initialization. It is not a pre-existing failure. The files in the baseline were created by that task, so they are not PRE_EXISTING relative to the original empty state.
 

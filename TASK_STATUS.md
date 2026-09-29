@@ -62,7 +62,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 | B-020 | QC Entity | B-7 | PASS. Added `content/qc.py`: `QCStatus` (pass, warn, fail), `QCCheck` and a frozen `QCResult` bound to a content item and the exact artifact versions checked, with a derived worst-of `status`. 43 new tests. Tests: 508 passed. |
 | B-021 | Approval Entity | B-8 | PASS. Added `content/approval.py`: `ApprovalStatus`, `ArtifactBinding` (artifact id, kind, version and sha256 snapshot) and a frozen pending `ApprovalRequest` bound to exact artifact versions, with `requested_by` and an optional `qc_result_id`. No decision methods yet (#139–#142). 41 new tests. Tests: 549 passed. |
 | B-022 | Publish Entity | B-9 | PASS. Added `pipeline/publish.py`: `PublishStatus`, `PublishResult` and a frozen `PublishJob` with a supplied idempotency key. Creation requires an approved `ApprovalRequest` (R-08), attempts are counted, and succeeded is final. 55 new tests. Tests: 604 passed. |
-| B-023 | Analytics Entity | B-10 | NOT_STARTED |
+| B-023 | Analytics Entity | B-10 | PASS. Added `content/analytics.py`: `MetricScope` and a frozen `MetricSnapshot` with source, UTC period, retrieval time and a read-only name → `Decimal` metric map (missing metrics stay absent). Freshness is derived with `age_at` and `is_stale`. 41 new tests. Tests: 645 passed. |
 | B-024 | Revenue Entity | B-11 | NOT_STARTED |
 | B-025 | Cost Entity | B-12 | NOT_STARTED |
 | B-026 | Comment Entity | B-13 | NOT_STARTED |
@@ -98,4 +98,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - B-020 QC Entity has PASSED.
 - B-021 Approval Entity has PASSED.
 - B-022 Publish Entity has PASSED.
-- Next task: **B-023 Analytics Entity**. It is NOT_STARTED.
+- B-023 Analytics Entity has PASSED.
+- Next task: **B-024 Revenue Entity**. It is NOT_STARTED.

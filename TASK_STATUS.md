@@ -68,7 +68,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 | B-026 | Comment Entity | B-13 | PASS. Added `content/comment.py`: a minimal synced `Comment` (display name only), `CommentClassification` records with history, and `ReplyDraft` with a `ReplyStatus` that always starts as draft and has no approve or post method yet. 38 new tests. Tests: 753 passed. |
 | B-027 | AI Job Entity | B-14 | PASS. Added `pipeline/job.py`: a user-only `Session` and a frozen `AIJob` (kind, supplied idempotency key, status, attempts, append-only `JobCheckpoint` history) with guarded `start`, `checkpoint`, `fail`, `succeed` and `cancel`. Succeeded and cancelled are final. 81 new tests. Tests: 834 passed. |
 | B-028 | Experiment Entity | B-15 | PASS. Added `content/experiment.py`: a frozen `Experiment` registry entry (title, thumbnail or content, hypothesis, 2+ variants). Any actor may propose; only a user may start, conclude or cancel. The conclusion records a winner, note, evidence snapshot ids, the concluding user and UTC time, and is never applied (R-09). 66 new tests. Tests: 900 passed. |
-| B-029 | Migrations | B-16 | NOT_STARTED |
+| B-029 | Migrations | B-16 | PASS. SQLite (Q5, user decision). Added `core/db/`: canonical codec (fixed-width UTC datetime, plain decimal TEXT), an in-house forward-only migration runner (checksums, one transaction per migration, backup before migrating, `restore_backup`), and `0001_initial_schema.sql` with STRICT tables for all entities plus `audit_events`. `Settings.database_path` added; migrations run only at startup (FastAPI lifespan). No repositories yet (B-030). 101 new tests. Tests: 1001 passed. |
 | B-030 | Repository Tests | B-17 | NOT_STARTED |
 
 ## Current
@@ -104,4 +104,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - B-026 Comment Entity has PASSED.
 - B-027 AI Job Entity has PASSED.
 - B-028 Experiment Entity has PASSED.
-- Next task: **B-029 Migrations**. It is NOT_STARTED.
+- B-029 Migrations has PASSED.
+- Next task: **B-030 Repository Tests**. It is NOT_STARTED.

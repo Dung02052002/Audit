@@ -16,6 +16,9 @@ build/
 .coverage
 htmlcov/
 
+# Local SQLite database and its backups (#029)
+data/
+
 # Local environment
 .env
 .env.*

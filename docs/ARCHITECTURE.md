@@ -233,7 +233,7 @@ The requirements do not decide these. Each one must be answered by the user or b
 | Q2 | The **render provider** is required "through provider abstraction" (#100, #111), but no prompt defines the interface itself. | C8, C9 |
 | Q3 | There is no **email provider interface** for approval emails (#138, #228). | C11 |
 | Q4 | The **Command Center platform** is "iOS-style" (#191). Is it a native iOS app or a web dashboard with an iOS-style design system? The backend is FastAPI. | X3 |
-| Q5 | The **database technology** is not specified. Only migrations and rollback are required (#029). | X2 |
+| Q5 | The **database technology** is not specified. Only migrations and rollback are required (#029). **Resolved in B-029 (user decision, 2026-09-30):** SQLite via the standard `sqlite3`, numbered forward-only SQL migrations in `core/db/migrations/`, backup before migrating. | X2 |
 | Q6 | The **durable queue technology** is not specified (#204). | C16 |
 | Q7 | The **thumbnail** generation or selection source is not specified (#101, #112). | C8, C9 |
 | Q8 | The source of **music and SFX** assets is not specified (#099). Any use must pass through the asset registry (#076). | C8, C6 |

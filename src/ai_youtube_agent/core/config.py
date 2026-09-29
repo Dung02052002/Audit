@@ -28,6 +28,8 @@ from ai_youtube_agent.core.log import Severity
 ENV_PREFIX = "AI_YOUTUBE_AGENT_"
 ENV_NESTED_DELIMITER = "__"
 ENVIRONMENT_VARIABLE = f"{ENV_PREFIX}ENVIRONMENT"
+# SQLite database file (#029), relative to the working directory by default.
+DEFAULT_DATABASE_PATH = Path("data/ai_youtube_agent.db")
 
 
 class Environment(StrEnum):
@@ -49,6 +51,7 @@ class Settings(BaseSettings):
     app_name: str = Field(default="ai_youtube_agent", min_length=1)
     debug: bool = False
     log_level: Severity = Severity.INFO
+    database_path: Path = DEFAULT_DATABASE_PATH
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
 
     @model_validator(mode="after")

@@ -69,7 +69,26 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 | B-027 | AI Job Entity | B-14 | PASS. Added `pipeline/job.py`: a user-only `Session` and a frozen `AIJob` (kind, supplied idempotency key, status, attempts, append-only `JobCheckpoint` history) with guarded `start`, `checkpoint`, `fail`, `succeed` and `cancel`. Succeeded and cancelled are final. 81 new tests. Tests: 834 passed. |
 | B-028 | Experiment Entity | B-15 | PASS. Added `content/experiment.py`: a frozen `Experiment` registry entry (title, thumbnail or content, hypothesis, 2+ variants). Any actor may propose; only a user may start, conclude or cancel. The conclusion records a winner, note, evidence snapshot ids, the concluding user and UTC time, and is never applied (R-09). 66 new tests. Tests: 900 passed. |
 | B-029 | Migrations | B-16 | PASS. SQLite (Q5, user decision). Added `core/db/`: canonical codec (fixed-width UTC datetime, plain decimal TEXT), an in-house forward-only migration runner (checksums, one transaction per migration, backup before migrating, `restore_backup`), and `0001_initial_schema.sql` with STRICT tables for all entities plus `audit_events`. `Settings.database_path` added; migrations run only at startup (FastAPI lifespan). Checksums ignore line endings. No repositories yet (B-030). 103 new tests. Tests: 1003 passed. |
-| B-030 | Repository Tests | B-17 | NOT_STARTED |
+| B-030 | Repository Tests | B-17 | PASS. Added `core/db/database.py` (`Database`, `transaction()`, `ConcurrencyError`) and `core/db/repositories/`: one SQLite repository per aggregate, add-only for immutable records, optimistic `update` for changing entities, no deletes, plus `SqliteAuditSink` (used by bootstrap outside the TEST environment). Added `tests/factories.py`, a `database` fixture and 69 tests. Tests: 1072 passed. Phase B is complete. |
+
+## Phase C: State Machine & Control Gates (Prompt Pack v8, prompts 31–42)
+
+Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs/REQUIREMENTS.md`. Do not start a prompt until the previous one has PASSED.
+
+| Task | Name | Dependency | Status |
+|---|---|---|---|
+| C-031 | Status Enum | B-18 | NOT_STARTED |
+| C-032 | Transition Rules | C-1 | NOT_STARTED |
+| C-033 | Pipeline Gate Contract | C-2 | NOT_STARTED |
+| C-034 | Approval Gate | C-3 | NOT_STARTED |
+| C-035 | Version Invalidation | C-4 | NOT_STARTED |
+| C-036 | Daily Limit Gate | C-5 | NOT_STARTED |
+| C-037 | Budget Gate | C-6 | NOT_STARTED |
+| C-038 | Rights Gate | C-7 | NOT_STARTED |
+| C-039 | Policy Gate | C-8 | NOT_STARTED |
+| C-040 | Kill Switch Gate | C-9 | NOT_STARTED |
+| C-041 | Idempotency Gate | C-10 | NOT_STARTED |
+| C-042 | Gate Tests | C-11 | NOT_STARTED |
 
 ## Current
 
@@ -105,4 +124,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - B-027 AI Job Entity has PASSED.
 - B-028 Experiment Entity has PASSED.
 - B-029 Migrations has PASSED.
-- Next task: **B-030 Repository Tests**. It is NOT_STARTED.
+- B-030 Repository Tests has PASSED. Phase B is complete.
+- Next task: **C-031 Status Enum**. It is NOT_STARTED.

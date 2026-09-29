@@ -7,11 +7,16 @@ check for each provider to the ``HealthRegistry``.
 
 ``prepare_database`` applies the database migrations (#029). The application
 calls it once at startup, from the FastAPI lifespan in ``main.create_app``.
+``Database`` is a singleton for ``Settings.database_path``. The audit sink is
+``SqliteAuditSink`` except in the TEST environment, which keeps events in
+memory (#030).
 """
 
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
-from ai_youtube_agent.core.config import Settings, get_settings
+from ai_youtube_agent.core.config import Environment, Settings, get_settings
+from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import MigrationReport, migrate
+from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
 from ai_youtube_agent.core.di import Container
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
@@ -25,10 +30,17 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register_instance(Settings, settings or get_settings())
     container.register(FeatureFlags, lambda c: c.resolve(Settings).flags)
     container.register(HealthRegistry, _build_health_registry)
-    # In memory until persistence (#029) provides a database sink.
-    container.register(AuditSink, lambda _: InMemoryAuditSink())
+    container.register(Database, lambda c: Database(c.resolve(Settings).database_path))
+    container.register(AuditSink, _build_audit_sink)
     container.register(AuditLog, lambda c: AuditLog(c.resolve(AuditSink)))
     return container
+
+
+def _build_audit_sink(container: Container) -> AuditSink:
+    # Tests keep events in memory; the application stores them in SQLite (#030).
+    if container.resolve(Settings).environment is Environment.TEST:
+        return InMemoryAuditSink()
+    return SqliteAuditSink(container.resolve(Database))
 
 
 def prepare_database(settings: Settings) -> MigrationReport:

@@ -56,7 +56,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 | B-014 | StrategyProfile Entity | B-1 | PASS. Added `content/strategy.py`: a frozen `StrategyProfile` linked to one channel, with typed value objects for market (ISO 3166-1), languages (BCP-47), audience, niche, brand, cadence, budget (ISO 4217, `Decimal`) and monetization. Only a user actor can create or update it (`StrategyChangeNotAllowedError`, R-09), and each change bumps the version. 90 new tests. Tests: 256 passed. |
 | B-015 | ContentItem Entity | B-2 | PASS. Added `core/content_item.py`: `ContentType` (shorts, longform), `ContentStatus` (the 10 statuses of #031) and a frozen `ContentItem` linked to a channel and a strategy profile version, starting at draft. `with_status` has no transition rules yet (#032). 39 new tests. Tests: 295 passed. |
 | B-016 | Artifact Entity | B-3 | PASS. Added `core/artifact.py`: `ArtifactKind` (video, audio, subtitles, thumbnail, metadata) and a frozen `Artifact` version record with uri, sha256, size and media type. `next_version` creates a new record with version + 1 and refuses unchanged content. 37 new tests. Tests: 332 passed. |
-| B-017 | Script Entity | B-4 | NOT_STARTED |
+| B-017 | Script Entity | B-4 | PASS. Added `content/script.py`: immutable `Script` version records (`next_version` refuses unchanged text), `Claim` bound to one exact script version, and `Evidence` linking a claim to an opaque research `source_ref`. 37 new tests. Tests: 369 passed. |
 | B-018 | Voice Entity | B-5 | NOT_STARTED |
 | B-019 | Rights Entity | B-6 | NOT_STARTED |
 | B-020 | QC Entity | B-7 | NOT_STARTED |
@@ -92,4 +92,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf`, pages 10
 - B-014 StrategyProfile Entity has PASSED.
 - B-015 ContentItem Entity has PASSED.
 - B-016 Artifact Entity has PASSED.
-- Next task: **B-017 Script Entity**. It is NOT_STARTED.
+- B-017 Script Entity has PASSED.
+- Next task: **B-018 Voice Entity**. It is NOT_STARTED.

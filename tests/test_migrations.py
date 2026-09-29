@@ -176,7 +176,32 @@ def test_default_migrations_are_packaged() -> None:
 
     assert [m.version for m in migrations] == [1]
     assert migrations[0].name == "initial_schema"
-    assert migrations[0].checksum == hashlib.sha256(path.read_bytes()).hexdigest()
+    lf_text = path.read_bytes().replace(b"\r\n", b"\n")
+    assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
+
+
+def test_checksum_ignores_line_endings() -> None:
+    lf = "CREATE TABLE a (x TEXT);\nCREATE TABLE b (x TEXT);\n"
+    crlf = lf.replace("\n", "\r\n")
+    assert (
+        Migration.from_text("0001_a.sql", lf).checksum
+        == Migration.from_text("0001_a.sql", crlf).checksum
+    )
+    assert (
+        Migration.from_text("0001_a.sql", lf).checksum
+        != Migration.from_text("0001_a.sql", lf.replace("b", "c")).checksum
+    )
+
+
+def test_a_crlf_checkout_of_an_applied_migration_is_accepted(tmp_path: Path) -> None:
+    path = tmp_path / "app.db"
+    folder = tmp_path / "m"
+    folder.mkdir()
+    (folder / "0001_a.sql").write_bytes(b"CREATE TABLE a (x TEXT);\n")
+    migrate(path, migrations=load_migrations(folder))
+    (folder / "0001_a.sql").write_bytes(b"CREATE TABLE a (x TEXT);\r\n")
+
+    assert migrate(path, migrations=load_migrations(folder)).applied == ()
 
 
 def test_default_database_path_setting(monkeypatch) -> None:

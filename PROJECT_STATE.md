@@ -123,7 +123,7 @@ Every future task must keep these true:
 ```sh
 git status --short --branch   # expect a clean tree on main
 uv sync                       # recreate .venv if needed
-uv run pytest                 # expect 1001 passed (132 at the A-012 baseline)
+uv run pytest                 # expect 1003 passed (132 at the A-012 baseline)
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -168,7 +168,7 @@ Then start the task marked NOT_STARTED first in `TASK_STATUS.md`, which is B-030
 | B-026 Comment Entity | READY_FOR_PHASE_A | `Comment`, `CommentClassification` and draft-only `ReplyDraft` in `content/comment.py`. Tests now 753. |
 | B-027 AI Job Entity | READY_FOR_PHASE_A | User-only `Session` and resumable `AIJob` with attempts, guarded status and checkpoint history in `pipeline/job.py`. Tests now 834. |
 | B-028 Experiment Entity | READY_FOR_PHASE_A | Frozen `Experiment` registry entry (propose by anyone; start, conclude and cancel by a user only; conclusion never applied) in `content/experiment.py`. Tests now 900. |
-| B-029 Migrations | READY_FOR_PHASE_A | SQLite database foundation in `core/db/`: codec, forward-only migration runner with checksums, transactions, backup and restore, and the initial STRICT schema. Migrations run at startup only. Tests now 1001. |
+| B-029 Migrations | READY_FOR_PHASE_A | SQLite database foundation in `core/db/`: codec, forward-only migration runner with checksums, transactions, backup and restore, and the initial STRICT schema. Migrations run at startup only. Tests now 1003. |
 
 The change from EMPTY to EXISTING is a valid state transition caused by Project Initialization. It is not a pre-existing failure. The files in the baseline were created by that task, so they are not PRE_EXISTING relative to the original empty state.
 

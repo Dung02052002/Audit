@@ -75,6 +75,9 @@ class Migration:
         version = int(match.group(1))
         if version < 1:
             raise MigrationError("migration versions start at 1")
+        # Hash LF text, so a checkout that converts line endings (Git autocrlf)
+        # does not look like an edited migration.
+        text = text.replace("\r\n", "\n")
         checksum = hashlib.sha256(text.encode("utf-8")).hexdigest()
         return cls(version, match.group(2), text, checksum)
 

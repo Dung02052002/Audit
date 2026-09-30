@@ -1,6 +1,6 @@
 # Task Status
 
-Last updated: 2026-09-29
+Last updated: 2026-09-30
 
 | Task | Name | Result | Notes |
 |---|---|---|---|
@@ -77,7 +77,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 
 | Task | Name | Dependency | Status |
 |---|---|---|---|
-| C-031 | Status Enum | B-18 | NOT_STARTED |
+| C-031 | Status Enum | B-18 | PASS. `ContentStatus` in `core/content_item.py` (from B-015) verified as the single status enum: exactly the ten #031 statuses in order, snake_case stored values, no other value accepted, every status round-trips through SQLite, and the CHECK constraint refuses unknown values. Added an enum docstring, an ARCHITECTURE §5.2 note and `tests/test_status_enum.py` (30 tests). No behaviour change. Tests: 1102 passed. |
 | C-032 | Transition Rules | C-1 | NOT_STARTED |
 | C-033 | Pipeline Gate Contract | C-2 | NOT_STARTED |
 | C-034 | Approval Gate | C-3 | NOT_STARTED |
@@ -125,4 +125,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - B-028 Experiment Entity has PASSED.
 - B-029 Migrations has PASSED.
 - B-030 Repository Tests has PASSED. Phase B is complete.
-- Next task: **C-031 Status Enum**. It is NOT_STARTED.
+- C-031 Status Enum has PASSED.
+- Next task: **C-032 Transition Rules**. It is NOT_STARTED.

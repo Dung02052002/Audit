@@ -35,6 +35,12 @@ class ContentType(StrEnum):
 
 
 class ContentStatus(StrEnum):
+    """The lifecycle statuses of #031, in the order the prompt lists them.
+
+    Each stored value is the snake_case form of the prompt's name, so
+    ``PreviewReady`` is stored as ``preview_ready``. #032 owns the transitions.
+    """
+
     DRAFT = "draft"
     GENERATING = "generating"
     TESTING = "testing"

@@ -164,7 +164,7 @@ Analytics (C13) → Economics (C14)          Community (C15) reads comments on p
 
 ### 5.2 Lifecycle status (C2)
 
-The statuses are defined in #031: `Draft`, `Generating`, `Testing`, `PreviewReady`, `AwaitingApproval`, `Approved`, `Publishing`, `Published`, `Rejected` and `Failed`.
+The statuses are defined in #031: `Draft`, `Generating`, `Testing`, `PreviewReady`, `AwaitingApproval`, `Approved`, `Publishing`, `Published`, `Rejected` and `Failed`. In code they are `ContentStatus` in `core/content_item.py` (C-031). Each stored value is the snake_case form of the name, for example `preview_ready`, and the database CHECK constraint on `content_items.status` allows exactly these ten values.
 
 ```
 Draft → Generating → Testing → PreviewReady → AwaitingApproval → Approved → Publishing → Published

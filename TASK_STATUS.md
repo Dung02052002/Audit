@@ -82,7 +82,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | C-033 | Pipeline Gate Contract | C-2 | PASS. User-approved design in `core/gates.py`: closed `GateName` (5 gates), pass/block `GateResult` with `GateReason`s, `GateContext` (item, allowed target status, actor, time), sync `PipelineGate` protocol, `evaluate_gates` running every gate and failing closed, `GateReport` and `GateBlockedError` (`domain.gate_blocked`). No concrete gates. `tests/test_gates.py` (34 tests). Tests: 1341 passed. |
 | C-034 | Approval Gate | C-3 | PASS. `ApprovalGate` in `core/approval_gate.py` (user-approved rules): judges only the move to publishing; the newest approval request must be approved and bind every artifact kind at its latest version (id, version, sha256); codes `approval.missing`, `approval.not_approved`, `approval.not_current`; ignores `APPROVAL_REQUIRED`. Reads through protocols the SQLite repositories satisfy. `tests/test_approval_gate.py` (22 tests). Tests: 1363 passed. |
 | C-035 | Version Invalidation | C-4 | PASS. User-approved rules: `VersionInvalidation` in `core/version_invalidation.py` stores a new artifact version and invalidates stale pending/approved requests in the same transaction (or on demand); items in preview_ready/awaiting_approval/approved move back to generating; `approval.invalidated` audited after commit. `ApprovalRequest.invalidate()` and shared `stale_kinds` in `content/approval.py` (the C-034 gate now uses it, no behaviour change). The B-021 placeholder test no longer forbids `invalidate` (user approved). `tests/test_version_invalidation.py` (37 tests). Tests: 1400 passed. |
-| C-036 | Daily Limit Gate | C-5 | NOT_STARTED |
+| C-036 | Daily Limit Gate | C-5 | PASS. User-approved rules: `DailyLimitGate` in `core/daily_limit_gate.py` (`GateName.DAILY_LIMIT`) uses the channel's cadence per content type, counted separately for production (draft to generating, from the new append-only `production_starts` table, migration 0002, written by `start_production` in `core/production.py`) and publishing (non-failed publish jobs, excluding the item's own), per UTC day. New `core/production_start.py` and `core/db/repositories/usage.py`. Updated the C-033 gate-name test and seven B-029 migration tests that pinned version 1 and the table list. `tests/test_daily_limit.py` (37 tests). Tests: 1438 passed. |
 | C-037 | Budget Gate | C-6 | NOT_STARTED |
 | C-038 | Rights Gate | C-7 | NOT_STARTED |
 | C-039 | Policy Gate | C-8 | NOT_STARTED |
@@ -130,4 +130,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - C-033 Pipeline Gate Contract has PASSED.
 - C-034 Approval Gate has PASSED.
 - C-035 Version Invalidation has PASSED.
-- Next task: **C-036 Daily Limit Gate**. It is NOT_STARTED.
+- C-036 Daily Limit Gate has PASSED.
+- Next task: **C-037 Budget Gate**. It is NOT_STARTED.

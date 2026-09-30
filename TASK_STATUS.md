@@ -78,7 +78,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | Task | Name | Dependency | Status |
 |---|---|---|---|
 | C-031 | Status Enum | B-18 | PASS. `ContentStatus` in `core/content_item.py` (from B-015) verified as the single status enum: exactly the ten #031 statuses in order, snake_case stored values, no other value accepted, every status round-trips through SQLite, and the CHECK constraint refuses unknown values. Added an enum docstring, an ARCHITECTURE §5.2 note and `tests/test_status_enum.py` (30 tests). No behaviour change. Tests: 1102 passed. |
-| C-032 | Transition Rules | C-1 | NOT_STARTED |
+| C-032 | Transition Rules | C-1 | PASS. User-approved table `ALLOWED_TRANSITIONS` in `core/content_item.py` (21 allowed moves of 90; published final; rejected and failed restart from draft; testing to approved may return to generating), `can_transition`, `allowed_transitions`, `is_final`, and typed `ContentTransitionError` (`domain.content_transition_blocked`). `with_status` is guarded. Two earlier tests (B-015, C-031) build items directly in a status, as approved. `tests/test_transitions.py` (205 tests). Tests: 1307 passed. |
 | C-033 | Pipeline Gate Contract | C-2 | NOT_STARTED |
 | C-034 | Approval Gate | C-3 | NOT_STARTED |
 | C-035 | Version Invalidation | C-4 | NOT_STARTED |
@@ -126,4 +126,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - B-029 Migrations has PASSED.
 - B-030 Repository Tests has PASSED. Phase B is complete.
 - C-031 Status Enum has PASSED.
-- Next task: **C-032 Transition Rules**. It is NOT_STARTED.
+- C-032 Transition Rules has PASSED.
+- Next task: **C-033 Pipeline Gate Contract**. It is NOT_STARTED.

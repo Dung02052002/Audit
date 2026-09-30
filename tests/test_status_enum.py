@@ -6,6 +6,7 @@ it accepts no other value, and that every status survives the database.
 Transition rules belong to #032 and are not tested here.
 """
 
+import dataclasses
 import json
 import re
 import sqlite3
@@ -81,7 +82,8 @@ def test_every_status_round_trips_through_the_database(
 ) -> None:
     channel = make_channel()
     strategy = make_strategy_profile(channel)
-    item = make_content_item(channel, strategy).with_status(status)
+    # Built directly in each status: this checks storage, not transitions (#032).
+    item = dataclasses.replace(make_content_item(channel, strategy), status=status)
     with database.transaction() as connection:
         ChannelRepository(connection).add(channel)
         StrategyProfileRepository(connection).add(strategy)

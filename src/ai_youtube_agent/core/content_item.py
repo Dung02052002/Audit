@@ -14,17 +14,21 @@ A ``ContentItem`` is the common content entity shared by both content types:
 - ``created_at`` and ``updated_at``: timezone-aware UTC.
 
 An item is frozen. ``with_status`` and ``rename`` return a new item with the
-same id and ``created_at`` and a new ``updated_at``. No transition rules exist
-yet: #032 adds the allowed and blocked transitions. The entity does not read
+same id and ``created_at`` and a new ``updated_at``. ``with_status`` follows
+the transition rules of #032 (``ALLOWED_TRANSITIONS``) and raises
+``ContentTransitionError`` for any other move. The entity does not read
 feature flags, so ``LONGFORM_ENABLED`` is enforced by gates and the pipeline.
 """
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
+
+from ai_youtube_agent.core.errors import DomainError
 
 Clock = Callable[[], datetime]
 
@@ -51,6 +55,109 @@ class ContentStatus(StrEnum):
     PUBLISHED = "published"
     REJECTED = "rejected"
     FAILED = "failed"
+
+
+# The transition rules of #032, as approved by the user on 2026-09-30:
+# - the main flow runs draft to published, one step at a time;
+# - any step that is not final may fail;
+# - a changed artifact returns to generating, so it is tested and previewed
+#   again (and a changed approved artifact loses its approval, #035);
+# - a rejected or failed item may restart from draft;
+# - published is final.
+ALLOWED_TRANSITIONS: Mapping[ContentStatus, frozenset[ContentStatus]] = (
+    MappingProxyType(
+        {
+            ContentStatus.DRAFT: frozenset(
+                {ContentStatus.GENERATING, ContentStatus.FAILED}
+            ),
+            ContentStatus.GENERATING: frozenset(
+                {ContentStatus.TESTING, ContentStatus.FAILED}
+            ),
+            ContentStatus.TESTING: frozenset(
+                {
+                    ContentStatus.PREVIEW_READY,
+                    ContentStatus.GENERATING,
+                    ContentStatus.FAILED,
+                }
+            ),
+            ContentStatus.PREVIEW_READY: frozenset(
+                {
+                    ContentStatus.AWAITING_APPROVAL,
+                    ContentStatus.GENERATING,
+                    ContentStatus.FAILED,
+                }
+            ),
+            ContentStatus.AWAITING_APPROVAL: frozenset(
+                {
+                    ContentStatus.APPROVED,
+                    ContentStatus.REJECTED,
+                    ContentStatus.GENERATING,
+                    ContentStatus.FAILED,
+                }
+            ),
+            ContentStatus.APPROVED: frozenset(
+                {
+                    ContentStatus.PUBLISHING,
+                    ContentStatus.GENERATING,
+                    ContentStatus.FAILED,
+                }
+            ),
+            ContentStatus.PUBLISHING: frozenset(
+                {ContentStatus.PUBLISHED, ContentStatus.FAILED}
+            ),
+            ContentStatus.PUBLISHED: frozenset(),
+            ContentStatus.REJECTED: frozenset({ContentStatus.DRAFT}),
+            ContentStatus.FAILED: frozenset({ContentStatus.DRAFT}),
+        }
+    )
+)
+
+
+class ContentTransitionError(DomainError):
+    """A content item was asked to make a status change #032 does not allow."""
+
+    default_code = "domain.content_transition_blocked"
+    default_user_message = (
+        "This content cannot move to that status from its current one."
+    )
+
+    def __init__(
+        self, item_id: str, from_status: ContentStatus, to_status: ContentStatus
+    ) -> None:
+        super().__init__(
+            f"content item {item_id} cannot move from {from_status.value} "
+            f"to {to_status.value}"
+        )
+        self.item_id = item_id
+        self.from_status = from_status
+        self.to_status = to_status
+
+    def log_fields(self) -> dict[str, Any]:
+        return {
+            **super().log_fields(),
+            "content_item_id": self.item_id,
+            "from_status": self.from_status.value,
+            "to_status": self.to_status.value,
+        }
+
+
+def allowed_transitions(status: ContentStatus) -> frozenset[ContentStatus]:
+    _require_status(status)
+    return ALLOWED_TRANSITIONS[status]
+
+
+def can_transition(source: ContentStatus, target: ContentStatus) -> bool:
+    _require_status(target)
+    return target in allowed_transitions(source)
+
+
+def is_final(status: ContentStatus) -> bool:
+    return not allowed_transitions(status)
+
+
+def _require_status(status: object) -> None:
+    if not isinstance(status, ContentStatus):
+        raise TypeError("status must be a ContentStatus")
 
 
 @dataclass(frozen=True)
@@ -114,8 +221,11 @@ class ContentItem:
     def with_status(
         self, status: ContentStatus, *, clock: Clock | None = None
     ) -> "ContentItem":
+        _require_status(status)
         if status is self.status:
             return self
+        if not can_transition(self.status, status):
+            raise ContentTransitionError(self.id, self.status, status)
         return replace(self, status=status, updated_at=_now(clock))
 
     def rename(self, title: str, *, clock: Clock | None = None) -> "ContentItem":

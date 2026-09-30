@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from ai_youtube_agent.core.content_item import (
+    ALLOWED_TRANSITIONS,
     ContentItem,
     ContentStatus,
     ContentType,
@@ -128,7 +129,9 @@ def test_item_is_frozen() -> None:
 
 @pytest.mark.parametrize("status", list(ContentStatus)[1:])
 def test_with_status_returns_a_new_item(status: ContentStatus) -> None:
-    item = new_item()
+    # Start from a status that #032 allows to move to ``status``.
+    source = next(s for s, targets in ALLOWED_TRANSITIONS.items() if status in targets)
+    item = dataclasses.replace(new_item(), status=source)
 
     changed = item.with_status(status, clock=at(T1))
 
@@ -139,7 +142,7 @@ def test_with_status_returns_a_new_item(status: ContentStatus) -> None:
         item.created_at,
         item.content_type,
     )
-    assert item.status is ContentStatus.DRAFT
+    assert item.status is source
 
 
 def test_with_the_same_status_returns_the_same_item() -> None:

@@ -166,13 +166,22 @@ Analytics (C13) → Economics (C14)          Community (C15) reads comments on p
 
 The statuses are defined in #031: `Draft`, `Generating`, `Testing`, `PreviewReady`, `AwaitingApproval`, `Approved`, `Publishing`, `Published`, `Rejected` and `Failed`. In code they are `ContentStatus` in `core/content_item.py` (C-031). Each stored value is the snake_case form of the name, for example `preview_ready`, and the database CHECK constraint on `content_items.status` allows exactly these ten values.
 
-```
-Draft → Generating → Testing → PreviewReady → AwaitingApproval → Approved → Publishing → Published
-                                                     │
-                                                     └→ Rejected           (any step can end in Failed)
-```
+The transitions are defined in #032 (C-032, approved by the user on 2026-09-30) as `ALLOWED_TRANSITIONS` in `core/content_item.py`:
 
-This is the order implied by #031. The exact allowed and blocked transitions are defined in #032, not here. An artifact change after approval invalidates the approval (#035), so the item must return through testing and preview.
+| From | Allowed to |
+|---|---|
+| Draft | Generating, Failed |
+| Generating | Testing, Failed |
+| Testing | PreviewReady, Generating, Failed |
+| PreviewReady | AwaitingApproval, Generating, Failed |
+| AwaitingApproval | Approved, Rejected, Generating, Failed |
+| Approved | Publishing, Generating, Failed |
+| Publishing | Published, Failed |
+| Published | none (final) |
+| Rejected | Draft |
+| Failed | Draft |
+
+`ContentItem.with_status` refuses every other move with `ContentTransitionError` (a `DomainError`, code `domain.content_transition_blocked`). Asking for the current status changes nothing. A regenerated artifact always passes Testing and PreviewReady again, and the only way into Approved is from AwaitingApproval, and into Publishing from Approved. An artifact change after approval also invalidates the approval (#035). The transition rules do not check who asks for a move or whether a gate passed; those checks are the gates of #033–#041.
 
 ### 5.3 Gates (C3)
 

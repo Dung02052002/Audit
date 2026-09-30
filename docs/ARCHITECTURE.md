@@ -115,7 +115,7 @@ The requirements define each of these as an abstraction with a mock.
 | DI registry | #009 | Registers core interfaces and providers. Implemented in `core/di.py`. The composition root is `bootstrap.py`, and `main.create_app()` attaches the container to `app.state` | X1 |
 | Health / status model | #010 | Application and provider health checks | X1 |
 | Audit event | #011 | Immutable record of actor, timestamp, entity and result | X1, used by C11, C12, C15, C16 |
-| Pipeline Gate Contract | #033 | One shared gate interface for Test, QC, Rights, Policy and Approval | C3 |
+| Pipeline Gate Contract | #033 | One shared gate interface for Test, QC, Rights, Policy and Approval. Implemented in `core/gates.py` | C3 |
 | Job queue | #204 | Durable queue abstraction | C16 |
 | Repositories | #029, #030 | Persistence for every entity | X2 |
 
@@ -197,6 +197,14 @@ The transitions are defined in #032 (C-032, approved by the user on 2026-09-30) 
 | Idempotency gate | Duplicate publish or generation jobs | #041 |
 
 Every gate implements the Pipeline Gate Contract (#033). The Pipeline Runner (#206) runs the lifecycle one gate at a time.
+
+The contract (C-033, `core/gates.py`, design approved by the user on 2026-09-30):
+
+- A gate is a `PipelineGate`: a `name` from the closed `GateName` enum (`test`, `qc`, `rights`, `policy`, `approval`; #036–#041 add theirs) and a synchronous `evaluate(context) -> GateResult`.
+- `GateContext` holds the `ContentItem`, the `target_status` it is asked to move to (publishing is the move to `Publishing`), the `Actor` and the UTC time. The move must be allowed by #032. A gate reads anything else through repositories it is given when it is built.
+- `GateResult` either passes with no reasons or blocks with one or more `GateReason` values (a dotted code and a safe message).
+- `evaluate_gates` runs every gate in order and returns a `GateReport` with every result. The report blocks if any gate blocks, and `raise_if_blocked` raises `GateBlockedError` (`domain.gate_blocked`).
+- Gates fail closed: a gate that raises or returns something other than its own result is counted as a block (`gate.error` or `gate.invalid_result`), and the detail goes only to the log.
 
 ### 5.4 Control and observability flows
 

@@ -14,14 +14,16 @@ versions of a content item:
 - ``qc_result_id``: the optional ``QCResult`` shown with the preview (#134).
 - ``created_at``: timezone-aware UTC.
 
-The request is frozen and has no decision methods yet. Approve, reject and
-request changes come with #139–#141, expiry with #142 and invalidation with
-#035. The approval gate (#034) blocks a publish without a valid approval (R-08).
+The request is frozen. Approve, reject and request changes come with
+#139–#141 and expiry with #142. ``invalidate`` (#035) marks a pending or
+approved request as invalidated once ``stale_kinds`` shows it no longer covers
+the current artifact versions. The approval gate (#034) blocks a publish
+without a valid approval (R-08).
 """
 
 import uuid
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -29,6 +31,7 @@ from typing import Any
 from ai_youtube_agent.content.qc import QCResult
 from ai_youtube_agent.core.artifact import SHA256_PATTERN, Artifact, ArtifactKind
 from ai_youtube_agent.core.audit import Actor
+from ai_youtube_agent.core.errors import DomainError
 
 Clock = Callable[[], datetime]
 
@@ -40,6 +43,16 @@ class ApprovalStatus(StrEnum):
     CHANGES_REQUESTED = "changes_requested"
     INVALIDATED = "invalidated"
     EXPIRED = "expired"
+
+
+# The statuses a changed artifact can invalidate (#035, user decision): a
+# request still waiting for review and an approval that is still in force.
+INVALIDATABLE = frozenset({ApprovalStatus.PENDING, ApprovalStatus.APPROVED})
+
+
+class ApprovalStateError(DomainError):
+    default_code = "domain.approval_state"
+    default_user_message = "This approval cannot do that in its current state."
 
 
 @dataclass(frozen=True)
@@ -137,6 +150,14 @@ class ApprovalRequest:
             created_at=clock() if clock else datetime.now(UTC),
         )
 
+    def invalidate(self) -> "ApprovalRequest":
+        """Return this request marked invalidated (#035)."""
+        if self.status not in INVALIDATABLE:
+            raise ApprovalStateError(
+                f"approval {self.id} is {self.status.value} and cannot be invalidated"
+            )
+        return replace(self, status=ApprovalStatus.INVALIDATED)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -150,3 +171,26 @@ class ApprovalRequest:
             "qc_result_id": self.qc_result_id,
             "created_at": self.created_at.isoformat(),
         }
+
+
+def stale_kinds(
+    approval: ApprovalRequest, artifacts: Sequence[Artifact]
+) -> list[ArtifactKind]:
+    """Kinds whose latest version is not exactly what the approval bound.
+
+    The latest version of each kind among ``artifacts`` must be bound with the
+    same id, version and sha256. A kind the item has but the approval does not
+    bind, and a bound kind the item no longer has, are both stale. An empty
+    list means the approval covers the current versions (#034, #035).
+    """
+    latest: dict[ArtifactKind, ArtifactBinding] = {}
+    for artifact in artifacts:
+        current = latest.get(artifact.kind)
+        if current is None or artifact.version > current.version:
+            latest[artifact.kind] = ArtifactBinding.of(artifact)
+    bound = {binding.kind: binding for binding in approval.artifacts}
+    return [
+        kind
+        for kind in ArtifactKind
+        if (kind in latest or kind in bound) and latest.get(kind) != bound.get(kind)
+    ]

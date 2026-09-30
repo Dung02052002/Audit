@@ -188,7 +188,7 @@ The transitions are defined in #032 (C-032, approved by the user on 2026-09-30) 
 | Gate | Blocks | Prompt |
 |---|---|---|
 | Approval gate | Publish without an explicit approval of the current artifact version. Implemented in `core/approval_gate.py` | #034 |
-| Version invalidation | An approval whose artifact has changed | #035 |
+| Version invalidation | An approval whose artifact has changed. Implemented in `core/version_invalidation.py` | #035 |
 | Daily limit gate | Production or publishing beyond the configured daily limit | #036 |
 | Budget gate | Cost-incurring jobs beyond budget thresholds | #037 |
 | Rights gate | Publish with unresolved high-risk rights | #038 |
@@ -207,6 +207,8 @@ The contract (C-033, `core/gates.py`, design approved by the user on 2026-09-30)
 - Gates fail closed: a gate that raises or returns something other than its own result is counted as a block (`gate.error` or `gate.invalid_result`), and the detail goes only to the log.
 
 Approval gate (C-034, rules approved by the user on 2026-09-30): `ApprovalGate` judges only the move to `Publishing`. The item's newest `ApprovalRequest` (latest `created_at`, then `id`) must be `approved`, and it must bind every artifact kind the item has at its latest version with the same id, version and sha256. Otherwise it blocks with `approval.missing`, `approval.not_approved` or `approval.not_current`. It always checks and does not read `APPROVAL_REQUIRED`. It reads through `ApprovalSource` and `ArtifactSource`, which the SQLite repositories satisfy.
+
+Version invalidation (C-035, rules approved by the user on 2026-09-30): `VersionInvalidation.store_artifact_version` stores a new artifact version and, in the same transaction, invalidates every `pending` or `approved` request for the item that `stale_kinds` (in `content/approval.py`, shared with the approval gate) reports as stale. Rejected, changes_requested, expired and invalidated requests stay. If any request was invalidated, an item in `PreviewReady`, `AwaitingApproval` or `Approved` moves back to `Generating`. Each invalidation is audited as `approval.invalidated` by the system after the commit. `VersionInvalidation.invalidate(item_id)` runs the same check on demand, and `invalidate_stale_approvals` runs it inside a caller's transaction.
 
 ### 5.4 Control and observability flows
 

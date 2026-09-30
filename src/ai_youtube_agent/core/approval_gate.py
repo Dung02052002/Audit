@@ -15,8 +15,9 @@ current artifact versions (R-08). The rules were approved by the user on
   publishing cannot be enabled without it (A-006) and production forces it on.
 
 The gate reads through two small interfaces. ``ApprovalRequestRepository`` and
-``ArtifactRepository`` already satisfy them. Marking a stale approval as
-invalidated is #035; this gate only refuses to use it.
+``ArtifactRepository`` already satisfy them. The version comparison is
+``stale_kinds`` in ``content/approval.py``, shared with #035, which marks a
+stale approval as invalidated; this gate only refuses to use it.
 """
 
 from collections.abc import Sequence
@@ -25,9 +26,9 @@ from typing import Protocol
 from ai_youtube_agent.content.approval import (
     ApprovalRequest,
     ApprovalStatus,
-    ArtifactBinding,
+    stale_kinds,
 )
-from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
+from ai_youtube_agent.core.artifact import Artifact
 from ai_youtube_agent.core.content_item import ContentStatus
 from ai_youtube_agent.core.gates import GateContext, GateName, GateReason, GateResult
 
@@ -69,7 +70,7 @@ class ApprovalGate:
                 "approval.not_approved",
                 f"The latest approval request is {newest.status.value}, not approved.",
             )
-        stale = _stale_kinds(newest, self._artifacts.list_by_content_item(item_id))
+        stale = stale_kinds(newest, self._artifacts.list_by_content_item(item_id))
         if stale:
             kinds = ", ".join(kind.value for kind in stale)
             return GateReason(
@@ -77,20 +78,3 @@ class ApprovalGate:
                 f"The approval does not cover the current version of: {kinds}.",
             )
         return None
-
-
-def _stale_kinds(
-    approval: ApprovalRequest, artifacts: Sequence[Artifact]
-) -> list[ArtifactKind]:
-    """Kinds whose latest version is not exactly what the approval bound."""
-    latest: dict[ArtifactKind, ArtifactBinding] = {}
-    for artifact in artifacts:
-        current = latest.get(artifact.kind)
-        if current is None or artifact.version > current.version:
-            latest[artifact.kind] = ArtifactBinding.of(artifact)
-    bound = {binding.kind: binding for binding in approval.artifacts}
-    return [
-        kind
-        for kind in ArtifactKind
-        if (kind in latest or kind in bound) and latest.get(kind) != bound.get(kind)
-    ]

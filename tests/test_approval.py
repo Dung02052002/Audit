@@ -214,7 +214,8 @@ def test_request_is_frozen() -> None:
 
 
 def test_request_has_no_decision_methods_yet() -> None:
-    for name in ("approve", "reject", "request_changes", "invalidate", "expire"):
+    # invalidate came with #035 (C-035); the rest come with #139-#142.
+    for name in ("approve", "reject", "request_changes", "expire"):
         assert not hasattr(ApprovalRequest, name)
 
 

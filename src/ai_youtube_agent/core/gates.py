@@ -4,7 +4,8 @@ One shared interface for the Test, QC, Rights, Policy and Approval gates, as
 the user approved on 2026-09-30:
 
 - ``GateName`` is a closed enum: the five gates of #033, then one name per
-  later gate (#036 ``daily_limit``; #037-#041 add theirs when they come).
+  later gate (#036 ``daily_limit``, #037 ``budget``; #038-#041 add theirs
+  when they come).
 - A gate returns a ``GateResult`` that either passes or blocks. A block carries
   one or more ``GateReason`` values (a stable dotted code and a safe message).
 - A gate receives a ``GateContext``: the ``ContentItem``, the status it is asked
@@ -48,6 +49,7 @@ class GateName(StrEnum):
     POLICY = "policy"
     APPROVAL = "approval"
     DAILY_LIMIT = "daily_limit"  # #036
+    BUDGET = "budget"  # #037
 
 
 class GateOutcome(StrEnum):

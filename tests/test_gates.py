@@ -105,7 +105,7 @@ def test_gate_names_are_the_five_of_prompt_033() -> None:
 
 
 def test_later_gates_add_their_names_after_the_five() -> None:
-    assert [g.value for g in GateName][5:] == ["daily_limit"]
+    assert [g.value for g in GateName][5:] == ["daily_limit", "budget"]
 
 
 def test_there_are_only_two_outcomes() -> None:

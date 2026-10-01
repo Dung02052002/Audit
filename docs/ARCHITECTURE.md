@@ -192,7 +192,7 @@ The transitions are defined in #032 (C-032, approved by the user on 2026-09-30) 
 | Daily limit gate | Production or publishing beyond the configured daily limit. Implemented in `core/daily_limit_gate.py` | #036 |
 | Budget gate | Cost-incurring jobs beyond budget thresholds. Implemented in `core/budget_gate.py` | #037 |
 | Rights gate | Publish with unresolved high-risk rights. Implemented in `core/rights_gate.py` | #038 |
-| Policy gate | Publish with configured policy failures | #039 |
+| Policy gate | Publish with configured policy failures. Implemented in `core/policy_gate.py` | #039 |
 | Kill switch gate | All new production actions while the emergency stop is active | #040 |
 | Idempotency gate | Duplicate publish or generation jobs | #041 |
 
@@ -215,6 +215,8 @@ Daily limit gate (C-036, rules approved by the user on 2026-09-30): `DailyLimitG
 Budget gate (C-037, rules approved by the user on 2026-09-30): `BudgetGate` (`GateName.BUDGET`) checks every move into `Generating` (a new production or a regeneration). The limits are the channel's `StrategyProfile.budget` (daily and monthly, one currency), and spend is the `Decimal` sum of its `CostRecord`s in the UTC day and the UTC calendar month. A limit is exceeded when spend ≥ limit, and each exceeded limit gives its own reason (`budget.daily_exceeded`, `budget.monthly_exceeded`). A cost in another currency in the month blocks with `budget.currency_mismatch`, and a channel without a strategy blocks with `budget.no_strategy`. Only actual spend counts; estimating a job's cost is the budget guard (#180).
 
 Rights gate (C-038, rules approved by the user on 2026-10-01): `RightsGate` (`GateName.RIGHTS`) judges only the move to `Publishing`. It reads every `RightsRecord` of the item, and each one that is unresolved at level `high` or `unknown` blocks with its own reason (`rights.unresolved_high` or `rights.unresolved_unknown`) naming the asset ref, in record order. `unknown` counts as high so the gate fails closed. Unresolved `low` and `medium` pass, a record a user resolved passes at any level, and an item with no rights records passes; checking that every asset has a record is the asset registry (#076) and rights QC (#126).
+
+Policy gate (C-039, rules approved by the user on 2026-10-01): `PolicyGate` (`GateName.POLICY`) judges only the move to `Publishing`. It reads `PolicyCheck` values (`content/policy.py`) through the `PolicySource` protocol; each check is one run over an item with its `PolicyFinding`s (rule id, rule version, a `blocking` flag copied from the rule's configuration, and a safe message). Only the newest check counts (latest `checked_at`, then `id`). Each blocking finding blocks with its own `policy.failed` reason, non-blocking findings are warnings, and an item without any check blocks with `policy.not_checked` so the gate fails closed. The rule interface (#079), the check that creates results (#080) and their storage and report (#083) come later.
 
 ### 5.4 Control and observability flows
 

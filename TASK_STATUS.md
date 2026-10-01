@@ -88,7 +88,25 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | C-039 | Policy Gate | C-8 | PASS. User-approved rules: `content/policy.py` adds the frozen read shape `PolicyCheck` / `PolicyFinding` (rule id, rule version, blocking flag from the rule's configuration, safe message), with no table until #080/#083. `PolicyGate` in `core/policy_gate.py` (`GateName.POLICY`) judges only the move to publishing: only the newest check counts, each blocking finding gives a `policy.failed` reason, non-blocking findings are warnings, and an item never checked blocks with `policy.not_checked`. `tests/test_policy_gate.py` (16 tests). Tests: 1502 passed. |
 | C-040 | Kill Switch Gate | C-9 | PASS. User-approved rules: `pipeline/kill_switch.py` adds the frozen read shape `EmergencyStop` (active, activated_by, activated_at, optional reason), with no store or toggle until #213. `KillSwitchGate` in `core/kill_switch_gate.py` (new `GateName.KILL_SWITCH`) reads the current stop on every evaluation and, while it is active, blocks every move into generating and the move to publishing with one `killswitch.active` reason (fixed message plus the activator's reason, not the activator). Other moves pass. The C-033 later-names test now includes `kill_switch`. `tests/test_kill_switch_gate.py` (35 tests). Tests: 1537 passed. |
 | C-041 | Idempotency Gate | C-10 | PASS. User-approved rules: `pipeline/idempotency.py` adds deterministic keys, `generation_key(item, kind="content.generate")` = `gen:` + sha256 of kind, item id, status and updated_at, and `publish_key(item_id, approval_request_id)` = `pub:` + sha256, hashed as a JSON array. `IdempotencyGate` in `core/idempotency_gate.py` (new `GateName.IDEMPOTENCY`) checks the move into generating and the move to publishing (newest request, when approved): a job stored under the key blocks unless it failed (`idempotency.duplicate_generation`, `idempotency.duplicate_publish`); cancelled blocks; no approved newest request passes (the approval gate blocks). The C-033 later-names test now includes `idempotency`. `tests/test_idempotency_gate.py` (30 tests, including SQLite). Tests: 1567 passed. |
-| C-042 | Gate Tests | C-11 | NOT_STARTED |
+| C-042 | Gate Tests | C-11 | PASS. User-approved scope: `tests/test_gate_matrix.py` (423 tests, no production code change). Each of the 7 concrete gates is built in a clean and a worst world; for each of the 21 moves #032 allows, the worst world blocks exactly the moves the gate guards (table `GUARDS`, kept in the test only; #206/#084 wire gates into the flow) with the expected reason codes and passes the rest, and the clean world passes every move. All 7 gates run together through `evaluate_gates` for every move in both worlds, a broken gate gives `gate.error` while the others still run, and all 79 refused pairs (69 forbidden moves and 10 same-status) are refused before any gate is asked. Tests: 1990 passed. Phase C is complete. |
+
+## Phase D: Strategy & Channel Configuration (Prompt Pack v8, prompts 43–53)
+
+Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs/REQUIREMENTS.md`. Do not start a prompt until the previous one has PASSED.
+
+| Task | Name | Dependency | Status |
+|---|---|---|---|
+| D-043 | Channel Settings | C-12 | NOT_STARTED |
+| D-044 | Market Settings | D-1 | NOT_STARTED |
+| D-045 | Language Settings | D-2 | NOT_STARTED |
+| D-046 | Audience Settings | D-3 | NOT_STARTED |
+| D-047 | Niche Settings | D-4 | NOT_STARTED |
+| D-048 | Brand Settings | D-5 | NOT_STARTED |
+| D-049 | Format Settings | D-6 | NOT_STARTED |
+| D-050 | Cadence Settings | D-7 | NOT_STARTED |
+| D-051 | Budget Settings | D-8 | NOT_STARTED |
+| D-052 | Monetization Settings | D-9 | NOT_STARTED |
+| D-053 | Strategy Validation | D-10 | NOT_STARTED |
 
 ## Current
 
@@ -136,4 +154,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - C-039 Policy Gate has PASSED.
 - C-040 Kill Switch Gate has PASSED.
 - C-041 Idempotency Gate has PASSED.
-- Next task: **C-042 Gate Tests**. It is NOT_STARTED.
+- C-042 Gate Tests has PASSED. Phase C is complete.
+- Next task: **D-043 Channel Settings**. It is NOT_STARTED.

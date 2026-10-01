@@ -45,6 +45,7 @@ from ai_youtube_agent.core.errors import DomainError
 COUNTRY_PATTERN = re.compile(r"^[A-Z]{2}$")
 LANGUAGE_TAG_PATTERN = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
 CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
+MAX_SECONDARY_LANGUAGES = 5  # #045, user decision 2026-10-01
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -71,10 +72,43 @@ class Market:
             )
 
 
+def canonical_language_tag(tag: str) -> str:
+    """The BCP-47 tag in its canonical case (#045).
+
+    The language is lower case, a four-letter script is title case and a region
+    (two letters or three digits) is upper case; other subtags are lower case:
+    ``EN-us`` becomes ``en-US`` and ``zh-hant-tw`` becomes ``zh-Hant-TW``.
+    """
+    language, *rest = tag.strip().split("-")
+    parts = [language.lower()]
+    for subtag in rest:
+        if len(subtag) == 4 and subtag.isalpha():
+            parts.append(subtag.title())
+        elif (len(subtag) == 2 and subtag.isalpha()) or (
+            len(subtag) == 3 and subtag.isdigit()
+        ):
+            parts.append(subtag.upper())
+        else:
+            parts.append(subtag.lower())
+    return "-".join(parts)
+
+
 @dataclass(frozen=True)
 class LanguageSettings:
+    """A primary language and up to five ordered secondary languages (#045)."""
+
     primary: str
     secondary: tuple[str, ...] = ()
+
+    @classmethod
+    def canonical(
+        cls, primary: str, secondary: tuple[str, ...] = ()
+    ) -> "LanguageSettings":
+        """Build settings with every tag in canonical case, order kept."""
+        return cls(
+            canonical_language_tag(primary),
+            tuple(canonical_language_tag(tag) for tag in secondary),
+        )
 
     def __post_init__(self) -> None:
         tags = (self.primary, *self.secondary)
@@ -85,6 +119,10 @@ class LanguageSettings:
                 )
         if len({tag.lower() for tag in tags}) != len(tags):
             raise ValueError("languages must not repeat")
+        if len(self.secondary) > MAX_SECONDARY_LANGUAGES:
+            raise ValueError(
+                f"at most {MAX_SECONDARY_LANGUAGES} secondary languages are allowed"
+            )
 
 
 @dataclass(frozen=True)

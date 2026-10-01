@@ -5,7 +5,9 @@ from datetime import datetime
 
 from ai_youtube_agent.content.channel import Channel, ChannelStatus, YouTubeIdentifiers
 from ai_youtube_agent.content.strategy import (
+    AgeRange,
     Audience,
+    AudienceLevel,
     Brand,
     Budget,
     Cadence,
@@ -143,9 +145,7 @@ def _strategy_row(profile: StrategyProfile) -> dict:
         "secondary_languages_json": (
             to_json(list(languages.secondary)) if languages else None
         ),
-        "audience_json": (
-            to_json({"description": audience.description}) if audience else None
-        ),
+        "audience_json": to_json(_audience_json(audience)) if audience else None,
         "niche_json": (
             to_json({"name": niche.name, "pillars": list(niche.pillars)})
             if niche
@@ -190,7 +190,7 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
             else None
         ),
         audience=(
-            Audience(from_json(row["audience_json"])["description"])
+            _audience(from_json(row["audience_json"]))
             if present("audience_json")
             else None
         ),
@@ -222,6 +222,28 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
         updated_by=actor_from(row, "updated_by"),
         created_at=parse_dt(row["created_at"]),
         updated_at=parse_dt(row["updated_at"]),
+    )
+
+
+def _audience_json(audience: Audience) -> dict:
+    age = audience.age_range
+    return {
+        "description": audience.description,
+        "age_range": {"min": age.min, "max": age.max} if age else None,
+        "interests": list(audience.interests),
+        "level": audience.level.value if audience.level else None,
+    }
+
+
+def _audience(data: dict) -> Audience:
+    # Rows written before #046 only hold the description.
+    age = data.get("age_range")
+    level = data.get("level")
+    return Audience(
+        data["description"],
+        AgeRange(age["min"], age["max"]) if age else None,
+        tuple(data.get("interests", ())),
+        AudienceLevel(level) if level else None,
     )
 
 

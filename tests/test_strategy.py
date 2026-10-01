@@ -334,7 +334,13 @@ def test_as_dict_is_json_friendly() -> None:
         "channel_id": "channel-1",
         "market": {"country": "VN"},
         "languages": {"primary": "vi", "secondary": ["en-US"]},
-        "audience": {"description": "Adults interested in personal finance"},
+        # D-046 added the optional audience fields (user decision, 2026-10-01).
+        "audience": {
+            "description": "Adults interested in personal finance",
+            "age_range": None,
+            "interests": [],
+            "level": None,
+        },
         "niche": {"name": "Personal finance", "pillars": ["budgeting", "investing"]},
         "brand": {"name": "Money Minute", "tone": "calm and clear"},
         "cadence": {"shorts_per_day": 2, "longform_per_day": 0},

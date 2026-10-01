@@ -34,9 +34,10 @@ a new profile.
 import re
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 
 from ai_youtube_agent.core.audit import Actor, ActorKind
@@ -46,6 +47,12 @@ COUNTRY_PATTERN = re.compile(r"^[A-Z]{2}$")
 LANGUAGE_TAG_PATTERN = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
 CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
 MAX_SECONDARY_LANGUAGES = 5  # #045, user decision 2026-10-01
+# #046 audience limits, user decision 2026-10-01.
+MAX_AUDIENCE_DESCRIPTION = 500
+MIN_AUDIENCE_AGE = 13  # YouTube's minimum account age; no under-13 targeting
+MAX_AUDIENCE_AGE = 100
+MAX_INTERESTS = 10
+MAX_INTEREST_LENGTH = 50
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -125,12 +132,74 @@ class LanguageSettings:
             )
 
 
+class AudienceLevel(StrEnum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+    MIXED = "mixed"
+
+
+@dataclass(frozen=True)
+class AgeRange:
+    """An inclusive age range, from 13 to 100 (#046)."""
+
+    min: int
+    max: int
+
+    def __post_init__(self) -> None:
+        for name in ("min", "max"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not MIN_AUDIENCE_AGE <= value <= MAX_AUDIENCE_AGE
+            ):
+                raise ValueError(
+                    f"age {name} must be a whole number from {MIN_AUDIENCE_AGE} "
+                    f"to {MAX_AUDIENCE_AGE}"
+                )
+        if self.min > self.max:
+            raise ValueError("age min must not be greater than age max")
+
+
 @dataclass(frozen=True)
 class Audience:
+    """Who the channel is for (#046, user decision 2026-10-01).
+
+    ``description`` is required; ``age_range``, ordered ``interests`` and
+    ``level`` are optional. There are deliberately no fields for sensitive
+    traits (ethnicity, religion, health, sexuality, politics), and no age
+    below 13 can be targeted.
+    """
+
     description: str
+    age_range: AgeRange | None = None
+    interests: tuple[str, ...] = ()
+    level: AudienceLevel | None = None
 
     def __post_init__(self) -> None:
         _require_text("audience description", self.description)
+        if len(self.description) > MAX_AUDIENCE_DESCRIPTION:
+            raise ValueError(
+                f"audience description must be at most {MAX_AUDIENCE_DESCRIPTION} "
+                "characters"
+            )
+        if self.age_range is not None and not isinstance(self.age_range, AgeRange):
+            raise TypeError("age_range must be an AgeRange or None")
+        if not isinstance(self.interests, tuple):
+            raise TypeError("interests must be a tuple")
+        if len(self.interests) > MAX_INTERESTS:
+            raise ValueError(f"at most {MAX_INTERESTS} interests are allowed")
+        for interest in self.interests:
+            _require_text("interest", interest)
+            if len(interest) > MAX_INTEREST_LENGTH:
+                raise ValueError(
+                    f"an interest must be at most {MAX_INTEREST_LENGTH} characters"
+                )
+        if len({i.casefold() for i in self.interests}) != len(self.interests):
+            raise ValueError("interests must not repeat")
+        if self.level is not None and not isinstance(self.level, AudienceLevel):
+            raise TypeError("level must be an AudienceLevel or None")
 
 
 @dataclass(frozen=True)
@@ -319,7 +388,7 @@ class StrategyProfile:
         return not self.missing_settings
 
     def as_dict(self) -> dict[str, Any]:
-        settings = {name: _setting_dict(getattr(self, name)) for name in SETTING_TYPES}
+        settings = {name: setting_dict(getattr(self, name)) for name in SETTING_TYPES}
         return {
             "id": self.id,
             "channel_id": self.channel_id,
@@ -334,7 +403,8 @@ class StrategyProfile:
         }
 
 
-def _setting_dict(setting: Any) -> dict[str, Any] | None:
+def setting_dict(setting: Any) -> dict[str, Any] | None:
+    """A JSON-friendly dict of one setting value, or None when unset."""
     if setting is None:
         return None
     result: dict[str, Any] = {}
@@ -344,6 +414,10 @@ def _setting_dict(setting: Any) -> dict[str, Any] | None:
             value = str(value)
         elif isinstance(value, tuple):
             value = list(value)
+        elif isinstance(value, StrEnum):
+            value = value.value
+        elif is_dataclass(value):
+            value = setting_dict(value)
         result[item.name] = value
     return result
 

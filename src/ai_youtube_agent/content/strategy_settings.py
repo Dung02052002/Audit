@@ -1,8 +1,8 @@
-"""Strategy settings (Prompt Pack v8, prompts #044-#045), context C1.
+"""Strategy settings (Prompt Pack v8, prompts #044-#046), context C1.
 
 ``StrategySettings`` is the service behind the strategy API. #044 adds the
-market, #045 the languages; #046-#052 add one setting each through the same
-``_save``. The rules were approved by the user on 2026-10-01:
+market, #045 the languages, #046 the audience; #047-#052 add one setting
+each through the same ``_save``. The rules were approved by the user on 2026-10-01:
 
 - A channel's strategy profile is created by the first setting a user saves,
   with every other setting left unconfigured (``missing_settings``). #053
@@ -21,10 +21,12 @@ market, #045 the languages; #046-#052 add one setting each through the same
 - A change that changes nothing stores and records nothing. Otherwise, after
   the transaction commits, ``strategy.created`` (for a new profile) and
   ``strategy.<setting>_changed`` (from, to, version) are audited. ``from`` and
-  ``to`` are a short text: the country for the market, and the primary tag
-  followed by the secondary tags, comma separated, for the languages.
+  ``to`` are a short text: the country for the market, the primary tag
+  followed by the secondary tags, comma separated, for the languages, and the
+  setting as compact JSON for any other setting (#046 audience onwards).
 """
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,9 +35,11 @@ from http import HTTPStatus
 from ai_youtube_agent.content.channel import ChannelArchivedError
 from ai_youtube_agent.content.channel_settings import ChannelNotFoundError
 from ai_youtube_agent.content.strategy import (
+    Audience,
     LanguageSettings,
     Market,
     StrategyProfile,
+    setting_dict,
 )
 from ai_youtube_agent.core.audit import Actor, AuditLog, AuditResult, EntityRef
 from ai_youtube_agent.core.db.database import ConcurrencyError, Database
@@ -114,6 +118,22 @@ class StrategySettings:
             channel_id,
             "languages",
             LanguageSettings.canonical(primary, secondary),
+            expected_version=expected_version,
+            actor=actor,
+        )
+
+    def set_audience(
+        self,
+        channel_id: str,
+        audience: Audience,
+        *,
+        expected_version: int | None,
+        actor: Actor,
+    ) -> StrategyChange:
+        return self._save(
+            channel_id,
+            "audience",
+            audience,
             expected_version=expected_version,
             actor=actor,
         )
@@ -201,4 +221,6 @@ def _summary(value: object) -> str | None:
         return value.country
     if isinstance(value, LanguageSettings):
         return ",".join((value.primary, *value.secondary))
-    raise TypeError(f"no audit summary for {type(value).__name__}")
+    return json.dumps(
+        setting_dict(value), ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )

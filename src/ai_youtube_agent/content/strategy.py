@@ -16,6 +16,12 @@ A ``StrategyProfile`` is the user-controlled strategy of one channel:
 - ``version``, ``updated_by``, ``created_at`` and ``updated_at``: the version
   starts at 1 and grows by one on every change. Timestamps are UTC.
 
+Since #044 (user decision, 2026-10-01) a profile is configured one section
+at a time: every setting may be ``None`` (not configured yet), ``create``
+takes any of them, and ``missing_settings`` lists the ones still unset. Once
+set, a setting can be changed but not removed. Readers must treat a missing
+setting as a reason to stop, as the daily limit and budget gates do.
+
 Validation here only checks that each value is well formed. The detailed rules
 for each setting come with #044–#052, and cross-field validation with #053.
 
@@ -174,14 +180,14 @@ SETTING_TYPES: dict[str, type] = {
 class StrategyProfile:
     id: str
     channel_id: str
-    market: Market
-    languages: LanguageSettings
-    audience: Audience
-    niche: Niche
-    brand: Brand
-    cadence: Cadence
-    budget: Budget
-    monetization: Monetization
+    market: Market | None
+    languages: LanguageSettings | None
+    audience: Audience | None
+    niche: Niche | None
+    brand: Brand | None
+    cadence: Cadence | None
+    budget: Budget | None
+    monetization: Monetization | None
     version: int
     updated_by: Actor
     created_at: datetime
@@ -195,8 +201,9 @@ class StrategyProfile:
         if self.version < 1:
             raise ValueError("version must be 1 or more")
         for name, setting_type in SETTING_TYPES.items():
-            if not isinstance(getattr(self, name), setting_type):
-                raise TypeError(f"{name} must be a {setting_type.__name__}")
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, setting_type):
+                raise TypeError(f"{name} must be a {setting_type.__name__} or None")
         _ensure_user(self.updated_by)
         for name in ("created_at", "updated_at"):
             if getattr(self, name).utcoffset() != timedelta(0):
@@ -209,14 +216,14 @@ class StrategyProfile:
         cls,
         channel_id: str,
         *,
-        market: Market,
-        languages: LanguageSettings,
-        audience: Audience,
-        niche: Niche,
-        brand: Brand,
-        cadence: Cadence,
-        budget: Budget,
-        monetization: Monetization,
+        market: Market | None = None,
+        languages: LanguageSettings | None = None,
+        audience: Audience | None = None,
+        niche: Niche | None = None,
+        brand: Brand | None = None,
+        cadence: Cadence | None = None,
+        budget: Budget | None = None,
+        monetization: Monetization | None = None,
         actor: Actor,
         clock: Clock | None = None,
     ) -> "StrategyProfile":
@@ -245,6 +252,9 @@ class StrategyProfile:
         unknown = set(changes) - SETTING_TYPES.keys()
         if unknown:
             raise ValueError(f"not a strategy setting: {', '.join(sorted(unknown))}")
+        removed = sorted(name for name, value in changes.items() if value is None)
+        if removed:
+            raise ValueError(f"a setting cannot be removed: {', '.join(removed)}")
         _ensure_user(actor)
         changed = {
             name: value
@@ -260,6 +270,15 @@ class StrategyProfile:
             updated_by=actor,
             updated_at=_now(clock),
         )
+
+    @property
+    def missing_settings(self) -> tuple[str, ...]:
+        """The settings not configured yet, in ``SETTING_TYPES`` order."""
+        return tuple(name for name in SETTING_TYPES if getattr(self, name) is None)
+
+    @property
+    def is_complete(self) -> bool:
+        return not self.missing_settings
 
     def as_dict(self) -> dict[str, Any]:
         settings = {name: _setting_dict(getattr(self, name)) for name in SETTING_TYPES}
@@ -277,7 +296,9 @@ class StrategyProfile:
         }
 
 
-def _setting_dict(setting: Any) -> dict[str, Any]:
+def _setting_dict(setting: Any) -> dict[str, Any] | None:
+    if setting is None:
+        return None
     result: dict[str, Any] = {}
     for item in fields(setting):
         value = getattr(setting, item.name)

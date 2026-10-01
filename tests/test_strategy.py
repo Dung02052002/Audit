@@ -205,11 +205,17 @@ def test_profile_needs_a_channel() -> None:
         StrategyProfile.create("", **SETTINGS, actor=USER, clock=at(T0))
 
 
-def test_profile_requires_every_setting() -> None:
+def test_a_setting_may_be_left_unconfigured() -> None:
+    # Changed by D-044 (user decision, 2026-10-01): a strategy is configured
+    # one section at a time, so a missing setting is allowed and reported.
     settings = dict(SETTINGS)
     del settings["budget"]
-    with pytest.raises(TypeError):
-        StrategyProfile.create("channel-1", **settings, actor=USER)
+
+    profile = StrategyProfile.create("channel-1", **settings, actor=USER)
+
+    assert profile.budget is None
+    assert profile.missing_settings == ("budget",)
+    assert not profile.is_complete
 
 
 def test_settings_must_use_their_value_types() -> None:

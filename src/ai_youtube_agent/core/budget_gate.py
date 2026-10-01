@@ -14,7 +14,8 @@ The rules were approved by the user on 2026-09-30:
 - A day is a UTC day and a month a UTC calendar month.
 - A cost in another currency this month blocks, because there is no exchange
   rate to sum it with (``budget.currency_mismatch``). A channel without a
-  strategy profile blocks too.
+  strategy profile blocks too, and so does a strategy whose budget is not
+  configured yet (``budget.no_budget``, since #044).
 
 Only actual spend is counted. Estimating a job's cost before it runs belongs to
 the budget guard (#180). The gate reads through ``StrategySource`` and
@@ -80,6 +81,13 @@ class BudgetGate:
                 )
             ]
         budget = strategy.budget
+        if budget is None:
+            return [
+                GateReason(
+                    "budget.no_budget",
+                    "This channel has no budget configured.",
+                )
+            ]
         month_start, month_end = month_window(now)
         records = self._costs.list_by_channel(
             channel_id, start=month_start, end=month_end

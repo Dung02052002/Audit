@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from ai_youtube_agent import __version__
 from ai_youtube_agent.bootstrap import build_container, prepare_database
 from ai_youtube_agent.content.channel_api import router as channel_router
+from ai_youtube_agent.content.strategy_api import router as strategy_router
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.di import Container
 from ai_youtube_agent.core.health import HealthRegistry
@@ -38,6 +39,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     install_error_handlers(app)
     app.get("/health")(health)
     app.include_router(channel_router)
+    app.include_router(strategy_router)
     return app
 
 

@@ -13,6 +13,8 @@ The rules were approved by the user on 2026-09-30:
 - A day is 00:00-24:00 UTC.
 - Any other move passes. A channel without a strategy profile is blocked, and a
   limit of 0 blocks every production or publish of that type.
+- Since #044 a strategy may not have its cadence configured yet. That blocks
+  too (``daily_limit.no_cadence``), because there is no limit to check.
 
 The gate reads through ``StrategySource`` and ``UsageSource``, which
 ``StrategyProfileRepository`` and ``DailyUsageRepository`` satisfy.
@@ -85,6 +87,15 @@ class DailyLimitGate:
                 GateReason(
                     "daily_limit.no_strategy",
                     "This channel has no strategy, so it has no daily limit.",
+                ),
+            )
+        if strategy.cadence is None:
+            return GateResult.blocked(
+                self.name,
+                context.at,
+                GateReason(
+                    "daily_limit.no_cadence",
+                    "This channel has no cadence configured, so it has no daily limit.",
                 ),
             )
         limit = (

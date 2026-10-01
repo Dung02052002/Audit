@@ -43,7 +43,8 @@ T0 = datetime(2026, 9, 30, 8, 0, tzinfo=UTC)
 T1 = datetime(2026, 9, 30, 9, 30, 15, 250, tzinfo=UTC)
 TS = format_datetime(T0)
 SHA = "a" * 64
-LATEST = 2  # 0001 initial schema, 0002 production starts (C-036)
+# 0001 initial schema, 0002 production starts (C-036), 0003 partial strategy (D-044)
+LATEST = 3
 
 ENTITY_TABLES = {
     "channels",
@@ -177,8 +178,12 @@ def test_default_migrations_are_packaged() -> None:
     migrations = default_migrations()
     path = files("ai_youtube_agent.core.db") / "migrations" / "0001_initial_schema.sql"
 
-    assert [m.version for m in migrations] == [1, 2]
-    assert [m.name for m in migrations] == ["initial_schema", "production_starts"]
+    assert [m.version for m in migrations] == [1, 2, 3]
+    assert [m.name for m in migrations] == [
+        "initial_schema",
+        "production_starts",
+        "partial_strategy",
+    ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
 
@@ -226,7 +231,7 @@ def test_fresh_database_gets_every_table(tmp_path: Path) -> None:
 
     report = migrate(path, clock=at(T0))
 
-    assert report.applied == (1, LATEST)
+    assert report.applied == tuple(range(1, LATEST + 1))
     assert report.current_version == LATEST
     assert report.backup_path is None
     assert current_version(path) == LATEST

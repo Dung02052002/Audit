@@ -131,24 +131,38 @@ def _channel(row: sqlite3.Row) -> Channel:
 
 
 def _strategy_row(profile: StrategyProfile) -> dict:
+    # A setting that is not configured yet is stored as NULL in all its columns.
+    market, languages = profile.market, profile.languages
+    audience, niche, brand = profile.audience, profile.niche, profile.brand
+    cadence, budget, money = profile.cadence, profile.budget, profile.monetization
     return {
         "id": profile.id,
         "channel_id": profile.channel_id,
-        "market_country": profile.market.country,
-        "primary_language": profile.languages.primary,
-        "secondary_languages_json": to_json(list(profile.languages.secondary)),
-        "audience_json": to_json({"description": profile.audience.description}),
-        "niche_json": to_json(
-            {"name": profile.niche.name, "pillars": list(profile.niche.pillars)}
+        "market_country": market.country if market else None,
+        "primary_language": languages.primary if languages else None,
+        "secondary_languages_json": (
+            to_json(list(languages.secondary)) if languages else None
         ),
-        "brand_json": to_json({"name": profile.brand.name, "tone": profile.brand.tone}),
-        "cadence_shorts_per_day": profile.cadence.shorts_per_day,
-        "cadence_longform_per_day": profile.cadence.longform_per_day,
-        "budget_currency": profile.budget.currency,
-        "budget_daily_limit": format_decimal(profile.budget.daily_limit),
-        "budget_monthly_limit": format_decimal(profile.budget.monthly_limit),
-        "monetization_json": to_json(
-            {"tracked_sources": list(profile.monetization.tracked_sources)}
+        "audience_json": (
+            to_json({"description": audience.description}) if audience else None
+        ),
+        "niche_json": (
+            to_json({"name": niche.name, "pillars": list(niche.pillars)})
+            if niche
+            else None
+        ),
+        "brand_json": (
+            to_json({"name": brand.name, "tone": brand.tone}) if brand else None
+        ),
+        "cadence_shorts_per_day": cadence.shorts_per_day if cadence else None,
+        "cadence_longform_per_day": cadence.longform_per_day if cadence else None,
+        "budget_currency": budget.currency if budget else None,
+        "budget_daily_limit": format_decimal(budget.daily_limit) if budget else None,
+        "budget_monthly_limit": (
+            format_decimal(budget.monthly_limit) if budget else None
+        ),
+        "monetization_json": (
+            to_json({"tracked_sources": list(money.tracked_sources)}) if money else None
         ),
         "version": profile.version,
         **actor_columns("updated_by", profile.updated_by),
@@ -158,29 +172,51 @@ def _strategy_row(profile: StrategyProfile) -> dict:
 
 
 def _strategy(row: sqlite3.Row) -> StrategyProfile:
-    niche = from_json(row["niche_json"])
-    brand = from_json(row["brand_json"])
+    def present(column: str) -> bool:
+        return row[column] is not None
+
+    niche = from_json(row["niche_json"]) if present("niche_json") else None
+    brand = from_json(row["brand_json"]) if present("brand_json") else None
     return StrategyProfile(
         id=row["id"],
         channel_id=row["channel_id"],
-        market=Market(row["market_country"]),
-        languages=LanguageSettings(
-            row["primary_language"], tuple(from_json(row["secondary_languages_json"]))
+        market=Market(row["market_country"]) if present("market_country") else None,
+        languages=(
+            LanguageSettings(
+                row["primary_language"],
+                tuple(from_json(row["secondary_languages_json"])),
+            )
+            if present("primary_language")
+            else None
         ),
-        audience=Audience(from_json(row["audience_json"])["description"]),
-        niche=Niche(niche["name"], tuple(niche["pillars"])),
-        brand=Brand(brand["name"], brand["tone"]),
-        cadence=Cadence(
-            shorts_per_day=row["cadence_shorts_per_day"],
-            longform_per_day=row["cadence_longform_per_day"],
+        audience=(
+            Audience(from_json(row["audience_json"])["description"])
+            if present("audience_json")
+            else None
         ),
-        budget=Budget(
-            row["budget_currency"],
-            parse_decimal(row["budget_daily_limit"]),
-            parse_decimal(row["budget_monthly_limit"]),
+        niche=Niche(niche["name"], tuple(niche["pillars"])) if niche else None,
+        brand=Brand(brand["name"], brand["tone"]) if brand else None,
+        cadence=(
+            Cadence(
+                shorts_per_day=row["cadence_shorts_per_day"],
+                longform_per_day=row["cadence_longform_per_day"],
+            )
+            if present("cadence_shorts_per_day")
+            else None
         ),
-        monetization=Monetization(
-            tuple(from_json(row["monetization_json"])["tracked_sources"])
+        budget=(
+            Budget(
+                row["budget_currency"],
+                parse_decimal(row["budget_daily_limit"]),
+                parse_decimal(row["budget_monthly_limit"]),
+            )
+            if present("budget_currency")
+            else None
+        ),
+        monetization=(
+            Monetization(tuple(from_json(row["monetization_json"])["tracked_sources"]))
+            if present("monetization_json")
+            else None
         ),
         version=row["version"],
         updated_by=actor_from(row, "updated_by"),

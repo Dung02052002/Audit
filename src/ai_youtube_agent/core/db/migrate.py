@@ -17,6 +17,10 @@ applied file.
    never deleted automatically.
 3. It applies each pending migration in its own transaction. On any error the
    transaction is rolled back, so the database stays at the last good version.
+   Foreign keys are off while a migration runs, so a migration may rebuild a
+   table that other tables reference (SQLite's documented way to change a
+   column). ``PRAGMA foreign_key_check`` then runs inside the transaction, and
+   any broken reference rolls the migration back (#044).
 
 To undo a migration that has already committed, restore a backup with
 ``restore_backup``. Migrations run only when the application starts
@@ -234,10 +238,19 @@ def _apply(
     connection: sqlite3.Connection, migration: Migration, clock: Clock | None
 ) -> None:
     statements = list(_statements(migration))
+    # Foreign keys can only be switched outside a transaction.
+    connection.execute("PRAGMA foreign_keys = OFF")
     connection.execute("BEGIN IMMEDIATE")
     try:
         for statement in statements:
             connection.execute(statement)
+        broken = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            table, _, parent, _ = broken[0]
+            raise MigrationError(
+                f"{len(broken)} broken foreign key reference(s), "
+                f"first {table} -> {parent}"
+            )
         connection.execute(
             "INSERT INTO schema_migrations (version, name, checksum, applied_at) "
             "VALUES (?, ?, ?, ?)",
@@ -255,6 +268,8 @@ def _apply(
             f"migration {migration.version} ({migration.name}) failed and was "
             f"rolled back: {error}"
         ) from error
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
 
 
 def _statements(migration: Migration) -> Iterator[str]:

@@ -1,30 +1,18 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any, TypeVar
+from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from ai_youtube_agent import __version__
 from ai_youtube_agent.bootstrap import build_container, prepare_database
+from ai_youtube_agent.content.channel_api import router as channel_router
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.di import Container
 from ai_youtube_agent.core.health import HealthRegistry
+from ai_youtube_agent.core.http import install_error_handlers, provide
 from ai_youtube_agent.core.log import configure_logging
-
-T = TypeVar("T")
-
-
-def provide(interface: type[T]) -> Any:
-    """FastAPI dependency that resolves ``interface`` from the app's container.
-
-    Use it as ``service: Annotated[Service, provide(Service)]``.
-    """
-
-    def resolve(request: Request) -> T:
-        return request.app.state.container.resolve(interface)
-
-    return Depends(resolve)
 
 
 def health(
@@ -47,7 +35,9 @@ def create_app(container: Container | None = None) -> FastAPI:
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
     app.state.container = container
+    install_error_handlers(app)
     app.get("/health")(health)
+    app.include_router(channel_router)
     return app
 
 

@@ -96,7 +96,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 
 | Task | Name | Dependency | Status |
 |---|---|---|---|
-| D-043 | Channel Settings | C-12 | NOT_STARTED |
+| D-043 | Channel Settings | C-12 | PASS. User-approved scope: HTTP API only (UI is #191-#203, Q4 open). `content/channel_api.py` adds `GET/POST /channels` and `GET/PATCH /channels/{id}`; `content/channel_settings.py` adds the `ChannelSettings` service (registered in bootstrap). Create takes title, YouTube channel id (unique, never changes) and optional handle; update may change title, set or clear the handle (new `Channel.with_handle`), and set active, paused or archived (pending and disconnected are refused unless unchanged; archived is final). Updates need `expected_updated_at` (409 `domain.channel_conflict` when stale); duplicates are 409 `domain.channel_exists`, unknown ids 404. `core/http.py` holds `provide` (moved from `main.py`, still re-exported), `current_actor` (always `user:local-user` until login) and one error envelope for the whole app (`validation.invalid_request` with fields, `request.*`, safe 500). Audit `channel.created`, `channel.updated`, `channel.status_changed` after commit. `tests/test_channel_settings.py` (33 tests). Tests: 2023 passed. |
 | D-044 | Market Settings | D-1 | NOT_STARTED |
 | D-045 | Language Settings | D-2 | NOT_STARTED |
 | D-046 | Audience Settings | D-3 | NOT_STARTED |
@@ -155,4 +155,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - C-040 Kill Switch Gate has PASSED.
 - C-041 Idempotency Gate has PASSED.
 - C-042 Gate Tests has PASSED. Phase C is complete.
-- Next task: **D-043 Channel Settings**. It is NOT_STARTED.
+- D-043 Channel Settings has PASSED.
+- Next task: **D-044 Market Settings**. It is NOT_STARTED.

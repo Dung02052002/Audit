@@ -12,6 +12,7 @@ calls it once at startup, from the FastAPI lifespan in ``main.create_app``.
 memory (#030).
 """
 
+from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
 from ai_youtube_agent.core.config import Environment, Settings, get_settings
 from ai_youtube_agent.core.db.database import Database
@@ -33,6 +34,10 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(Database, lambda c: Database(c.resolve(Settings).database_path))
     container.register(AuditSink, _build_audit_sink)
     container.register(AuditLog, lambda c: AuditLog(c.resolve(AuditSink)))
+    container.register(
+        ChannelSettings,
+        lambda c: ChannelSettings(c.resolve(Database), c.resolve(AuditLog)),
+    )
     return container
 
 

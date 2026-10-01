@@ -123,9 +123,16 @@ The requirements define each of these as an abstraction with a mock.
 
 | Interface | Source | Notes |
 |---|---|---|
-| HTTP API (FastAPI) | Current stack; #043 "configuration UI/API" | Serves the Command Center and user actions. Only `/health` exists today (#010 extends it) |
+| HTTP API (FastAPI) | Current stack; #043 "configuration UI/API" | Serves the Command Center and user actions. Today: `/health` (#010) and `/channels` (#043). See the API notes below |
 | Approval email | #138, #228 | Sends a safe preview reference and the exact artifact ID |
 | Command Center UI | #191–#203 | Dashboard client. See open question Q4 |
+
+API notes (D-043, approved by the user on 2026-10-01):
+
+- Routers live in the context that owns them (`content/channel_api.py` for C1) and are included by `main.create_app`. Shared HTTP helpers are in `core/http.py`.
+- Every request acts as `current_actor()`, which is `Actor(user, "local-user")` until there is a login; a real login only replaces that dependency.
+- Every error uses one envelope: `{"error": {"code", "category", "message", "retryable", "fields"?}}`, built from `PublicError` (#008). `AppError`s use their own HTTP status; a request the schema refuses is 422 `validation.invalid_request` with `fields`; unknown routes and methods use `request.*` codes; anything unexpected is a 500 `application.internal` whose detail only goes to the log.
+- `/channels`: `GET` lists, `POST` creates (title, YouTube channel id, optional handle), `GET /{id}` reads and `PATCH /{id}` changes title, handle and a user status (active, paused, archived) with `expected_updated_at` for optimistic concurrency. Changes are audited after commit (`channel.created`, `channel.updated`, `channel.status_changed`).
 
 ## 5. Data flow
 

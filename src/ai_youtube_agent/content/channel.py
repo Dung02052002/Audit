@@ -9,8 +9,9 @@ A ``Channel`` is the YouTube channel the agent produces for:
 - ``status``: one of ``ChannelStatus``. A new channel starts ``PENDING``.
 - ``created_at`` and ``updated_at``: timezone-aware UTC.
 
-A channel is frozen. ``with_status`` and ``rename`` return a new channel with
-the same id and ``created_at`` and a new ``updated_at``. Transition rules
+A channel is frozen. ``with_status``, ``rename`` and ``with_handle`` (#043)
+return a new channel with the same id and ``created_at`` and a new
+``updated_at``. Transition rules
 between statuses are not defined yet, except that ``ARCHIVED`` is final: an
 archived channel is read-only. The channel is user-owned configuration, and
 the AI never changes it on its own (R-09). Persistence comes with #029.
@@ -118,6 +119,16 @@ class Channel:
             return self
         self._ensure_not_archived()
         return replace(self, title=title, updated_at=_now(clock))
+
+    def with_handle(
+        self, handle: str | None, *, clock: Clock | None = None
+    ) -> "Channel":
+        """Set or clear the ``@handle``. The YouTube channel id never changes."""
+        if handle == self.youtube.handle:
+            return self
+        self._ensure_not_archived()
+        youtube = YouTubeIdentifiers(self.youtube.channel_id, handle)
+        return replace(self, youtube=youtube, updated_at=_now(clock))
 
     def as_dict(self) -> dict[str, Any]:
         return {

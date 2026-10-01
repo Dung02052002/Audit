@@ -1,0 +1,68 @@
+"""Rights Gate (Prompt Pack v8, prompt #038), context C3 Control Gates.
+
+``RightsGate`` blocks a publish while an asset of the item has an unresolved
+high rights risk. The rules were approved by the user on 2026-10-01:
+
+- The gate only judges the move to ``PUBLISHING``. Any other move passes.
+- It reads every ``RightsRecord`` of the item. A record blocks when it is
+  unresolved and its level is ``high``, or ``unknown`` (a level nobody has set
+  yet counts as high, so the gate fails closed). Unresolved ``low`` and
+  ``medium`` pass, and a record a user resolved passes at any level.
+- An item with no rights records passes. Whether every asset has a record is
+  for the asset registry (#076) and rights QC (#126).
+- Each blocking record gives its own reason (``rights.unresolved_high`` or
+  ``rights.unresolved_unknown``) naming its ``asset_ref``, in record order
+  (``created_at``, then ``id``).
+
+The gate reads through ``RightsSource``, which ``RightsRecordRepository``
+already satisfies. Classifying risk is the risk engine (#078); wiring rights
+and policy into the shared publish gate is #084.
+"""
+
+from collections.abc import Sequence
+from typing import Protocol
+
+from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
+from ai_youtube_agent.core.content_item import ContentStatus
+from ai_youtube_agent.core.gates import GateContext, GateName, GateReason, GateResult
+
+BLOCKING_LEVELS = frozenset({RiskLevel.HIGH, RiskLevel.UNKNOWN})
+
+
+class RightsSource(Protocol):
+    def list_by_content_item(self, content_item_id: str) -> Sequence[RightsRecord]: ...
+
+
+class RightsGate:
+    name = GateName.RIGHTS
+
+    def __init__(self, rights: RightsSource) -> None:
+        self._rights = rights
+
+    def evaluate(self, context: GateContext) -> GateResult:
+        if context.target_status is not ContentStatus.PUBLISHING:
+            return GateResult.passed(self.name, context.at)
+        records = sorted(
+            self._rights.list_by_content_item(context.item.id),
+            key=lambda r: (r.created_at, r.id),
+        )
+        reasons = [_reason(r) for r in records if _blocks(r)]
+        if not reasons:
+            return GateResult.passed(self.name, context.at)
+        return GateResult.blocked(self.name, context.at, *reasons)
+
+
+def _blocks(record: RightsRecord) -> bool:
+    return not record.is_resolved and record.risk_level in BLOCKING_LEVELS
+
+
+def _reason(record: RightsRecord) -> GateReason:
+    if record.risk_level is RiskLevel.HIGH:
+        return GateReason(
+            "rights.unresolved_high",
+            f"Asset {record.asset_ref} has a high rights risk that is not resolved.",
+        )
+    return GateReason(
+        "rights.unresolved_unknown",
+        f"Asset {record.asset_ref} has an unknown rights risk that is not resolved.",
+    )

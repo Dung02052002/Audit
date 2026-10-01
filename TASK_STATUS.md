@@ -84,7 +84,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | C-035 | Version Invalidation | C-4 | PASS. User-approved rules: `VersionInvalidation` in `core/version_invalidation.py` stores a new artifact version and invalidates stale pending/approved requests in the same transaction (or on demand); items in preview_ready/awaiting_approval/approved move back to generating; `approval.invalidated` audited after commit. `ApprovalRequest.invalidate()` and shared `stale_kinds` in `content/approval.py` (the C-034 gate now uses it, no behaviour change). The B-021 placeholder test no longer forbids `invalidate` (user approved). `tests/test_version_invalidation.py` (37 tests). Tests: 1400 passed. |
 | C-036 | Daily Limit Gate | C-5 | PASS. User-approved rules: `DailyLimitGate` in `core/daily_limit_gate.py` (`GateName.DAILY_LIMIT`) uses the channel's cadence per content type, counted separately for production (draft to generating, from the new append-only `production_starts` table, migration 0002, written by `start_production` in `core/production.py`) and publishing (non-failed publish jobs, excluding the item's own), per UTC day. New `core/production_start.py` and `core/db/repositories/usage.py`. Updated the C-033 gate-name test and seven B-029 migration tests that pinned version 1 and the table list. `tests/test_daily_limit.py` (37 tests). Tests: 1438 passed. |
 | C-037 | Budget Gate | C-6 | PASS. User-approved rules: `BudgetGate` in `core/budget_gate.py` (`GateName.BUDGET`) checks every move into generating against the channel's daily and monthly budget (spend >= limit blocks), summing `CostRecord`s as `Decimal` per UTC day and UTC calendar month; another currency this month and a missing strategy block. The C-033 later-names test now includes `budget`. `tests/test_budget_gate.py` (30 tests). Tests: 1468 passed. |
-| C-038 | Rights Gate | C-7 | NOT_STARTED |
+| C-038 | Rights Gate | C-7 | PASS. User-approved rules: `RightsGate` in `core/rights_gate.py` (`GateName.RIGHTS`) judges only the move to publishing and blocks on every rights record of the item that is unresolved at level high or unknown (unknown counts as high), one reason per record (`rights.unresolved_high`, `rights.unresolved_unknown`) naming its asset ref. Unresolved low and medium, resolved records at any level, and items without records pass. `tests/test_rights_gate.py` (18 tests). Tests: 1486 passed. |
 | C-039 | Policy Gate | C-8 | NOT_STARTED |
 | C-040 | Kill Switch Gate | C-9 | NOT_STARTED |
 | C-041 | Idempotency Gate | C-10 | NOT_STARTED |
@@ -132,4 +132,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - C-035 Version Invalidation has PASSED.
 - C-036 Daily Limit Gate has PASSED.
 - C-037 Budget Gate has PASSED.
-- Next task: **C-038 Rights Gate**. It is NOT_STARTED.
+- C-038 Rights Gate has PASSED.
+- Next task: **C-039 Policy Gate**. It is NOT_STARTED.

@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#046), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#047), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -20,6 +20,11 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   repeats) and ``level`` (beginner, intermediate, advanced or mixed). Text is
   trimmed. Sending the body replaces the whole audience; a field left out is
   cleared. Same create, version and audit rules as the market.
+- ``PUT /channels/{id}/strategy/niche`` (#047): ``name`` (at most 100
+  characters) and 1 to 10 ordered ``pillars``, each a ``name`` (at most 60
+  characters, unique ignoring case) and optional ``description`` (at most 300).
+  The body replaces the whole niche; adding, removing or reordering pillars is
+  sending the new list. Same create, version and audit rules as the market.
 
 Errors use the envelope of ``core/http.py``.
 """
@@ -43,11 +48,17 @@ from ai_youtube_agent.content.strategy import (
     MAX_AUDIENCE_DESCRIPTION,
     MAX_INTEREST_LENGTH,
     MAX_INTERESTS,
+    MAX_NICHE_NAME,
+    MAX_PILLAR_DESCRIPTION,
+    MAX_PILLAR_NAME,
+    MAX_PILLARS,
     MAX_SECONDARY_LANGUAGES,
     MIN_AUDIENCE_AGE,
     AgeRange,
     Audience,
     AudienceLevel,
+    Niche,
+    Pillar,
     StrategyProfile,
     canonical_language_tag,
 )
@@ -182,6 +193,65 @@ class AudienceUpdate(BaseModel):
         )
 
 
+def _text(value: str, what: str, limit: int) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError(f"{what} must not be empty")
+    if len(value) > limit:
+        raise ValueError(f"{what} must be at most {limit} characters")
+    return value
+
+
+class PillarBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str) -> str:
+        return _text(value, "pillar name", MAX_PILLAR_NAME)
+
+    @field_validator("description")
+    @classmethod
+    def _check_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _text(value, "pillar description", MAX_PILLAR_DESCRIPTION)
+
+
+class NicheUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    pillars: list[PillarBody]
+    expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str) -> str:
+        return _text(value, "niche name", MAX_NICHE_NAME)
+
+    @field_validator("pillars")
+    @classmethod
+    def _check_pillars(cls, value: list[PillarBody]) -> list[PillarBody]:
+        if not 1 <= len(value) <= MAX_PILLARS:
+            raise ValueError(f"a niche needs 1 to {MAX_PILLARS} content pillars")
+        seen: set[str] = set()
+        for pillar in value:
+            if pillar.name.casefold() in seen:
+                raise ValueError(f"content pillar {pillar.name!r} repeats")
+            seen.add(pillar.name.casefold())
+        return value
+
+    def niche(self) -> Niche:
+        return Niche(
+            self.name,
+            tuple(Pillar(p.name, p.description) for p in self.pillars),
+        )
+
+
 def _body(profile: StrategyProfile) -> dict[str, Any]:
     return profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
 
@@ -241,6 +311,25 @@ def put_audience(
     change = settings.set_audience(
         channel_id,
         body.audience(),
+        expected_version=body.expected_version,
+        actor=actor,
+    )
+    if change.created:
+        response.status_code = status.HTTP_201_CREATED
+    return _body(change.profile)
+
+
+@router.put("/niche")
+def put_niche(
+    channel_id: str,
+    body: NicheUpdate,
+    settings: Settings,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    change = settings.set_niche(
+        channel_id,
+        body.niche(),
         expected_version=body.expected_version,
         actor=actor,
     )

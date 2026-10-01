@@ -53,6 +53,11 @@ MIN_AUDIENCE_AGE = 13  # YouTube's minimum account age; no under-13 targeting
 MAX_AUDIENCE_AGE = 100
 MAX_INTERESTS = 10
 MAX_INTEREST_LENGTH = 50
+# #047 niche limits, user decision 2026-10-01.
+MAX_NICHE_NAME = 100
+MAX_PILLARS = 10
+MAX_PILLAR_NAME = 60
+MAX_PILLAR_DESCRIPTION = 300
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -203,15 +208,52 @@ class Audience:
 
 
 @dataclass(frozen=True)
-class Niche:
+class Pillar:
+    """One content pillar: a name and an optional description (#047)."""
+
     name: str
-    pillars: tuple[str, ...] = ()
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_text("content pillar name", self.name)
+        if len(self.name) > MAX_PILLAR_NAME:
+            raise ValueError(
+                f"a content pillar name must be at most {MAX_PILLAR_NAME} characters"
+            )
+        if self.description is not None:
+            _require_text("content pillar description", self.description)
+            if len(self.description) > MAX_PILLAR_DESCRIPTION:
+                raise ValueError(
+                    "a content pillar description must be at most "
+                    f"{MAX_PILLAR_DESCRIPTION} characters"
+                )
+
+
+@dataclass(frozen=True)
+class Niche:
+    """The channel's niche and its ordered content pillars (#047).
+
+    A niche has a name (at most 100 characters) and 1 to 10 pillars in the
+    user's order, with no two pillar names equal ignoring case.
+    """
+
+    name: str
+    pillars: tuple[Pillar, ...]
 
     def __post_init__(self) -> None:
         _require_text("niche name", self.name)
-        for pillar in self.pillars:
-            _require_text("content pillar", pillar)
-        if len(set(self.pillars)) != len(self.pillars):
+        if len(self.name) > MAX_NICHE_NAME:
+            raise ValueError(
+                f"the niche name must be at most {MAX_NICHE_NAME} characters"
+            )
+        if not isinstance(self.pillars, tuple) or not all(
+            isinstance(pillar, Pillar) for pillar in self.pillars
+        ):
+            raise TypeError("pillars must be a tuple of Pillar values")
+        if not 1 <= len(self.pillars) <= MAX_PILLARS:
+            raise ValueError(f"a niche needs 1 to {MAX_PILLARS} content pillars")
+        names = {pillar.name.casefold() for pillar in self.pillars}
+        if len(names) != len(self.pillars):
             raise ValueError("content pillars must not repeat")
 
 
@@ -413,7 +455,7 @@ def setting_dict(setting: Any) -> dict[str, Any] | None:
         if isinstance(value, Decimal):
             value = str(value)
         elif isinstance(value, tuple):
-            value = list(value)
+            value = [setting_dict(v) if is_dataclass(v) else v for v in value]
         elif isinstance(value, StrEnum):
             value = value.value
         elif is_dataclass(value):

@@ -15,6 +15,7 @@ from ai_youtube_agent.content.strategy import (
     Market,
     Monetization,
     Niche,
+    Pillar,
     StrategyProfile,
 )
 from ai_youtube_agent.content.voice import VoiceProfile
@@ -147,7 +148,15 @@ def _strategy_row(profile: StrategyProfile) -> dict:
         ),
         "audience_json": to_json(_audience_json(audience)) if audience else None,
         "niche_json": (
-            to_json({"name": niche.name, "pillars": list(niche.pillars)})
+            to_json(
+                {
+                    "name": niche.name,
+                    "pillars": [
+                        {"name": p.name, "description": p.description}
+                        for p in niche.pillars
+                    ],
+                }
+            )
             if niche
             else None
         ),
@@ -194,7 +203,7 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
             if present("audience_json")
             else None
         ),
-        niche=Niche(niche["name"], tuple(niche["pillars"])) if niche else None,
+        niche=_niche(niche) if niche else None,
         brand=Brand(brand["name"], brand["tone"]) if brand else None,
         cadence=(
             Cadence(
@@ -245,6 +254,17 @@ def _audience(data: dict) -> Audience:
         tuple(data.get("interests", ())),
         AudienceLevel(level) if level else None,
     )
+
+
+def _niche(data: dict) -> Niche:
+    # Rows written before #047 hold pillar names as plain strings.
+    pillars = tuple(
+        Pillar(item)
+        if isinstance(item, str)
+        else Pillar(item["name"], item["description"])
+        for item in data["pillars"]
+    )
+    return Niche(data["name"], pillars)
 
 
 def _voice_row(voice: VoiceProfile) -> dict:

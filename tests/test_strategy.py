@@ -13,6 +13,7 @@ from ai_youtube_agent.content.strategy import (
     Market,
     Monetization,
     Niche,
+    Pillar,
     StrategyChangeNotAllowedError,
     StrategyProfile,
 )
@@ -30,7 +31,7 @@ SETTINGS = {
     "market": Market("VN"),
     "languages": LanguageSettings("vi", ("en-US",)),
     "audience": Audience("Adults interested in personal finance"),
-    "niche": Niche("Personal finance", ("budgeting", "investing")),
+    "niche": Niche("Personal finance", (Pillar("budgeting"), Pillar("investing"))),
     "brand": Brand("Money Minute", "calm and clear"),
     "cadence": Cadence(shorts_per_day=2, longform_per_day=0),
     "budget": Budget("USD", Decimal("5.00"), Decimal("100.00")),
@@ -100,9 +101,12 @@ def test_budget_rejects_malformed_currency(currency: str) -> None:
     "build",
     [
         lambda: Audience("  "),
-        lambda: Niche(""),
-        lambda: Niche("Finance", ("budgeting", " ")),
-        lambda: Niche("Finance", ("budgeting", "budgeting")),
+        lambda: Niche(
+            "", (Pillar("budgeting"),)
+        ),  # D-047: pillars are Pillar values, 1 to 10 (user decision 2026-10-01)
+        lambda: Niche("Finance", (Pillar("budgeting"), Pillar(" "))),
+        lambda: Niche("Finance", (Pillar("budgeting"), Pillar("Budgeting"))),
+        lambda: Niche("Finance", ()),
         lambda: Brand(" "),
         lambda: Brand("Money Minute", ""),
     ],
@@ -113,7 +117,9 @@ def test_text_settings_reject_empty_or_repeated_values(build) -> None:
 
 
 def test_optional_text_settings_default_to_empty() -> None:
-    assert Niche("Finance").pillars == ()
+    assert (
+        Pillar("budgeting").description is None
+    )  # D-047: pillars are Pillar values, 1 to 10 (user decision 2026-10-01)
     assert Brand("Money Minute").tone is None
     assert Monetization().tracked_sources == ()
 
@@ -279,7 +285,9 @@ def test_update_returns_a_new_version_and_keeps_identity() -> None:
 
 def test_every_real_change_bumps_the_version() -> None:
     profile = new_profile()
-    profile = profile.update(actor=USER, clock=at(T1), niche=Niche("Tech"))
+    profile = profile.update(
+        actor=USER, clock=at(T1), niche=Niche("Tech", (Pillar("AI"),))
+    )
     profile = profile.update(actor=USER, clock=at(T1), brand=Brand("Tech Minute"))
     assert profile.version == 3
 
@@ -296,7 +304,7 @@ def test_update_without_a_change_returns_the_same_profile() -> None:
     [
         ("market", Market("US")),
         ("languages", LanguageSettings("en")),
-        ("niche", Niche("Gaming")),
+        ("niche", Niche("Gaming", (Pillar("Reviews"),))),
         ("cadence", Cadence(shorts_per_day=10, longform_per_day=1)),
         ("budget", Budget("USD", Decimal("50"), Decimal("1000"))),
     ],
@@ -341,7 +349,13 @@ def test_as_dict_is_json_friendly() -> None:
             "interests": [],
             "level": None,
         },
-        "niche": {"name": "Personal finance", "pillars": ["budgeting", "investing"]},
+        "niche": {
+            "name": "Personal finance",
+            "pillars": [
+                {"name": "budgeting", "description": None},
+                {"name": "investing", "description": None},
+            ],
+        },
         "brand": {"name": "Money Minute", "tone": "calm and clear"},
         "cadence": {"shorts_per_day": 2, "longform_per_day": 0},
         "budget": {

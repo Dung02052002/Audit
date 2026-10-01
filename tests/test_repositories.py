@@ -266,7 +266,7 @@ def test_strategy_round_trip_keeps_value_objects_and_decimals(
     assert stored == graph.strategy
     assert str(stored.budget.daily_limit) == "5.00"
     assert stored.languages.secondary == ("en-US",)
-    assert stored.niche.pillars == ("budgeting", "investing")
+    assert [p.name for p in stored.niche.pillars] == ["budgeting", "investing"]
     assert (
         read(database, StrategyProfileRepository, "get_by_channel", graph.channel.id)
         == graph.strategy

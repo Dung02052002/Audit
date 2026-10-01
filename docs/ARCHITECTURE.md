@@ -194,7 +194,7 @@ The transitions are defined in #032 (C-032, approved by the user on 2026-09-30) 
 | Rights gate | Publish with unresolved high-risk rights. Implemented in `core/rights_gate.py` | #038 |
 | Policy gate | Publish with configured policy failures. Implemented in `core/policy_gate.py` | #039 |
 | Kill switch gate | All new production actions while the emergency stop is active. Implemented in `core/kill_switch_gate.py` | #040 |
-| Idempotency gate | Duplicate publish or generation jobs | #041 |
+| Idempotency gate | Duplicate publish or generation jobs. Implemented in `core/idempotency_gate.py` | #041 |
 
 Every gate implements the Pipeline Gate Contract (#033). The Pipeline Runner (#206) runs the lifecycle one gate at a time.
 
@@ -219,6 +219,8 @@ Rights gate (C-038, rules approved by the user on 2026-10-01): `RightsGate` (`Ga
 Policy gate (C-039, rules approved by the user on 2026-10-01): `PolicyGate` (`GateName.POLICY`) judges only the move to `Publishing`. It reads `PolicyCheck` values (`content/policy.py`) through the `PolicySource` protocol; each check is one run over an item with its `PolicyFinding`s (rule id, rule version, a `blocking` flag copied from the rule's configuration, and a safe message). Only the newest check counts (latest `checked_at`, then `id`). Each blocking finding blocks with its own `policy.failed` reason, non-blocking findings are warnings, and an item without any check blocks with `policy.not_checked` so the gate fails closed. The rule interface (#079), the check that creates results (#080) and their storage and report (#083) come later.
 
 Kill switch gate (C-040, rules approved by the user on 2026-10-01): `KillSwitchGate` (`GateName.KILL_SWITCH`) reads the current `EmergencyStop` (`pipeline/kill_switch.py`) through the `KillSwitchSource` protocol on every evaluation, so a stop applies to the next move. While it is active, every move into `Generating` (new production or regeneration) and the move to `Publishing` block with one `killswitch.active` reason: a fixed message plus the reason the activator gave, without naming the activator. Moves to draft, failed, rejected and the review states pass, so work can be wound down. The store, the user toggle and stopping running jobs are the kill switch (#213).
+
+Idempotency gate (C-041, rules approved by the user on 2026-10-01): job keys are deterministic (`pipeline/idempotency.py`). `generation_key(item, kind)` is `gen:` plus the sha256 of the job kind (`content.generate` for the move into `Generating`), the item id, its status and its `updated_at`; `publish_key(item_id, approval_request_id)` is `pub:` plus the sha256 of `publish`, the item id and the approved request id. Whoever creates the job must use the same key. `IdempotencyGate` (`GateName.IDEMPOTENCY`) derives the key for a move into `Generating`, or for the move to `Publishing` from the item's newest approval request when it is approved, and blocks when a job is already stored under it, unless that job failed (a retry restarts the same job). A cancelled job blocks because its UNIQUE key stays taken. Without an approved newest request the gate passes; the approval gate blocks that move. #151 and #152 add upload-level publish guarantees.
 
 ### 5.4 Control and observability flows
 

@@ -86,7 +86,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | C-037 | Budget Gate | C-6 | PASS. User-approved rules: `BudgetGate` in `core/budget_gate.py` (`GateName.BUDGET`) checks every move into generating against the channel's daily and monthly budget (spend >= limit blocks), summing `CostRecord`s as `Decimal` per UTC day and UTC calendar month; another currency this month and a missing strategy block. The C-033 later-names test now includes `budget`. `tests/test_budget_gate.py` (30 tests). Tests: 1468 passed. |
 | C-038 | Rights Gate | C-7 | PASS. User-approved rules: `RightsGate` in `core/rights_gate.py` (`GateName.RIGHTS`) judges only the move to publishing and blocks on every rights record of the item that is unresolved at level high or unknown (unknown counts as high), one reason per record (`rights.unresolved_high`, `rights.unresolved_unknown`) naming its asset ref. Unresolved low and medium, resolved records at any level, and items without records pass. `tests/test_rights_gate.py` (18 tests). Tests: 1486 passed. |
 | C-039 | Policy Gate | C-8 | PASS. User-approved rules: `content/policy.py` adds the frozen read shape `PolicyCheck` / `PolicyFinding` (rule id, rule version, blocking flag from the rule's configuration, safe message), with no table until #080/#083. `PolicyGate` in `core/policy_gate.py` (`GateName.POLICY`) judges only the move to publishing: only the newest check counts, each blocking finding gives a `policy.failed` reason, non-blocking findings are warnings, and an item never checked blocks with `policy.not_checked`. `tests/test_policy_gate.py` (16 tests). Tests: 1502 passed. |
-| C-040 | Kill Switch Gate | C-9 | NOT_STARTED |
+| C-040 | Kill Switch Gate | C-9 | PASS. User-approved rules: `pipeline/kill_switch.py` adds the frozen read shape `EmergencyStop` (active, activated_by, activated_at, optional reason), with no store or toggle until #213. `KillSwitchGate` in `core/kill_switch_gate.py` (new `GateName.KILL_SWITCH`) reads the current stop on every evaluation and, while it is active, blocks every move into generating and the move to publishing with one `killswitch.active` reason (fixed message plus the activator's reason, not the activator). Other moves pass. The C-033 later-names test now includes `kill_switch`. `tests/test_kill_switch_gate.py` (35 tests). Tests: 1537 passed. |
 | C-041 | Idempotency Gate | C-10 | NOT_STARTED |
 | C-042 | Gate Tests | C-11 | NOT_STARTED |
 
@@ -134,4 +134,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - C-037 Budget Gate has PASSED.
 - C-038 Rights Gate has PASSED.
 - C-039 Policy Gate has PASSED.
-- Next task: **C-040 Kill Switch Gate**. It is NOT_STARTED.
+- C-040 Kill Switch Gate has PASSED.
+- Next task: **C-041 Idempotency Gate**. It is NOT_STARTED.

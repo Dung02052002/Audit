@@ -137,6 +137,7 @@ API notes (D-043, approved by the user on 2026-10-01):
 - Languages (D-045): `PUT /channels/{id}/strategy/languages` takes a primary and up to 5 ordered secondary BCP-47 tags. Tags are stored in canonical case (`en-us` becomes `en-US`) and none may repeat, the primary included.
 - Audience (D-046): `PUT /channels/{id}/strategy/audience` replaces the whole audience: a required description (at most 500 characters) and optional age range (13 to 100), up to 10 interests and a level. There are no fields for sensitive traits, and no audience under 13 can be targeted.
 - Niche (D-047): `PUT /channels/{id}/strategy/niche` replaces the whole niche: a name (at most 100 characters) and 1 to 10 ordered content pillars, each a unique name (at most 60) with an optional description (at most 300).
+- Brand (D-048): `PUT /channels/{id}/strategy/brand` replaces the whole brand: name, tone, tone keywords, voice dos and donts, banned phrases (for the script stage, #065-#074) and visual rules (colours, a font name and notes; no files). The spoken TTS voice is `VoiceProfile` (#087), not the brand.
 - Migrations (D-044): the runner applies each migration with foreign keys off and runs `PRAGMA foreign_key_check` before commit, so a migration may rebuild a referenced table (0003 rebuilds `strategy_profiles`).
 
 ## 5. Data flow

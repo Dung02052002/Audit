@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#047), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#048), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -25,6 +25,14 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   characters, unique ignoring case) and optional ``description`` (at most 300).
   The body replaces the whole niche; adding, removing or reordering pillars is
   sending the new list. Same create, version and audit rules as the market.
+- ``PUT /channels/{id}/strategy/brand`` (#048): ``name`` (at most 100), ``tone``
+  (at most 200), ``tone_keywords`` (at most 5 x 30), ``voice_dos`` and
+  ``voice_donts`` (each at most 10 x 200), ``banned_phrases`` (at most 30 x
+  50) and ``visual`` (``primary_color``, up to 5 ``accent_colors`` as
+  ``#RRGGBB``, ``font_family`` at most 100, ``notes`` at most 500). Lists keep
+  their order and do not repeat ignoring case; colours are upper-cased and
+  may not repeat. The body replaces the whole brand. The spoken voice is
+  ``VoiceProfile`` (#087), not this.
 
 Errors use the envelope of ``core/http.py``.
 """
@@ -43,9 +51,15 @@ from pydantic import (
 
 from ai_youtube_agent.content.strategy import (
     COUNTRY_PATTERN,
+    HEX_COLOR_PATTERN,
     LANGUAGE_TAG_PATTERN,
+    MAX_ACCENT_COLORS,
     MAX_AUDIENCE_AGE,
     MAX_AUDIENCE_DESCRIPTION,
+    MAX_BANNED_PHRASE,
+    MAX_BANNED_PHRASES,
+    MAX_BRAND_NAME,
+    MAX_FONT_FAMILY,
     MAX_INTEREST_LENGTH,
     MAX_INTERESTS,
     MAX_NICHE_NAME,
@@ -53,10 +67,18 @@ from ai_youtube_agent.content.strategy import (
     MAX_PILLAR_NAME,
     MAX_PILLARS,
     MAX_SECONDARY_LANGUAGES,
+    MAX_TONE,
+    MAX_TONE_KEYWORD,
+    MAX_TONE_KEYWORDS,
+    MAX_VISUAL_NOTES,
+    MAX_VOICE_RULE,
+    MAX_VOICE_RULES,
     MIN_AUDIENCE_AGE,
     AgeRange,
     Audience,
     AudienceLevel,
+    Brand,
+    BrandVisual,
     Niche,
     Pillar,
     StrategyProfile,
@@ -252,6 +274,127 @@ class NicheUpdate(BaseModel):
         )
 
 
+def _optional_text(value: str | None, what: str, limit: int) -> str | None:
+    return None if value is None else _text(value, what, limit)
+
+
+def _texts(values: list[str], what: str, count: int, limit: int) -> list[str]:
+    if len(values) > count:
+        raise ValueError(f"at most {count} {what} are allowed")
+    cleaned = [_text(value, what, limit) for value in values]
+    seen: set[str] = set()
+    for value in cleaned:
+        if value.casefold() in seen:
+            raise ValueError(f"{what} {value!r} repeats")
+        seen.add(value.casefold())
+    return cleaned
+
+
+def _color(value: str) -> str:
+    value = value.strip().upper()
+    if not HEX_COLOR_PATTERN.match(value):
+        raise ValueError(f"colour {value!r} must look like '#1A2B3C'")
+    return value
+
+
+class VisualBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_color: str | None = None
+    accent_colors: list[str] = Field(default_factory=list)
+    font_family: str | None = None
+    notes: str | None = None
+
+    @field_validator("primary_color")
+    @classmethod
+    def _check_primary(cls, value: str | None) -> str | None:
+        return None if value is None else _color(value)
+
+    @field_validator("accent_colors")
+    @classmethod
+    def _check_accents(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        if len(value) > MAX_ACCENT_COLORS:
+            raise ValueError(f"at most {MAX_ACCENT_COLORS} accent colours are allowed")
+        colors = [_color(color) for color in value]
+        primary = info.data.get("primary_color")
+        seen = {primary} if primary else set()
+        for color in colors:
+            if color in seen:
+                raise ValueError(f"colour {color} repeats, the primary included")
+            seen.add(color)
+        return colors
+
+    @field_validator("font_family")
+    @classmethod
+    def _check_font(cls, value: str | None) -> str | None:
+        return _optional_text(value, "font family", MAX_FONT_FAMILY)
+
+    @field_validator("notes")
+    @classmethod
+    def _check_notes(cls, value: str | None) -> str | None:
+        return _optional_text(value, "visual notes", MAX_VISUAL_NOTES)
+
+
+class BrandUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    tone: str | None = None
+    tone_keywords: list[str] = Field(default_factory=list)
+    voice_dos: list[str] = Field(default_factory=list)
+    voice_donts: list[str] = Field(default_factory=list)
+    banned_phrases: list[str] = Field(default_factory=list)
+    visual: VisualBody | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str) -> str:
+        return _text(value, "brand name", MAX_BRAND_NAME)
+
+    @field_validator("tone")
+    @classmethod
+    def _check_tone(cls, value: str | None) -> str | None:
+        return _optional_text(value, "tone", MAX_TONE)
+
+    @field_validator("tone_keywords")
+    @classmethod
+    def _check_keywords(cls, value: list[str]) -> list[str]:
+        return _texts(value, "tone keywords", MAX_TONE_KEYWORDS, MAX_TONE_KEYWORD)
+
+    @field_validator("voice_dos", "voice_donts")
+    @classmethod
+    def _check_rules(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        what = (info.field_name or "voice rules").replace("_", " ")
+        return _texts(value, what, MAX_VOICE_RULES, MAX_VOICE_RULE)
+
+    @field_validator("banned_phrases")
+    @classmethod
+    def _check_banned(cls, value: list[str]) -> list[str]:
+        return _texts(value, "banned phrases", MAX_BANNED_PHRASES, MAX_BANNED_PHRASE)
+
+    def brand(self) -> Brand:
+        visual = self.visual
+        return Brand(
+            self.name,
+            self.tone,
+            tuple(self.tone_keywords),
+            tuple(self.voice_dos),
+            tuple(self.voice_donts),
+            tuple(self.banned_phrases),
+            (
+                BrandVisual(
+                    visual.primary_color,
+                    tuple(visual.accent_colors),
+                    visual.font_family,
+                    visual.notes,
+                )
+                if visual
+                else None
+            ),
+        )
+
+
 def _body(profile: StrategyProfile) -> dict[str, Any]:
     return profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
 
@@ -330,6 +473,25 @@ def put_niche(
     change = settings.set_niche(
         channel_id,
         body.niche(),
+        expected_version=body.expected_version,
+        actor=actor,
+    )
+    if change.created:
+        response.status_code = status.HTTP_201_CREATED
+    return _body(change.profile)
+
+
+@router.put("/brand")
+def put_brand(
+    channel_id: str,
+    body: BrandUpdate,
+    settings: Settings,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    change = settings.set_brand(
+        channel_id,
+        body.brand(),
         expected_version=body.expected_version,
         actor=actor,
     )

@@ -9,6 +9,7 @@ from ai_youtube_agent.content.strategy import (
     Audience,
     AudienceLevel,
     Brand,
+    BrandVisual,
     Budget,
     Cadence,
     LanguageSettings,
@@ -17,6 +18,7 @@ from ai_youtube_agent.content.strategy import (
     Niche,
     Pillar,
     StrategyProfile,
+    setting_dict,
 )
 from ai_youtube_agent.content.voice import VoiceProfile
 from ai_youtube_agent.core.db.codec import format_decimal, parse_decimal
@@ -160,9 +162,7 @@ def _strategy_row(profile: StrategyProfile) -> dict:
             if niche
             else None
         ),
-        "brand_json": (
-            to_json({"name": brand.name, "tone": brand.tone}) if brand else None
-        ),
+        "brand_json": to_json(setting_dict(brand)) if brand else None,
         "cadence_shorts_per_day": cadence.shorts_per_day if cadence else None,
         "cadence_longform_per_day": cadence.longform_per_day if cadence else None,
         "budget_currency": budget.currency if budget else None,
@@ -204,7 +204,7 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
             else None
         ),
         niche=_niche(niche) if niche else None,
-        brand=Brand(brand["name"], brand["tone"]) if brand else None,
+        brand=_brand(brand) if brand else None,
         cadence=(
             Cadence(
                 shorts_per_day=row["cadence_shorts_per_day"],
@@ -265,6 +265,29 @@ def _niche(data: dict) -> Niche:
         for item in data["pillars"]
     )
     return Niche(data["name"], pillars)
+
+
+def _brand(data: dict) -> Brand:
+    # Rows written before #048 hold only the name and tone.
+    visual = data.get("visual")
+    return Brand(
+        data["name"],
+        data.get("tone"),
+        tuple(data.get("tone_keywords", ())),
+        tuple(data.get("voice_dos", ())),
+        tuple(data.get("voice_donts", ())),
+        tuple(data.get("banned_phrases", ())),
+        (
+            BrandVisual(
+                visual["primary_color"],
+                tuple(visual["accent_colors"]),
+                visual["font_family"],
+                visual["notes"],
+            )
+            if visual
+            else None
+        ),
+    )
 
 
 def _voice_row(voice: VoiceProfile) -> dict:

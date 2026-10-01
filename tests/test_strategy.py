@@ -356,7 +356,16 @@ def test_as_dict_is_json_friendly() -> None:
                 {"name": "investing", "description": None},
             ],
         },
-        "brand": {"name": "Money Minute", "tone": "calm and clear"},
+        # D-048 added the tone, voice and visual rules (user decision, 2026-10-01).
+        "brand": {
+            "name": "Money Minute",
+            "tone": "calm and clear",
+            "tone_keywords": [],
+            "voice_dos": [],
+            "voice_donts": [],
+            "banned_phrases": [],
+            "visual": None,
+        },
         "cadence": {"shorts_per_day": 2, "longform_per_day": 0},
         "budget": {
             "currency": "USD",

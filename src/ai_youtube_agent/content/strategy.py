@@ -58,6 +58,19 @@ MAX_NICHE_NAME = 100
 MAX_PILLARS = 10
 MAX_PILLAR_NAME = 60
 MAX_PILLAR_DESCRIPTION = 300
+# #048 brand limits, user decision 2026-10-01.
+MAX_BRAND_NAME = 100
+MAX_TONE = 200
+MAX_TONE_KEYWORDS = 5
+MAX_TONE_KEYWORD = 30
+MAX_VOICE_RULES = 10
+MAX_VOICE_RULE = 200
+MAX_BANNED_PHRASES = 30
+MAX_BANNED_PHRASE = 50
+MAX_ACCENT_COLORS = 5
+MAX_FONT_FAMILY = 100
+MAX_VISUAL_NOTES = 500
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-F]{6}$")
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -257,15 +270,92 @@ class Niche:
             raise ValueError("content pillars must not repeat")
 
 
+def _check_length(name: str, value: str, limit: int) -> None:
+    if len(value) > limit:
+        raise ValueError(f"{name} must be at most {limit} characters")
+
+
+def _check_texts(name: str, values: object, count: int, length: int) -> None:
+    """An ordered tuple of 0..count non-empty, unique (ignoring case) texts."""
+    if not isinstance(values, tuple):
+        raise TypeError(f"{name} must be a tuple")
+    if len(values) > count:
+        raise ValueError(f"at most {count} {name} are allowed")
+    for value in values:
+        _require_text(name, value)
+        _check_length(name, value, length)
+    if len({value.casefold() for value in values}) != len(values):
+        raise ValueError(f"{name} must not repeat")
+
+
+def _check_color(name: str, value: str) -> None:
+    if not HEX_COLOR_PATTERN.match(value):
+        raise ValueError(f"{name} {value!r} must be a colour like '#1A2B3C'")
+
+
+@dataclass(frozen=True)
+class BrandVisual:
+    """Visual rules (#048): colours, a font name and notes. No files."""
+
+    primary_color: str | None = None
+    accent_colors: tuple[str, ...] = ()
+    font_family: str | None = None
+    notes: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.primary_color is not None:
+            _check_color("primary colour", self.primary_color)
+        if not isinstance(self.accent_colors, tuple):
+            raise TypeError("accent_colors must be a tuple")
+        if len(self.accent_colors) > MAX_ACCENT_COLORS:
+            raise ValueError(f"at most {MAX_ACCENT_COLORS} accent colours are allowed")
+        for color in self.accent_colors:
+            _check_color("accent colour", color)
+        colors = [c for c in (self.primary_color, *self.accent_colors) if c]
+        if len(set(colors)) != len(colors):
+            raise ValueError("colours must not repeat, the primary colour included")
+        if self.font_family is not None:
+            _require_text("font family", self.font_family)
+            _check_length("font family", self.font_family, MAX_FONT_FAMILY)
+        if self.notes is not None:
+            _require_text("visual notes", self.notes)
+            _check_length("visual notes", self.notes, MAX_VISUAL_NOTES)
+
+
 @dataclass(frozen=True)
 class Brand:
+    """How the channel presents itself (#048, user decision 2026-10-01).
+
+    Tone and written voice: ``tone`` (free text), ``tone_keywords``,
+    ``voice_dos``, ``voice_donts`` and ``banned_phrases``. Visual rules live in
+    ``visual``. The spoken TTS voice is not here: it is ``VoiceProfile``
+    (B-018, #087).
+    """
+
     name: str
     tone: str | None = None
+    tone_keywords: tuple[str, ...] = ()
+    voice_dos: tuple[str, ...] = ()
+    voice_donts: tuple[str, ...] = ()
+    banned_phrases: tuple[str, ...] = ()
+    visual: BrandVisual | None = None
 
     def __post_init__(self) -> None:
         _require_text("brand name", self.name)
+        _check_length("brand name", self.name, MAX_BRAND_NAME)
         if self.tone is not None:
             _require_text("brand tone", self.tone)
+            _check_length("brand tone", self.tone, MAX_TONE)
+        _check_texts(
+            "tone keywords", self.tone_keywords, MAX_TONE_KEYWORDS, MAX_TONE_KEYWORD
+        )
+        _check_texts("voice dos", self.voice_dos, MAX_VOICE_RULES, MAX_VOICE_RULE)
+        _check_texts("voice donts", self.voice_donts, MAX_VOICE_RULES, MAX_VOICE_RULE)
+        _check_texts(
+            "banned phrases", self.banned_phrases, MAX_BANNED_PHRASES, MAX_BANNED_PHRASE
+        )
+        if self.visual is not None and not isinstance(self.visual, BrandVisual):
+            raise TypeError("visual must be a BrandVisual or None")
 
 
 @dataclass(frozen=True)

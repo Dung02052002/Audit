@@ -11,7 +11,8 @@ The rules were approved by the user on 2026-09-30:
 - A limit is exceeded when spend >= limit, so a limit of 0 blocks every
   cost-incurring move. The daily and monthly limits are both checked, and each
   one that is exceeded gives its own reason.
-- A day is a UTC day and a month a UTC calendar month.
+- A day and a month are calendar periods in the cadence time zone (D-050),
+  or UTC while no cadence is configured (#051, user decision 2026-10-02).
 - A cost in another currency this month blocks, because there is no exchange
   rate to sum it with (``budget.currency_mismatch``). A channel without a
   strategy profile blocks too, and so does a strategy whose budget is not
@@ -24,13 +25,18 @@ the budget guard (#180). The gate reads through ``StrategySource`` and
 """
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 from ai_youtube_agent.content.cost import CostRecord
 from ai_youtube_agent.core.content_item import ContentStatus
-from ai_youtube_agent.core.daily_limit_gate import StrategySource, day_window
+from ai_youtube_agent.core.daily_limit_gate import (
+    StrategySource,
+    day_window,
+    strategy_time_zone,
+)
 from ai_youtube_agent.core.gates import GateContext, GateName, GateReason, GateResult
 
 
@@ -44,16 +50,21 @@ class CostSource(Protocol):
     ) -> Sequence[CostRecord]: ...
 
 
-def month_window(moment: datetime) -> tuple[datetime, datetime]:
-    """The UTC calendar month containing ``moment``, as ``[start, end)``."""
+def month_window(moment: datetime, time_zone: str = "UTC") -> tuple[datetime, datetime]:
+    """The calendar month in ``time_zone`` containing ``moment``, as ``[start, end)``.
+
+    ``moment`` and the result are UTC.
+    """
     if not isinstance(moment, datetime) or moment.utcoffset() != timedelta(0):
         raise ValueError("moment must be timezone-aware UTC")
-    start = moment.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if start.month == 12:
-        end = start.replace(year=start.year + 1, month=1)
+    zone = ZoneInfo(time_zone)
+    local = moment.astimezone(zone)
+    start = datetime(local.year, local.month, 1, tzinfo=zone)
+    if local.month == 12:
+        end = datetime(local.year + 1, 1, 1, tzinfo=zone)
     else:
-        end = start.replace(month=start.month + 1)
-    return start, end
+        end = datetime(local.year, local.month + 1, 1, tzinfo=zone)
+    return start.astimezone(UTC), end.astimezone(UTC)
 
 
 class BudgetGate:
@@ -88,7 +99,8 @@ class BudgetGate:
                     "This channel has no budget configured.",
                 )
             ]
-        month_start, month_end = month_window(now)
+        time_zone = strategy_time_zone(strategy)
+        month_start, month_end = month_window(now, time_zone)
         records = self._costs.list_by_channel(
             channel_id, start=month_start, end=month_end
         )
@@ -101,7 +113,7 @@ class BudgetGate:
                     f"{budget.currency} budget.",
                 )
             ]
-        day_start, day_end = day_window(now)
+        day_start, day_end = day_window(now, time_zone)
         daily = sum(
             (r.amount for r in records if day_start <= r.incurred_at < day_end),
             Decimal(0),

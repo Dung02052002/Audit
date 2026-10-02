@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#050), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#051), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -50,10 +50,20 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   ``min_gap_minutes`` (0 to 1440, default 0). Nothing may repeat. A LongForm
   limit above 0 may be saved while ``LONGFORM_ENABLED`` is off. The body
   replaces the whole cadence.
+- ``PUT /channels/{id}/strategy/budget`` (#051, user decision 2026-10-02):
+  ``currency`` (ISO 4217, upper-cased), ``daily_limit`` and ``monthly_limit``
+  (a JSON number or a decimal string, 0 to 1,000,000, at most 2 decimal
+  places, stored and shown with 2 places, daily <= monthly) and
+  ``alert_thresholds`` (1 to 5 whole percentages from 1 to 100, no repeats,
+  stored ascending; default 50, 80, 100). The budget gate counts the day and
+  month in the cadence time zone. Changing the currency is allowed; costs in
+  the old currency this month block production until the month ends. The
+  body replaces the whole budget.
 
 Errors use the envelope of ``core/http.py``.
 """
 
+from decimal import Decimal
 from functools import cache
 from typing import Annotated, Any, Literal
 
@@ -70,16 +80,21 @@ from pydantic import (
 
 from ai_youtube_agent.content.strategy import (
     COUNTRY_PATTERN,
+    CURRENCY_PATTERN,
+    DEFAULT_ALERT_THRESHOLDS,
     HEX_COLOR_PATTERN,
     LANGUAGE_TAG_PATTERN,
     LONGFORM_MAX_SECONDS,
     LONGFORM_MIN_SECONDS,
     MAX_ACCENT_COLORS,
+    MAX_ALERT_THRESHOLDS,
     MAX_AUDIENCE_AGE,
     MAX_AUDIENCE_DESCRIPTION,
     MAX_BANNED_PHRASE,
     MAX_BANNED_PHRASES,
     MAX_BRAND_NAME,
+    MAX_BUDGET_AMOUNT,
+    MAX_BUDGET_DECIMALS,
     MAX_FONT_FAMILY,
     MAX_INTEREST_LENGTH,
     MAX_INTERESTS,
@@ -108,6 +123,7 @@ from ai_youtube_agent.content.strategy import (
     AudienceLevel,
     Brand,
     BrandVisual,
+    Budget,
     Cadence,
     FormatSettings,
     LongFormFormat,
@@ -573,6 +589,71 @@ class CadenceUpdate(BaseModel):
         )
 
 
+CENT = Decimal("0.01")
+
+
+def _amount(value: Decimal, what: str) -> Decimal:
+    if not value.is_finite() or value < 0:
+        raise ValueError(f"{what} must be a number of 0 or more")
+    if value > MAX_BUDGET_AMOUNT:
+        raise ValueError(f"{what} must be at most {MAX_BUDGET_AMOUNT}")
+    if value != value.quantize(CENT):
+        raise ValueError(
+            f"{what} must have at most {MAX_BUDGET_DECIMALS} decimal places"
+        )
+    return value.quantize(CENT)
+
+
+class BudgetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    currency: str
+    daily_limit: Decimal
+    monthly_limit: Decimal
+    alert_thresholds: list[Annotated[int, Field(ge=1, le=100, strict=True)]] = Field(
+        default_factory=lambda: list(DEFAULT_ALERT_THRESHOLDS)
+    )
+    expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("currency")
+    @classmethod
+    def _check_currency(cls, value: str) -> str:
+        value = value.strip().upper()
+        if not CURRENCY_PATTERN.match(value):
+            raise ValueError("currency must be an ISO 4217 code such as 'USD' or 'VND'")
+        return value
+
+    @field_validator("daily_limit", "monthly_limit")
+    @classmethod
+    def _check_amount(cls, value: Decimal, info: ValidationInfo) -> Decimal:
+        return _amount(value, (info.field_name or "limit").replace("_", " "))
+
+    @field_validator("alert_thresholds")
+    @classmethod
+    def _check_thresholds(cls, value: list[int]) -> list[int]:
+        if not 1 <= len(value) <= MAX_ALERT_THRESHOLDS:
+            raise ValueError(
+                f"a budget needs 1 to {MAX_ALERT_THRESHOLDS} alert thresholds"
+            )
+        if len(set(value)) != len(value):
+            raise ValueError("alert thresholds must not repeat")
+        return sorted(value)
+
+    @model_validator(mode="after")
+    def _check_order(self) -> "BudgetUpdate":
+        if self.daily_limit > self.monthly_limit:
+            raise ValueError("daily_limit must not exceed monthly_limit")
+        return self
+
+    def budget(self) -> Budget:
+        return Budget(
+            self.currency,
+            self.daily_limit,
+            self.monthly_limit,
+            tuple(self.alert_thresholds),
+        )
+
+
 def _body(profile: StrategyProfile) -> dict[str, Any]:
     return profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
 
@@ -708,6 +789,25 @@ def put_cadence(
     change = settings.set_cadence(
         channel_id,
         body.cadence(),
+        expected_version=body.expected_version,
+        actor=actor,
+    )
+    if change.created:
+        response.status_code = status.HTTP_201_CREATED
+    return _body(change.profile)
+
+
+@router.put("/budget")
+def put_budget(
+    channel_id: str,
+    body: BudgetUpdate,
+    settings: Settings,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    change = settings.set_budget(
+        channel_id,
+        body.budget(),
         expected_version=body.expected_version,
         actor=actor,
     )

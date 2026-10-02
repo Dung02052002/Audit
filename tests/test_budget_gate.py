@@ -8,7 +8,8 @@ Rules the user approved on 2026-09-30:
   limit in one currency; actual spend comes from ``CostRecord``s;
 - the budget is exceeded when spend >= limit;
 - a cost in another currency blocks (``budget.currency_mismatch``);
-- a day is a UTC day and a month a UTC calendar month.
+- a day is a UTC day and a month a UTC calendar month; since D-051 (user
+  decision 2026-10-02) both follow the cadence time zone, UTC by default.
 """
 
 import dataclasses
@@ -17,7 +18,7 @@ from decimal import Decimal
 
 import pytest
 
-from ai_youtube_agent.content.strategy import Budget
+from ai_youtube_agent.content.strategy import Budget, Cadence
 from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.budget_gate import BudgetGate, month_window
 from ai_youtube_agent.core.content_item import ContentItem, ContentStatus
@@ -56,12 +57,15 @@ class Graph:
         monthly: str = "100.00",
         currency: str = "USD",
         strategy: bool = True,
+        time_zone: str = "UTC",
     ) -> None:
         self.database = database
         self.channel = make_channel()
         profile = make_strategy_profile(self.channel)
         self.profile = dataclasses.replace(
-            profile, budget=Budget(currency, D(daily), D(monthly))
+            profile,
+            budget=Budget(currency, D(daily), D(monthly)),
+            cadence=Cadence(2, 0, time_zone),
         )
         with database.transaction() as connection:
             ChannelRepository(connection).add(self.channel)
@@ -305,3 +309,60 @@ def test_a_broken_source_blocks_through_evaluate_gates(database: Database) -> No
             [gate], GateContext(item, ContentStatus.GENERATING, SYSTEM, NOON)
         )
     assert [r.code for r in report.reasons] == ["gate.error"]
+
+
+# The cadence time zone (D-051, user decision 2026-10-02)
+
+HCM = "Asia/Ho_Chi_Minh"  # UTC+7, no daylight saving
+
+
+def test_a_month_in_a_time_zone_starts_at_local_midnight() -> None:
+    start, end = month_window(NOON, HCM)
+
+    assert start == MONTH - timedelta(hours=7)
+    assert end == datetime(2026, 10, 1, tzinfo=UTC) - timedelta(hours=7)
+
+
+def test_a_month_across_daylight_saving_ends_at_local_midnight() -> None:
+    start, end = month_window(datetime(2026, 3, 15, tzinfo=UTC), "America/New_York")
+
+    assert start == datetime(2026, 3, 1, 5, tzinfo=UTC)  # EST, UTC-5
+    assert end == datetime(2026, 4, 1, 4, tzinfo=UTC)  # EDT, UTC-4
+
+
+def test_the_daily_budget_counts_the_local_day(database: Database) -> None:
+    graph = Graph(database, daily="1.00", time_zone=HCM)
+    # 18:00 UTC on 29 Sep is 01:00 on 30 Sep local, the same day as NOON.
+    graph.spent("1.00", DAY - timedelta(hours=6))
+
+    assert codes(graph.evaluate()) == ["budget.daily_exceeded"]
+
+
+def test_the_previous_local_day_does_not_count(database: Database) -> None:
+    graph = Graph(database, daily="1.00", time_zone=HCM)
+    # 16:30 UTC on 29 Sep is 23:30 on 29 Sep local.
+    graph.spent("1.00", DAY - timedelta(hours=7, minutes=30))
+
+    assert graph.evaluate().is_passed
+
+
+def test_the_monthly_budget_counts_the_local_month(database: Database) -> None:
+    graph = Graph(database, monthly="10.00", time_zone=HCM)
+    # 17:30 UTC on 31 Aug is 00:30 on 1 Sep local: this month there.
+    graph.spent("10.00", MONTH - timedelta(hours=6, minutes=30))
+    # 17:30 UTC on 30 Sep is 00:30 on 1 Oct local: next month there.
+    october = datetime(2026, 10, 1, tzinfo=UTC) - timedelta(hours=6, minutes=30)
+
+    assert codes(graph.evaluate()) == ["budget.monthly_exceeded"]
+    assert graph.evaluate(when=october).is_passed
+
+
+def test_without_a_cadence_the_budget_uses_utc(database: Database) -> None:
+    graph = Graph(database, daily="1.00", strategy=False)
+    profile = dataclasses.replace(graph.profile, cadence=None)
+    with database.transaction() as connection:
+        StrategyProfileRepository(connection).add(profile)
+    # 23:30 UTC on 29 Sep is the previous UTC day.
+    graph.spent("1.00", DAY - timedelta(minutes=30))
+
+    assert graph.evaluate().is_passed

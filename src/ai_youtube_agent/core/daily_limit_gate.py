@@ -75,6 +75,11 @@ def day_window(moment: datetime, time_zone: str = "UTC") -> tuple[datetime, date
     )
 
 
+def strategy_time_zone(strategy: StrategyProfile) -> str:
+    """The cadence time zone of a strategy, or UTC without a cadence (#051)."""
+    return strategy.cadence.time_zone if strategy.cadence else "UTC"
+
+
 class DailyLimitGate:
     name = GateName.DAILY_LIMIT
 

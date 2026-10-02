@@ -162,13 +162,14 @@ def test_migration_0005_keeps_old_cadences_as_utc_defaults(tmp_path: Path) -> No
     profile = make_strategy_profile(channel, cadence=Cadence(4, 1))
     row = _strategy_row(profile)
     del row["cadence_schedule_json"]
+    del row["budget_alert_thresholds_json"]  # added by 0006 (D-051)
     with database.transaction() as connection:
         ChannelRepository(connection).add(channel)
         StrategyProfileRepository(connection)._insert("strategy_profiles", row)
 
     report = migrate(path)
 
-    assert report.applied == (5,)
+    assert report.applied == (5, 6)
     with database.transaction() as connection:
         stored = StrategyProfileRepository(connection).get(profile.id)
     assert stored == profile

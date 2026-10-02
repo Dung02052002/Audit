@@ -183,6 +183,9 @@ def _strategy_row(profile: StrategyProfile) -> dict:
         "budget_monthly_limit": (
             format_decimal(budget.monthly_limit) if budget else None
         ),
+        "budget_alert_thresholds_json": (
+            to_json(list(budget.alert_thresholds)) if budget else None
+        ),
         "monetization_json": (
             to_json({"tracked_sources": list(money.tracked_sources)}) if money else None
         ),
@@ -237,6 +240,12 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
                 row["budget_currency"],
                 parse_decimal(row["budget_daily_limit"]),
                 parse_decimal(row["budget_monthly_limit"]),
+                # A budget stored before #051 has no thresholds: the defaults.
+                *(
+                    (tuple(from_json(row["budget_alert_thresholds_json"])),)
+                    if present("budget_alert_thresholds_json")
+                    else ()
+                ),
             )
             if present("budget_currency")
             else None

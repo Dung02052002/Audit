@@ -407,6 +407,8 @@ def test_as_dict_is_json_friendly() -> None:
             "currency": "USD",
             "daily_limit": "5.00",
             "monthly_limit": "100.00",
+            # D-051 added alert thresholds (user decision, 2026-10-02).
+            "alert_thresholds": [50, 80, 100],
         },
         "monetization": {"tracked_sources": ["ads", "affiliate"]},
         "version": 1,

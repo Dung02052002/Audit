@@ -12,7 +12,7 @@ A ``StrategyProfile`` is the user-controlled strategy of one channel:
 - ``cadence``: daily limits per content type (``SHORTS`` and ``LONGFORM``),
   the channel time zone and publish preferences (#050).
 - ``budget``: daily and monthly spend limits as ``Decimal`` in an ISO 4217
-  currency.
+  currency, and alert thresholds in percent (#051).
 - ``monetization``: the revenue sources the user wants tracked. These are
   tracking goals, not guaranteed outcomes.
 - ``version``, ``updated_by``, ``created_at`` and ``updated_at``: the version
@@ -87,6 +87,11 @@ MAX_LONGFORM_PER_DAY = 5
 MAX_PUBLISH_TIMES = 5
 MAX_PUBLISH_GAP_MINUTES = 24 * 60
 PUBLISH_TIME_PATTERN = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+# #051 budget limits, user decision 2026-10-02.
+MAX_BUDGET_AMOUNT = Decimal("1000000")
+MAX_BUDGET_DECIMALS = 2
+MAX_ALERT_THRESHOLDS = 5
+DEFAULT_ALERT_THRESHOLDS = (50, 80, 100)
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -586,9 +591,23 @@ class Cadence:
 
 @dataclass(frozen=True)
 class Budget:
+    """Spend limits and alert thresholds (#051, user decision 2026-10-02).
+
+    ``daily_limit`` and ``monthly_limit`` are ``Decimal`` amounts in
+    ``currency`` (ISO 4217), from 0 to 1,000,000 with at most 2 decimal places,
+    daily <= monthly. ``BudgetGate`` (C-037) counts the day and month in the
+    cadence time zone. ``alert_thresholds`` are 1 to 5 ascending percentages
+    (1 to 100) of each limit, 50, 80 and 100 by default; the budget guard
+    (#180) raises the alerts and the alert cards (#202) show them. Changing the
+    currency is allowed: costs already recorded this month in the old currency
+    make ``BudgetGate`` block (``budget.currency_mismatch``) until the month
+    ends.
+    """
+
     currency: str
     daily_limit: Decimal
     monthly_limit: Decimal
+    alert_thresholds: tuple[int, ...] = DEFAULT_ALERT_THRESHOLDS
 
     def __post_init__(self) -> None:
         if not CURRENCY_PATTERN.match(self.currency):
@@ -599,8 +618,24 @@ class Budget:
             value = getattr(self, name)
             if not isinstance(value, Decimal) or not value.is_finite() or value < 0:
                 raise ValueError(f"{name} must be a finite Decimal of 0 or more")
+            if value > MAX_BUDGET_AMOUNT:
+                raise ValueError(f"{name} must be at most {MAX_BUDGET_AMOUNT}")
+            if value.as_tuple().exponent < -MAX_BUDGET_DECIMALS:
+                raise ValueError(
+                    f"{name} must have at most {MAX_BUDGET_DECIMALS} decimal places"
+                )
         if self.daily_limit > self.monthly_limit:
             raise ValueError("daily_limit must not exceed monthly_limit")
+        if not isinstance(self.alert_thresholds, tuple):
+            raise TypeError("alert_thresholds must be a tuple")
+        if not 1 <= len(self.alert_thresholds) <= MAX_ALERT_THRESHOLDS:
+            raise ValueError(
+                f"a budget needs 1 to {MAX_ALERT_THRESHOLDS} alert thresholds"
+            )
+        for value in self.alert_thresholds:
+            _check_whole("alert threshold", value, 1, 100)
+        if list(self.alert_thresholds) != sorted(set(self.alert_thresholds)):
+            raise ValueError("alert thresholds must not repeat and must be ascending")
 
 
 @dataclass(frozen=True)

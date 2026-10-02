@@ -156,8 +156,8 @@ def test_migration_0003_keeps_existing_profiles_and_references(tmp_path: Path) -
     # A profile from before #049 has no format; 0004 (D-049) adds that column.
     profile = make_strategy_profile(channel, format=None)
     item = make_content_item(channel, profile)
-    # Columns added by later migrations (0004, 0005) are left out.
-    later = {"format_json", "cadence_schedule_json"}
+    # Columns added by later migrations (0004-0006) are left out.
+    later = {"format_json", "cadence_schedule_json", "budget_alert_thresholds_json"}
     row = {k: v for k, v in _strategy_row(profile).items() if k not in later}
     with database.transaction() as connection:
         ChannelRepository(connection).add(channel)
@@ -166,9 +166,9 @@ def test_migration_0003_keeps_existing_profiles_and_references(tmp_path: Path) -
 
     report = migrate(path)
 
-    assert report.applied == (3, 4, 5)
+    assert report.applied == (3, 4, 5, 6)
     assert report.backup_path is not None
-    assert current_version(path) == 5
+    assert current_version(path) == 6
     with database.transaction() as connection:
         assert StrategyProfileRepository(connection).get(profile.id) == profile
         assert ContentItemRepository(connection).get(item.id) == item

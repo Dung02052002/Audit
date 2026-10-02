@@ -44,8 +44,9 @@ T1 = datetime(2026, 9, 30, 9, 30, 15, 250, tzinfo=UTC)
 TS = format_datetime(T0)
 SHA = "a" * 64
 # 0001 initial schema, 0002 production starts (C-036), 0003 partial strategy
-# (D-044), 0004 format settings (D-049), 0005 cadence schedule (D-050)
-LATEST = 5
+# (D-044), 0004 format settings (D-049), 0005 cadence schedule (D-050),
+# 0006 budget alerts (D-051)
+LATEST = 6
 
 ENTITY_TABLES = {
     "channels",
@@ -154,7 +155,7 @@ def seed_item(connection: sqlite3.Connection) -> None:
     connection.execute(
         "INSERT INTO strategy_profiles VALUES ('sp1', 'ch1', 'VN', 'vi', '[]', "
         "'{}', '{}', '{}', 2, 0, 'USD', '5.00', '100.00', '{}', 1, 'user', 'u1', "
-        "?, ?, NULL, NULL)",
+        "?, ?, NULL, NULL, NULL)",
         (TS, TS),
     )
     connection.execute(
@@ -179,13 +180,14 @@ def test_default_migrations_are_packaged() -> None:
     migrations = default_migrations()
     path = files("ai_youtube_agent.core.db") / "migrations" / "0001_initial_schema.sql"
 
-    assert [m.version for m in migrations] == [1, 2, 3, 4, 5]
+    assert [m.version for m in migrations] == [1, 2, 3, 4, 5, 6]
     assert [m.name for m in migrations] == [
         "initial_schema",
         "production_starts",
         "partial_strategy",
         "format_settings",
         "cadence_schedule",
+        "budget_alerts",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -310,7 +312,8 @@ def test_foreign_keys_are_enforced(conn) -> None:
         "brand_json, cadence_shorts_per_day, cadence_longform_per_day, "
         "budget_currency, budget_daily_limit, budget_monthly_limit, "
         "monetization_json, version, updated_by_kind, updated_by_id, created_at, "
-        "updated_at, format_json, cadence_schedule_json FROM strategy_profiles",
+        "updated_at, format_json, cadence_schedule_json, "
+        "budget_alert_thresholds_json FROM strategy_profiles",
         "INSERT INTO artifacts VALUES ('a2', 'ci1', 'video', 1, 'u2', '" + SHA + "', "
         "1, 'video/mp4', '" + TS + "')",
         "INSERT INTO scripts VALUES ('s2', 'ci1', 1, 'Other', '" + TS + "')",

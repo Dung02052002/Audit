@@ -41,6 +41,7 @@ from ai_youtube_agent.providers.research import (
     SearchQuery,
     SearchResults,
 )
+from ai_youtube_agent.providers.research_cache import ResearchCache
 
 T0 = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 URL = "https://example.com/a"
@@ -345,7 +346,9 @@ def test_bootstrap_registers_one_mock(tmp_path: Path) -> None:
 
     provider = container.resolve(ResearchProvider)
 
-    assert isinstance(provider, MockResearchProvider)
+    # Since E-061 (user decision 2026-10-03) the mock is used through the cache.
+    assert isinstance(provider, ResearchCache)
+    assert isinstance(provider.inner, MockResearchProvider)
     assert container.resolve(ResearchProvider) is provider
 
 
@@ -353,7 +356,7 @@ def test_an_unhealthy_provider_degrades_health(tmp_path: Path) -> None:
     container = build_container(
         Settings(environment=Environment.TEST, database_path=tmp_path / "a.db")
     )
-    container.resolve(ResearchProvider).set_healthy(False)
+    container.resolve(ResearchProvider).inner.set_healthy(False)
 
     with TestClient(create_app(container)) as client:
         response = client.get("/health")

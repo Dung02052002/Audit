@@ -42,6 +42,7 @@ from ai_youtube_agent.core.db.migrate import (
 from ai_youtube_agent.main import create_app
 from ai_youtube_agent.pipeline.job import AIJobStatus, SessionStatus
 from ai_youtube_agent.pipeline.publish import PublishStatus
+from ai_youtube_agent.providers.research_cache import CacheKind
 
 T0 = datetime(2026, 9, 30, 8, 0, tzinfo=UTC)
 T1 = datetime(2026, 9, 30, 9, 30, 15, 250, tzinfo=UTC)
@@ -51,8 +52,9 @@ SHA = "a" * 64
 # (D-044), 0004 format settings (D-049), 0005 cadence schedule (D-050),
 # 0006 budget alerts (D-051), 0007 sources (E-055), 0008 research requests
 # (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058),
-# 0011 topic scores (E-059), 0012 research reports (E-060)
-LATEST = 12
+# 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
+# cache (E-061)
+LATEST = 13
 
 ENTITY_TABLES = {
     "channels",
@@ -96,6 +98,7 @@ ENTITY_TABLES = {
     "topic_scorings",  # E-059
     "topic_scores",  # E-059
     "research_reports",  # E-060
+    "research_cache",  # E-061
 }
 
 ENUM_COLUMNS = {
@@ -126,6 +129,7 @@ ENUM_COLUMNS = {
     ("source_duplicates", "reason"): DuplicateReason,  # E-057
     ("topic_evidence", "field"): EvidenceField,  # E-058
     ("research_reports", "uncertainty"): Uncertainty,  # E-060
+    ("research_cache", "kind"): CacheKind,  # E-061
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -202,7 +206,7 @@ def test_default_migrations_are_packaged() -> None:
     migrations = default_migrations()
     path = files("ai_youtube_agent.core.db") / "migrations" / "0001_initial_schema.sql"
 
-    assert [m.version for m in migrations] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    assert [m.version for m in migrations] == list(range(1, LATEST + 1))
     assert [m.name for m in migrations] == [
         "initial_schema",
         "production_starts",
@@ -216,6 +220,7 @@ def test_default_migrations_are_packaged() -> None:
         "research_topics",
         "topic_scores",
         "research_reports",
+        "research_cache",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()

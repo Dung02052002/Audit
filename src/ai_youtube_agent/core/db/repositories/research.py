@@ -441,3 +441,30 @@ class ResearchReportRepository(Repository):
             "SELECT * FROM research_reports WHERE request_id = ?", (request_id,)
         )
         return ResearchReport.from_dict(from_json(row["report_json"])) if row else None
+
+
+class ResearchCacheRepository(Repository):
+    """Cached provider answers (#061): upserted per key, never deleted."""
+
+    table = "research_cache"
+
+    def get(self, kind: str, key: str) -> tuple[dict, datetime] | None:
+        row = self._one(
+            "SELECT payload_json, cached_at FROM research_cache "
+            "WHERE kind = ? AND key = ?",
+            (kind, key),
+        )
+        if row is None:
+            return None
+        return from_json(row["payload_json"]), parse_dt(row["cached_at"])
+
+    def put(
+        self, kind: str, key: str, provider: str, payload: dict, cached_at: datetime
+    ) -> None:
+        self.connection.execute(
+            "INSERT INTO research_cache (kind, key, provider, payload_json, cached_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (kind, key) DO UPDATE SET "
+            "provider = excluded.provider, payload_json = excluded.payload_json, "
+            "cached_at = excluded.cached_at",
+            (kind, key, provider, to_json(payload), dt(cached_at)),
+        )

@@ -24,6 +24,12 @@ The interface every research source implements, as the user approved on
 
 These values are what providers return. #055 normalises them into the Source
 model. The mock is ``providers/mock_research.py``.
+
+Since #061 (user decision 2026-10-03) ``SearchResults`` and
+``FetchedDocument`` carry an optional ``cache`` (``CacheInfo``): None from a
+provider, set by ``ResearchCache`` (``providers/research_cache.py``) to say
+whether the value was a cache hit, a miss, a refresh or a stale fallback. The
+``ResearchProvider`` methods do not change.
 """
 
 from dataclasses import dataclass
@@ -54,6 +60,35 @@ def check_url(name: str, url: str) -> None:
 def _check_utc(name: str, value: datetime) -> None:
     if not isinstance(value, datetime) or value.utcoffset() != timedelta(0):
         raise ValueError(f"{name} must be timezone-aware UTC")
+
+
+class CacheOutcome(StrEnum):
+    HIT = "hit"  # fresh cached value, the provider was not called
+    MISS = "miss"  # nothing cached, the provider answered and was cached
+    REFRESH = "refresh"  # cached value was stale, the provider answered
+    STALE_FALLBACK = "stale_fallback"  # stale value served: retryable failure
+
+
+@dataclass(frozen=True)
+class CacheInfo:
+    """How ``ResearchCache`` served a value (#061)."""
+
+    outcome: CacheOutcome
+    cached_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.outcome, CacheOutcome):
+            raise TypeError("outcome must be a CacheOutcome")
+        _check_utc("cached_at", self.cached_at)
+
+    @property
+    def stale(self) -> bool:
+        return self.outcome is CacheOutcome.STALE_FALLBACK
+
+
+def _check_cache(value: object) -> None:
+    if value is not None and not isinstance(value, CacheInfo):
+        raise TypeError("cache must be a CacheInfo or None")
 
 
 @dataclass(frozen=True)
@@ -114,6 +149,7 @@ class SearchResults:
     hits: tuple[SearchHit, ...]
     provider: str
     searched_at: datetime
+    cache: CacheInfo | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.hits, tuple) or not all(
@@ -129,6 +165,7 @@ class SearchResults:
         if not self.provider:
             raise ValueError("provider must not be empty")
         _check_utc("searched_at", self.searched_at)
+        _check_cache(self.cache)
 
 
 @dataclass(frozen=True)
@@ -141,6 +178,7 @@ class FetchedDocument:
     fetched_at: datetime
     provider: str
     truncated: bool = False
+    cache: CacheInfo | None = None
 
     def __post_init__(self) -> None:
         check_url("url", self.url)
@@ -160,6 +198,7 @@ class FetchedDocument:
         if not isinstance(self.truncated, bool):
             raise TypeError("truncated must be true or false")
         _check_utc("fetched_at", self.fetched_at)
+        _check_cache(self.cache)
 
 
 class ResearchErrorCode(StrEnum):

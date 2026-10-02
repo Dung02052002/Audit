@@ -13,7 +13,7 @@ memory (#030).
 
 ``ResearchProvider`` (#054) is chosen by ``Settings.research_provider``; only
 the in-memory mock exists, and its ``check`` is the ``research_provider``
-health check.
+health check. Since #061 it is wrapped in ``ResearchCache``.
 """
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
@@ -39,6 +39,7 @@ from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.research import ResearchProvider
+from ai_youtube_agent.providers.research_cache import ResearchCache
 
 logger = get_logger(__name__)
 
@@ -93,8 +94,11 @@ def build_container(settings: Settings | None = None) -> Container:
 def _build_research_provider(container: Container) -> ResearchProvider:
     kind = container.resolve(Settings).research_provider
     if kind is ResearchProviderKind.MOCK:
-        return MockResearchProvider()
-    raise ValueError(f"unknown research provider {kind!r}")
+        provider: ResearchProvider = MockResearchProvider()
+    else:
+        raise ValueError(f"unknown research provider {kind!r}")
+    # #061: every provider is used through the SQLite research cache.
+    return ResearchCache(provider, container.resolve(Database))
 
 
 def _build_audit_sink(container: Container) -> AuditSink:

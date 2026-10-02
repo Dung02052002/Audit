@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#049), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#050), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -41,10 +41,20 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   ``aspect_ratio`` is fixed (Shorts ``9:16``, LongForm ``16:9``) and may be
   left out. LongForm defaults can be saved while ``LONGFORM_ENABLED`` is off.
   The body replaces the whole format setting.
+- ``PUT /channels/{id}/strategy/cadence`` (#050, user decision 2026-10-02):
+  ``shorts_per_day`` (0 to 20) and ``longform_per_day`` (0 to 5), the daily
+  limits counted per calendar day in ``time_zone`` (an IANA name, any case,
+  stored in its canonical case; default ``UTC``), and ``shorts_schedule`` and
+  ``longform_schedule``: ``weekdays`` (1 to 7, stored Monday first; default
+  every day), up to 5 ``times`` as ``HH:MM`` (stored ascending) and
+  ``min_gap_minutes`` (0 to 1440, default 0). Nothing may repeat. A LongForm
+  limit above 0 may be saved while ``LONGFORM_ENABLED`` is off. The body
+  replaces the whole cadence.
 
 Errors use the envelope of ``core/http.py``.
 """
 
+from functools import cache
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Response, status
@@ -73,11 +83,15 @@ from ai_youtube_agent.content.strategy import (
     MAX_FONT_FAMILY,
     MAX_INTEREST_LENGTH,
     MAX_INTERESTS,
+    MAX_LONGFORM_PER_DAY,
     MAX_NICHE_NAME,
     MAX_PILLAR_DESCRIPTION,
     MAX_PILLAR_NAME,
     MAX_PILLARS,
+    MAX_PUBLISH_GAP_MINUTES,
+    MAX_PUBLISH_TIMES,
     MAX_SECONDARY_LANGUAGES,
+    MAX_SHORTS_PER_DAY,
     MAX_TONE,
     MAX_TONE_KEYWORD,
     MAX_TONE_KEYWORDS,
@@ -85,6 +99,7 @@ from ai_youtube_agent.content.strategy import (
     MAX_VOICE_RULE,
     MAX_VOICE_RULES,
     MIN_AUDIENCE_AGE,
+    PUBLISH_TIME_PATTERN,
     SHORTS_MAX_SECONDS,
     SHORTS_MIN_SECONDS,
     AgeRange,
@@ -93,14 +108,18 @@ from ai_youtube_agent.content.strategy import (
     AudienceLevel,
     Brand,
     BrandVisual,
+    Cadence,
     FormatSettings,
     LongFormFormat,
     Niche,
     Pillar,
+    PublishSchedule,
     Resolution,
     ShortsFormat,
     StrategyProfile,
+    Weekday,
     canonical_language_tag,
+    time_zones,
 )
 from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.core.audit import Actor
@@ -481,6 +500,79 @@ class FormatUpdate(BaseModel):
         )
 
 
+class ScheduleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    weekdays: list[Weekday] = Field(default_factory=lambda: list(Weekday))
+    times: list[str] = Field(default_factory=list)
+    min_gap_minutes: int = Field(
+        default=0, ge=0, le=MAX_PUBLISH_GAP_MINUTES, strict=True
+    )
+
+    @field_validator("weekdays")
+    @classmethod
+    def _check_weekdays(cls, value: list[Weekday]) -> list[Weekday]:
+        if not value:
+            raise ValueError("at least one publish weekday is needed")
+        if len(set(value)) != len(value):
+            raise ValueError("weekdays must not repeat")
+        return sorted(value, key=list(Weekday).index)
+
+    @field_validator("times")
+    @classmethod
+    def _check_times(cls, value: list[str]) -> list[str]:
+        if len(value) > MAX_PUBLISH_TIMES:
+            raise ValueError(f"at most {MAX_PUBLISH_TIMES} publish times are allowed")
+        times = [time.strip() for time in value]
+        for time in times:
+            if not PUBLISH_TIME_PATTERN.match(time):
+                raise ValueError(f"publish time {time!r} must look like '18:30'")
+        if len(set(times)) != len(times):
+            raise ValueError("publish times must not repeat")
+        return sorted(times)
+
+    def schedule(self) -> PublishSchedule:
+        return PublishSchedule(
+            tuple(self.weekdays), tuple(self.times), self.min_gap_minutes
+        )
+
+
+@cache
+def _zones_by_folded_name() -> dict[str, str]:
+    return {name.casefold(): name for name in time_zones()}
+
+
+class CadenceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shorts_per_day: int = Field(ge=0, le=MAX_SHORTS_PER_DAY, strict=True)
+    longform_per_day: int = Field(ge=0, le=MAX_LONGFORM_PER_DAY, strict=True)
+    time_zone: str = "UTC"
+    shorts_schedule: ScheduleBody = Field(default_factory=ScheduleBody)
+    longform_schedule: ScheduleBody = Field(default_factory=ScheduleBody)
+    expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("time_zone")
+    @classmethod
+    def _check_time_zone(cls, value: str) -> str:
+        name = _zones_by_folded_name().get(value.strip().casefold())
+        if name is None:
+            raise ValueError(
+                f"time zone {value!r} must be an IANA name such as "
+                "'Asia/Ho_Chi_Minh' or 'UTC'"
+            )
+        return name
+
+    def cadence(self) -> Cadence:
+        return Cadence(
+            self.shorts_per_day,
+            self.longform_per_day,
+            self.time_zone,
+            self.shorts_schedule.schedule(),
+            self.longform_schedule.schedule(),
+        )
+
+
 def _body(profile: StrategyProfile) -> dict[str, Any]:
     return profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
 
@@ -597,6 +689,25 @@ def put_format(
     change = settings.set_format(
         channel_id,
         body.formats(),
+        expected_version=body.expected_version,
+        actor=actor,
+    )
+    if change.created:
+        response.status_code = status.HTTP_201_CREATED
+    return _body(change.profile)
+
+
+@router.put("/cadence")
+def put_cadence(
+    channel_id: str,
+    body: CadenceUpdate,
+    settings: Settings,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    change = settings.set_cadence(
+        channel_id,
+        body.cadence(),
         expected_version=body.expected_version,
         actor=actor,
     )

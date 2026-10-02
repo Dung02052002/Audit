@@ -476,3 +476,52 @@ def test_a_broken_source_blocks_through_evaluate_gates(database: Database) -> No
             [gate], GateContext(item, ContentStatus.GENERATING, SYSTEM, NOON)
         )
     assert [r.code for r in report.reasons] == ["gate.error"]
+
+
+# The cadence time zone (D-050, user decision 2026-10-02)
+
+HO_CHI_MINH = Cadence(
+    shorts_per_day=1, longform_per_day=0, time_zone="Asia/Ho_Chi_Minh"
+)
+
+
+def test_a_day_in_a_time_zone_starts_at_local_midnight() -> None:
+    # 2026-09-30 12:00 UTC is 19:00 in Ho Chi Minh City (UTC+7, no DST).
+    start, end = day_window(NOON, "Asia/Ho_Chi_Minh")
+
+    assert start == DAY - timedelta(hours=7)
+    assert end == DAY + timedelta(hours=17)
+
+
+@pytest.mark.parametrize(
+    ("moment", "hours"),
+    [
+        (datetime(2026, 3, 8, 12, tzinfo=UTC), 23),  # US clocks go forward
+        (datetime(2026, 11, 1, 12, tzinfo=UTC), 25),  # US clocks go back
+        (datetime(2026, 6, 1, 12, tzinfo=UTC), 24),
+    ],
+)
+def test_a_local_day_follows_daylight_saving(moment: datetime, hours: int) -> None:
+    start, end = day_window(moment, "America/New_York")
+
+    assert end - start == timedelta(hours=hours)
+    assert start.utcoffset() == timedelta(0)
+
+
+def test_the_gate_counts_the_local_day(database: Database) -> None:
+    graph = Graph(database, HO_CHI_MINH)
+    # 18:00 UTC on 29 Sep is 01:00 on 30 Sep in Ho Chi Minh City: the same
+    # local day as NOON (19:00 local), though an earlier UTC day.
+    graph.started(DAY - timedelta(hours=6))
+
+    result = graph.evaluate(graph.item(), ContentStatus.GENERATING)
+
+    assert codes(result) == ["daily_limit.production_reached"]
+
+
+def test_the_gate_ignores_the_previous_local_day(database: Database) -> None:
+    graph = Graph(database, HO_CHI_MINH)
+    # 16:30 UTC on 29 Sep is 23:30 on 29 Sep local: yesterday there.
+    graph.started(DAY - timedelta(hours=7, minutes=30))
+
+    assert graph.evaluate(graph.item(), ContentStatus.GENERATING).is_passed

@@ -9,7 +9,8 @@ A ``StrategyProfile`` is the user-controlled strategy of one channel:
 - ``audience``, ``niche``, ``brand``: short descriptions of who the channel is
   for, what it covers and how it presents itself.
 - ``format``: production defaults for Shorts and LongForm (#049).
-- ``cadence``: daily limits per content type (``SHORTS`` and ``LONGFORM``).
+- ``cadence``: daily limits per content type (``SHORTS`` and ``LONGFORM``),
+  the channel time zone and publish preferences (#050).
 - ``budget``: daily and monthly spend limits as ``Decimal`` in an ISO 4217
   currency.
 - ``monetization``: the revenue sources the user wants tracked. These are
@@ -39,7 +40,9 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from functools import cache
 from typing import Any
+from zoneinfo import available_timezones
 
 from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.errors import DomainError
@@ -78,6 +81,12 @@ SHORTS_MIN_SECONDS = 1
 SHORTS_MAX_SECONDS = 180
 LONGFORM_MIN_SECONDS = 181
 LONGFORM_MAX_SECONDS = 4 * 60 * 60
+# #050 cadence limits, user decision 2026-10-02.
+MAX_SHORTS_PER_DAY = 20
+MAX_LONGFORM_PER_DAY = 5
+MAX_PUBLISH_TIMES = 5
+MAX_PUBLISH_GAP_MINUTES = 24 * 60
+PUBLISH_TIME_PATTERN = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -477,16 +486,102 @@ class FormatSettings:
             raise TypeError("longform must be a LongFormFormat")
 
 
+@cache
+def time_zones() -> frozenset[str]:
+    """The IANA time zone names (from the ``tzdata`` package on Windows)."""
+    return frozenset(available_timezones())
+
+
+class Weekday(StrEnum):
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+    SUNDAY = "sunday"
+
+
+ALL_WEEKDAYS: tuple[Weekday, ...] = tuple(Weekday)
+
+
+def _check_whole(name: str, value: object, low: int, high: int) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not low <= value <= high
+    ):
+        raise ValueError(f"{name} must be a whole number from {low} to {high}")
+
+
 @dataclass(frozen=True)
-class Cadence:
-    shorts_per_day: int
-    longform_per_day: int
+class PublishSchedule:
+    """When one content type should be published (#050).
+
+    ``weekdays`` (1 to 7, Monday first, no repeats) and up to 5 preferred
+    ``times`` (``HH:MM`` in the cadence time zone, ascending, no repeats) are
+    preferences for the job scheduler (#205) and publishers (#149, #150);
+    ``min_gap_minutes`` (0 to 1440) is the least time between two publishes of
+    this type. No gate reads them yet.
+    """
+
+    weekdays: tuple[Weekday, ...] = ALL_WEEKDAYS
+    times: tuple[str, ...] = ()
+    min_gap_minutes: int = 0
 
     def __post_init__(self) -> None:
-        for name in ("shorts_per_day", "longform_per_day"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ValueError(f"{name} must be a whole number of 0 or more")
+        if not isinstance(self.weekdays, tuple) or not all(
+            isinstance(day, Weekday) for day in self.weekdays
+        ):
+            raise TypeError("weekdays must be a tuple of Weekday values")
+        if not self.weekdays:
+            raise ValueError("at least one publish weekday is needed")
+        order = [ALL_WEEKDAYS.index(day) for day in self.weekdays]
+        if order != sorted(set(order)):
+            raise ValueError("weekdays must not repeat and must start from Monday")
+        if not isinstance(self.times, tuple):
+            raise TypeError("times must be a tuple")
+        if len(self.times) > MAX_PUBLISH_TIMES:
+            raise ValueError(f"at most {MAX_PUBLISH_TIMES} publish times are allowed")
+        for value in self.times:
+            if not isinstance(value, str) or not PUBLISH_TIME_PATTERN.match(value):
+                raise ValueError(f"publish time {value!r} must look like '18:30'")
+        if list(self.times) != sorted(set(self.times)):
+            raise ValueError("publish times must not repeat and must be ascending")
+        _check_whole(
+            "min_gap_minutes", self.min_gap_minutes, 0, MAX_PUBLISH_GAP_MINUTES
+        )
+
+
+@dataclass(frozen=True)
+class Cadence:
+    """Daily limits and scheduling preferences (#050, user decision 2026-10-02).
+
+    ``shorts_per_day`` (0 to 20) and ``longform_per_day`` (0 to 5) are the
+    daily limits ``DailyLimitGate`` enforces, per calendar day in
+    ``time_zone`` (an IANA name such as ``Asia/Ho_Chi_Minh``; ``UTC`` by
+    default). A LongForm limit above 0 may be saved while ``LONGFORM_ENABLED``
+    is off; the flag still controls production. Each type has its own
+    ``PublishSchedule``.
+    """
+
+    shorts_per_day: int
+    longform_per_day: int
+    time_zone: str = "UTC"
+    shorts_schedule: PublishSchedule = PublishSchedule()
+    longform_schedule: PublishSchedule = PublishSchedule()
+
+    def __post_init__(self) -> None:
+        _check_whole("shorts_per_day", self.shorts_per_day, 0, MAX_SHORTS_PER_DAY)
+        _check_whole("longform_per_day", self.longform_per_day, 0, MAX_LONGFORM_PER_DAY)
+        if self.time_zone not in time_zones():
+            raise ValueError(
+                f"time zone {self.time_zone!r} must be an IANA name such as "
+                "'Asia/Ho_Chi_Minh' or 'UTC'"
+            )
+        for name in ("shorts_schedule", "longform_schedule"):
+            if not isinstance(getattr(self, name), PublishSchedule):
+                raise TypeError(f"{name} must be a PublishSchedule")
 
 
 @dataclass(frozen=True)

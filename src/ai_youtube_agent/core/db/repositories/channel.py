@@ -20,9 +20,11 @@ from ai_youtube_agent.content.strategy import (
     Monetization,
     Niche,
     Pillar,
+    PublishSchedule,
     Resolution,
     ShortsFormat,
     StrategyProfile,
+    Weekday,
     setting_dict,
 )
 from ai_youtube_agent.content.voice import VoiceProfile
@@ -173,6 +175,9 @@ def _strategy_row(profile: StrategyProfile) -> dict:
         ),
         "cadence_shorts_per_day": cadence.shorts_per_day if cadence else None,
         "cadence_longform_per_day": cadence.longform_per_day if cadence else None,
+        "cadence_schedule_json": (
+            to_json(_schedule_json(cadence)) if cadence else None
+        ),
         "budget_currency": budget.currency if budget else None,
         "budget_daily_limit": format_decimal(budget.daily_limit) if budget else None,
         "budget_monthly_limit": (
@@ -217,9 +222,12 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
             _format(from_json(row["format_json"])) if present("format_json") else None
         ),
         cadence=(
-            Cadence(
-                shorts_per_day=row["cadence_shorts_per_day"],
-                longform_per_day=row["cadence_longform_per_day"],
+            _cadence(
+                row["cadence_shorts_per_day"],
+                row["cadence_longform_per_day"],
+                from_json(row["cadence_schedule_json"])
+                if present("cadence_schedule_json")
+                else None,
             )
             if present("cadence_shorts_per_day")
             else None
@@ -298,6 +306,36 @@ def _brand(data: dict) -> Brand:
             if visual
             else None
         ),
+    )
+
+
+def _schedule_json(cadence: Cadence) -> dict:
+    data = setting_dict(cadence)
+    return {
+        "time_zone": data["time_zone"],
+        "shorts": data["shorts_schedule"],
+        "longform": data["longform_schedule"],
+    }
+
+
+def _cadence(shorts: int, longform: int, data: dict | None) -> Cadence:
+    # A cadence stored before #050 has only the limits: UTC, default schedule.
+    if data is None:
+        return Cadence(shorts, longform)
+    return Cadence(
+        shorts,
+        longform,
+        data["time_zone"],
+        _schedule(data["shorts"]),
+        _schedule(data["longform"]),
+    )
+
+
+def _schedule(data: dict) -> PublishSchedule:
+    return PublishSchedule(
+        tuple(Weekday(day) for day in data["weekdays"]),
+        tuple(data["times"]),
+        data["min_gap_minutes"],
     )
 
 

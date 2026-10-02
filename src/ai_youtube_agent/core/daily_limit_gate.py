@@ -10,7 +10,9 @@ The rules were approved by the user on 2026-09-30:
   ``production_starts`` log. A publish is a move to publishing, counted from
   publish jobs created that day that have not failed, leaving out the item's
   own jobs.
-- A day is 00:00-24:00 UTC.
+- A day is 00:00-24:00 in the cadence time zone (UTC until #050 let the user
+  choose one, user decision 2026-10-02). With daylight saving a day may be 23
+  or 25 hours long.
 - Any other move passes. A channel without a strategy profile is blocked, and a
   limit of 0 blocks every production or publish of that type.
 - Since #044 a strategy may not have its cadence configured yet. That blocks
@@ -20,8 +22,9 @@ The gate reads through ``StrategySource`` and ``UsageSource``, which
 ``StrategyProfileRepository`` and ``DailyUsageRepository`` satisfy.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 from ai_youtube_agent.content.strategy import StrategyProfile
 from ai_youtube_agent.core.content_item import ContentStatus, ContentType
@@ -54,12 +57,22 @@ class UsageSource(Protocol):
     ) -> int: ...
 
 
-def day_window(moment: datetime) -> tuple[datetime, datetime]:
-    """The UTC calendar day containing ``moment``, as ``[start, end)``."""
+def day_window(moment: datetime, time_zone: str = "UTC") -> tuple[datetime, datetime]:
+    """The calendar day in ``time_zone`` containing ``moment``, as ``[start, end)``.
+
+    ``moment`` and the result are UTC. The day starts at local midnight and
+    ends at the next local midnight.
+    """
     if not isinstance(moment, datetime) or moment.utcoffset() != timedelta(0):
         raise ValueError("moment must be timezone-aware UTC")
-    start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start, start + timedelta(days=1)
+    zone = ZoneInfo(time_zone)
+    day = moment.astimezone(zone).date()
+    start = datetime(day.year, day.month, day.day, tzinfo=zone)
+    end = start.date() + timedelta(days=1)
+    return (
+        start.astimezone(UTC),
+        datetime(end.year, end.month, end.day, tzinfo=zone).astimezone(UTC),
+    )
 
 
 class DailyLimitGate:
@@ -103,7 +116,7 @@ class DailyLimitGate:
             if item.content_type is ContentType.SHORTS
             else strategy.cadence.longform_per_day
         )
-        start, end = day_window(context.at)
+        start, end = day_window(context.at, strategy.cadence.time_zone)
         if production:
             used = self._usage.count_production_starts(
                 item.channel_id, item.content_type, start, end

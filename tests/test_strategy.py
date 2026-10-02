@@ -42,6 +42,8 @@ SETTINGS = {
     "monetization": Monetization(("ads", "affiliate")),
 }
 
+WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
 
 def at(moment: datetime):
     return lambda: moment
@@ -388,7 +390,19 @@ def test_as_dict_is_json_friendly() -> None:
                 "aspect_ratio": "16:9",
             },
         },
-        "cadence": {"shorts_per_day": 2, "longform_per_day": 0},
+        # D-050 added the time zone and publish preferences (user decision,
+        # 2026-10-02); the defaults are UTC, every day, no times and no gap.
+        "cadence": {
+            "shorts_per_day": 2,
+            "longform_per_day": 0,
+            "time_zone": "UTC",
+            "shorts_schedule": {"weekdays": WEEK, "times": [], "min_gap_minutes": 0},
+            "longform_schedule": {
+                "weekdays": WEEK,
+                "times": [],
+                "min_gap_minutes": 0,
+            },
+        },
         "budget": {
             "currency": "USD",
             "daily_limit": "5.00",

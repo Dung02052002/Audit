@@ -18,7 +18,12 @@ from ai_youtube_agent.content.research_request import (
     ResearchRequest,
     ResearchStatus,
 )
-from ai_youtube_agent.content.source import EvidenceNote, Source
+from ai_youtube_agent.content.source import (
+    DuplicateReason,
+    EvidenceNote,
+    Source,
+    SourceDuplicate,
+)
 from ai_youtube_agent.core.db.repositories.base import (
     Repository,
     actor_columns,
@@ -48,6 +53,7 @@ class SourceRepository(Repository):
                 "evidence_notes_json": to_json(
                     [note.as_dict() for note in source.evidence_notes]
                 ),
+                "content_fingerprint": source.content_fingerprint,
             },
         )
 
@@ -95,6 +101,7 @@ def _source(row: sqlite3.Row) -> Source:
             EvidenceNote(item["note"], item["quote"])
             for item in from_json(row["evidence_notes_json"])
         ),
+        content_fingerprint=row["content_fingerprint"],
     )
 
 
@@ -204,3 +211,55 @@ def _request_row(request: ResearchRequest) -> dict:
         "finished_at": dt(request.finished_at),
         "failures_json": to_json([f.as_dict() for f in request.failures]),
     }
+
+
+class SourceDuplicateRepository(Repository):
+    """Deduplication results (#057): written once per request, never changed."""
+
+    table = "source_duplicates"
+
+    def add(
+        self,
+        request_id: str,
+        duplicates: Sequence[SourceDuplicate],
+        deduplicated_at: datetime,
+    ) -> None:
+        self._insert(
+            "source_deduplications",
+            {"request_id": request_id, "deduplicated_at": dt(deduplicated_at)},
+        )
+        for duplicate in duplicates:
+            self._insert(
+                self.table,
+                {
+                    "request_id": request_id,
+                    "source_id": duplicate.source_id,
+                    "duplicate_of": duplicate.duplicate_of,
+                    "reason": duplicate.reason.value,
+                    "similarity": duplicate.similarity,
+                },
+            )
+
+    def get(
+        self, request_id: str
+    ) -> tuple[datetime, tuple[SourceDuplicate, ...]] | None:
+        """When the request was deduplicated and its duplicates, or None."""
+        row = self._one(
+            "SELECT deduplicated_at FROM source_deduplications WHERE request_id = ?",
+            (request_id,),
+        )
+        if row is None:
+            return None
+        rows = self._all(
+            "SELECT * FROM source_duplicates WHERE request_id = ? ORDER BY rowid",
+            (request_id,),
+        )
+        return parse_dt(row["deduplicated_at"]), tuple(
+            SourceDuplicate(
+                r["source_id"],
+                r["duplicate_of"],
+                DuplicateReason(r["reason"]),
+                r["similarity"],
+            )
+            for r in rows
+        )

@@ -18,6 +18,9 @@ channel. The rules were approved by the user on 2026-10-02:
   and rank that found each; ``failures`` lists what failed (search or fetch,
   target, error code, attempts).
 
+``query_warnings`` (#057) lists pairs of queries that are near-duplicates
+(word Jaccard from 0.8); they are allowed, only reported.
+
 Any actor may make a request; ``requested_by`` records who. A request is
 frozen: ``start`` and ``finish`` return new values.
 """
@@ -29,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+from ai_youtube_agent.content.similarity import SHORT_TEXT_THRESHOLD, word_jaccard
 from ai_youtube_agent.core.audit import Actor
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.providers.research import MAX_QUERY_LENGTH
@@ -130,6 +134,15 @@ class CollectionFailure:
 
 
 @dataclass(frozen=True)
+class QueryWarning:
+    """Two queries of one request that look almost the same (#057)."""
+
+    first: str
+    second: str
+    similarity: float
+
+
+@dataclass(frozen=True)
 class ResearchRequest:
     id: str
     channel_id: str
@@ -204,6 +217,15 @@ class ResearchRequest:
             requested_by=actor,
             created_at=now,
             updated_at=now,
+        )
+
+    @property
+    def query_warnings(self) -> tuple[QueryWarning, ...]:
+        return tuple(
+            QueryWarning(first, second, round(similarity, 4))
+            for i, first in enumerate(self.queries)
+            for second in self.queries[i + 1 :]
+            if (similarity := word_jaccard(first, second)) >= SHORT_TEXT_THRESHOLD
         )
 
     @property

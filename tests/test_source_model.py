@@ -205,6 +205,7 @@ def test_as_dict() -> None:
         "published_at": "2026-10-01T12:00:00+00:00",
         "retrieved_at": "2026-10-02T12:00:00+00:00",
         "evidence_notes": [{"note": "n", "quote": "q"}],
+        "content_fingerprint": None,  # E-057
     }
 
 

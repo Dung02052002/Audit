@@ -19,6 +19,8 @@ approved by the user on 2026-10-02:
   most 500 characters) and an optional verbatim ``quote`` (at most 1,000).
   ``Source.from_fetch`` checks that each quote occurs in the fetched text.
 - ``id`` is a random hex id. ``Evidence.source_ref`` (B-017) holds it.
+- ``content_fingerprint`` (#057) is the simhash of the fetched text
+  (``content/similarity.py``), or None when unknown; the text is not kept.
 
 A source is an immutable record.
 """
@@ -28,9 +30,14 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import StrEnum
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from ai_youtube_agent.content.similarity import (
+    FINGERPRINT_PATTERN,
+    content_fingerprint,
+)
 from ai_youtube_agent.providers.research import (
     FetchedDocument,
     SearchHit,
@@ -117,6 +124,7 @@ class Source:
     published_at: datetime | None
     retrieved_at: datetime
     evidence_notes: tuple[EvidenceNote, ...] = ()
+    content_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -141,6 +149,10 @@ class Source:
             raise TypeError("evidence_notes must be a tuple of EvidenceNote values")
         if len(self.evidence_notes) > MAX_NOTES:
             raise ValueError(f"a source has at most {MAX_NOTES} evidence notes")
+        if self.content_fingerprint is not None and not FINGERPRINT_PATTERN.match(
+            self.content_fingerprint
+        ):
+            raise ValueError("content fingerprint must be 16 lower-case hex digits")
 
     @classmethod
     def create(
@@ -153,6 +165,7 @@ class Source:
         final_url: str | None = None,
         published_at: datetime | None = None,
         evidence_notes: Iterable[EvidenceNote] = (),
+        content_fingerprint: str | None = None,
     ) -> "Source":
         final = final_url or url
         return cls(
@@ -165,6 +178,7 @@ class Source:
             published_at=published_at,
             retrieved_at=retrieved_at,
             evidence_notes=tuple(evidence_notes),
+            content_fingerprint=content_fingerprint,
         )
 
     @classmethod
@@ -179,7 +193,7 @@ class Source:
 
         The title is the page title, else the hit title, else the normalised
         URL. The publication time comes from the hit. Every quote must occur in
-        the fetched text.
+        the fetched text. The content fingerprint is taken from the text.
         """
         notes = tuple(evidence_notes)
         for note in notes:
@@ -201,6 +215,7 @@ class Source:
             final_url=document.final_url,
             published_at=hit.published_at if hit else None,
             evidence_notes=notes,
+            content_fingerprint=content_fingerprint(document.text),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -216,4 +231,28 @@ class Source:
             ),
             "retrieved_at": self.retrieved_at.isoformat(),
             "evidence_notes": [note.as_dict() for note in self.evidence_notes],
+            "content_fingerprint": self.content_fingerprint,
         }
+
+
+class DuplicateReason(StrEnum):
+    """Why one source is a near-duplicate of another (#057)."""
+
+    FINGERPRINT = "fingerprint"
+    TITLE = "title"
+
+
+@dataclass(frozen=True)
+class SourceDuplicate:
+    source_id: str
+    duplicate_of: str
+    reason: DuplicateReason
+    similarity: float
+
+    def __post_init__(self) -> None:
+        if self.source_id == self.duplicate_of:
+            raise ValueError("a source cannot duplicate itself")
+        if not isinstance(self.reason, DuplicateReason):
+            raise TypeError("reason must be a DuplicateReason")
+        if not 0 <= self.similarity <= 1:
+            raise ValueError("similarity must be from 0 to 1")

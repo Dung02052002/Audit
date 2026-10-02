@@ -122,7 +122,11 @@ class SourceCollector:
             actor,
             EntityRef("research_request", request.id),
             AuditResult.SUCCESS,
-            {"channel_id": channel_id, "queries": len(request.queries)},
+            {
+                "channel_id": channel_id,
+                "queries": len(request.queries),
+                "similar_queries": len(request.query_warnings),
+            },
         )
         return request
 

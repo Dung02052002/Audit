@@ -22,6 +22,8 @@ from ai_youtube_agent.content.strategy import (
     Pillar,
     PublishSchedule,
     Resolution,
+    RevenueGoal,
+    RevenueSource,
     ShortsFormat,
     StrategyProfile,
     Weekday,
@@ -186,9 +188,7 @@ def _strategy_row(profile: StrategyProfile) -> dict:
         "budget_alert_thresholds_json": (
             to_json(list(budget.alert_thresholds)) if budget else None
         ),
-        "monetization_json": (
-            to_json({"tracked_sources": list(money.tracked_sources)}) if money else None
-        ),
+        "monetization_json": to_json(_monetization_json(money)) if money else None,
         "version": profile.version,
         **actor_columns("updated_by", profile.updated_by),
         "created_at": dt(profile.created_at),
@@ -251,7 +251,7 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
             else None
         ),
         monetization=(
-            Monetization(tuple(from_json(row["monetization_json"])["tracked_sources"]))
+            _monetization(from_json(row["monetization_json"]))
             if present("monetization_json")
             else None
         ),
@@ -345,6 +345,46 @@ def _schedule(data: dict) -> PublishSchedule:
         tuple(Weekday(day) for day in data["weekdays"]),
         tuple(data["times"]),
         data["min_gap_minutes"],
+    )
+
+
+def _monetization_json(money: Monetization) -> dict:
+    # Targets go through the codec, so 1E+2 is stored as the canonical "100".
+    return {
+        "goals": [
+            {
+                "source": goal.source.value,
+                "monthly_target": (
+                    format_decimal(goal.monthly_target)
+                    if goal.monthly_target is not None
+                    else None
+                ),
+                "note": goal.note,
+            }
+            for goal in money.goals
+        ],
+        "currency": money.currency,
+    }
+
+
+def _monetization(data: dict) -> Monetization:
+    # Rows written before #052 hold only source names, without targets.
+    if "tracked_sources" in data:
+        return Monetization(
+            tuple(RevenueGoal(RevenueSource(name)) for name in data["tracked_sources"])
+        )
+    return Monetization(
+        tuple(
+            RevenueGoal(
+                RevenueSource(goal["source"]),
+                parse_decimal(goal["monthly_target"])
+                if goal["monthly_target"] is not None
+                else None,
+                goal["note"],
+            )
+            for goal in data["goals"]
+        ),
+        data["currency"],
     )
 
 

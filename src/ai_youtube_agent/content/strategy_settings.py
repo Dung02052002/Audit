@@ -1,10 +1,10 @@
-"""Strategy settings (Prompt Pack v8, prompts #044-#051), context C1.
+"""Strategy settings (Prompt Pack v8, prompts #044-#052), context C1.
 
 ``StrategySettings`` is the service behind the strategy API. #044 adds the
 market, #045 the languages, #046 the audience, #047 the niche, #048 the
 brand, #049 the Shorts and LongForm format defaults, #050 the cadence, #051 the
-budget; #052 adds one more setting through the same ``_save``. The rules were
-approved by the user on 2026-10-01 (#049 to #051 on 2026-10-02):
+budget and #052 the monetization goals, all through the same ``_save``. The
+rules were approved by the user on 2026-10-01 (#049 to #052 on 2026-10-02):
 
 - A channel's strategy profile is created by the first setting a user saves,
   with every other setting left unconfigured (``missing_settings``). #053
@@ -44,6 +44,7 @@ from ai_youtube_agent.content.strategy import (
     FormatSettings,
     LanguageSettings,
     Market,
+    Monetization,
     Niche,
     StrategyProfile,
     setting_dict,
@@ -221,6 +222,22 @@ class StrategySettings:
             channel_id,
             "budget",
             budget,
+            expected_version=expected_version,
+            actor=actor,
+        )
+
+    def set_monetization(
+        self,
+        channel_id: str,
+        monetization: Monetization,
+        *,
+        expected_version: int | None,
+        actor: Actor,
+    ) -> StrategyChange:
+        return self._save(
+            channel_id,
+            "monetization",
+            monetization,
             expected_version=expected_version,
             actor=actor,
         )

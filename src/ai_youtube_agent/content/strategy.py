@@ -13,8 +13,9 @@ A ``StrategyProfile`` is the user-controlled strategy of one channel:
   the channel time zone and publish preferences (#050).
 - ``budget``: daily and monthly spend limits as ``Decimal`` in an ISO 4217
   currency, and alert thresholds in percent (#051).
-- ``monetization``: the revenue sources the user wants tracked. These are
-  tracking goals, not guaranteed outcomes.
+- ``monetization``: the revenue sources the user wants tracked, each with an
+  optional monthly target (#052). These are tracking goals, not guaranteed
+  outcomes.
 - ``version``, ``updated_by``, ``created_at`` and ``updated_at``: the version
   starts at 1 and grows by one on every change. Timestamps are UTC.
 
@@ -92,6 +93,11 @@ MAX_BUDGET_AMOUNT = Decimal("1000000")
 MAX_BUDGET_DECIMALS = 2
 MAX_ALERT_THRESHOLDS = 5
 DEFAULT_ALERT_THRESHOLDS = (50, 80, 100)
+# #052 monetization, user decision 2026-10-02.
+MAX_GOAL_NOTE = 200
+MONETIZATION_NOTICE = (
+    "Revenue goals are tracking targets, not guaranteed or expected outcomes."
+)
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -589,6 +595,18 @@ class Cadence:
                 raise TypeError(f"{name} must be a PublishSchedule")
 
 
+def _check_money(name: str, value: object) -> None:
+    """A ``Decimal`` from 0 to 1,000,000 with at most 2 decimal places (#051)."""
+    if not isinstance(value, Decimal) or not value.is_finite() or value < 0:
+        raise ValueError(f"{name} must be a finite Decimal of 0 or more")
+    if value > MAX_BUDGET_AMOUNT:
+        raise ValueError(f"{name} must be at most {MAX_BUDGET_AMOUNT}")
+    if value.as_tuple().exponent < -MAX_BUDGET_DECIMALS:
+        raise ValueError(
+            f"{name} must have at most {MAX_BUDGET_DECIMALS} decimal places"
+        )
+
+
 @dataclass(frozen=True)
 class Budget:
     """Spend limits and alert thresholds (#051, user decision 2026-10-02).
@@ -615,15 +633,7 @@ class Budget:
                 f"currency {self.currency!r} must be an ISO 4217 code such as 'USD'"
             )
         for name in ("daily_limit", "monthly_limit"):
-            value = getattr(self, name)
-            if not isinstance(value, Decimal) or not value.is_finite() or value < 0:
-                raise ValueError(f"{name} must be a finite Decimal of 0 or more")
-            if value > MAX_BUDGET_AMOUNT:
-                raise ValueError(f"{name} must be at most {MAX_BUDGET_AMOUNT}")
-            if value.as_tuple().exponent < -MAX_BUDGET_DECIMALS:
-                raise ValueError(
-                    f"{name} must have at most {MAX_BUDGET_DECIMALS} decimal places"
-                )
+            _check_money(name, getattr(self, name))
         if self.daily_limit > self.monthly_limit:
             raise ValueError("daily_limit must not exceed monthly_limit")
         if not isinstance(self.alert_thresholds, tuple):
@@ -638,18 +648,79 @@ class Budget:
             raise ValueError("alert thresholds must not repeat and must be ascending")
 
 
+class RevenueSource(StrEnum):
+    """The revenue sources a channel can track (#052, user decision 2026-10-02).
+
+    The values keep the lowercase names used before #052 and by
+    ``RevenueRecord.revenue_type`` (B-024); #173 formalises revenue types.
+    """
+
+    ADS = "ads"
+    SHORTS_ADS = "shorts_ads"
+    MEMBERSHIPS = "memberships"
+    SUPER_THANKS = "super_thanks"
+    SUPER_CHAT = "super_chat"
+    SPONSORSHIPS = "sponsorships"
+    AFFILIATE = "affiliate"
+    MERCHANDISE = "merchandise"
+
+
 @dataclass(frozen=True)
-class Monetization:
-    tracked_sources: tuple[str, ...] = ()
+class RevenueGoal:
+    """One tracked revenue source with an optional monthly target (#052).
+
+    ``monthly_target`` is a goal in the monetization currency, never a promised
+    or expected amount; without it the source is only tracked.
+    """
+
+    source: RevenueSource
+    monthly_target: Decimal | None = None
+    note: str | None = None
 
     def __post_init__(self) -> None:
-        for source in self.tracked_sources:
-            if not SOURCE_PATTERN.match(source):
-                raise ValueError(
-                    f"revenue source {source!r} must be a lowercase name such as 'ads'"
-                )
-        if len(set(self.tracked_sources)) != len(self.tracked_sources):
+        if not isinstance(self.source, RevenueSource):
+            raise TypeError("source must be a RevenueSource")
+        if self.monthly_target is not None:
+            _check_money("monthly_target", self.monthly_target)
+        if self.note is not None:
+            _require_text("goal note", self.note)
+            _check_length("goal note", self.note, MAX_GOAL_NOTE)
+
+
+@dataclass(frozen=True)
+class Monetization:
+    """Revenue-source tracking goals, not guaranteed outcomes (#052).
+
+    ``goals`` lists 0 to 8 sources in the user's order, each source at most
+    once; an empty list is a valid choice (a channel that does not earn yet).
+    ``currency`` (ISO 4217) is required as soon as one goal has a monthly
+    target. Nothing reads a target as revenue: actual revenue is
+    ``RevenueRecord`` (B-024).
+    """
+
+    goals: tuple[RevenueGoal, ...] = ()
+    currency: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.goals, tuple) or not all(
+            isinstance(goal, RevenueGoal) for goal in self.goals
+        ):
+            raise TypeError("goals must be a tuple of RevenueGoal values")
+        sources = [goal.source for goal in self.goals]
+        if len(set(sources)) != len(sources):
             raise ValueError("revenue sources must not repeat")
+        if self.currency is not None and not CURRENCY_PATTERN.match(self.currency):
+            raise ValueError(
+                f"currency {self.currency!r} must be an ISO 4217 code such as 'USD'"
+            )
+        if self.currency is None and any(
+            goal.monthly_target is not None for goal in self.goals
+        ):
+            raise ValueError("a currency is needed for monthly targets")
+
+    @property
+    def tracked_sources(self) -> tuple[RevenueSource, ...]:
+        return tuple(goal.source for goal in self.goals)
 
 
 SETTING_TYPES: dict[str, type] = {

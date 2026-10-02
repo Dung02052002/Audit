@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#051), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#052), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -59,6 +59,16 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   month in the cadence time zone. Changing the currency is allowed; costs in
   the old currency this month block production until the month ends. The
   body replaces the whole budget.
+- ``PUT /channels/{id}/strategy/monetization`` (#052, user decision
+  2026-10-02): ordered ``goals`` (0 to 8, each source at most once), each a
+  ``source`` (ads, shorts_ads, memberships, super_thanks, super_chat,
+  sponsorships, affiliate, merchandise), an optional ``monthly_target`` (0 to
+  1,000,000, at most 2 decimal places, shown with 2) and an optional ``note``
+  (at most 200 characters); ``currency`` (ISO 4217) is required when any goal
+  has a target. The body replaces the whole setting. Targets are goals, not
+  guaranteed outcomes: whenever monetization is configured, the strategy body
+  carries the read-only ``goals_are_not_guaranteed: true`` and ``notice`` in
+  the ``monetization`` object (a ``PUT`` that sends them is refused).
 
 Errors use the envelope of ``core/http.py``.
 """
@@ -96,6 +106,7 @@ from ai_youtube_agent.content.strategy import (
     MAX_BUDGET_AMOUNT,
     MAX_BUDGET_DECIMALS,
     MAX_FONT_FAMILY,
+    MAX_GOAL_NOTE,
     MAX_INTEREST_LENGTH,
     MAX_INTERESTS,
     MAX_LONGFORM_PER_DAY,
@@ -114,6 +125,7 @@ from ai_youtube_agent.content.strategy import (
     MAX_VOICE_RULE,
     MAX_VOICE_RULES,
     MIN_AUDIENCE_AGE,
+    MONETIZATION_NOTICE,
     PUBLISH_TIME_PATTERN,
     SHORTS_MAX_SECONDS,
     SHORTS_MIN_SECONDS,
@@ -127,10 +139,13 @@ from ai_youtube_agent.content.strategy import (
     Cadence,
     FormatSettings,
     LongFormFormat,
+    Monetization,
     Niche,
     Pillar,
     PublishSchedule,
     Resolution,
+    RevenueGoal,
+    RevenueSource,
     ShortsFormat,
     StrategyProfile,
     Weekday,
@@ -654,8 +669,75 @@ class BudgetUpdate(BaseModel):
         )
 
 
+class GoalBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: RevenueSource
+    monthly_target: Decimal | None = None
+    note: str | None = None
+
+    @field_validator("monthly_target")
+    @classmethod
+    def _check_target(cls, value: Decimal | None) -> Decimal | None:
+        return None if value is None else _amount(value, "monthly target")
+
+    @field_validator("note")
+    @classmethod
+    def _check_note(cls, value: str | None) -> str | None:
+        return _optional_text(value, "goal note", MAX_GOAL_NOTE)
+
+
+class MonetizationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    goals: list[GoalBody] = Field(default_factory=list)
+    currency: str | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("goals")
+    @classmethod
+    def _check_goals(cls, value: list[GoalBody]) -> list[GoalBody]:
+        sources = [goal.source for goal in value]
+        if len(set(sources)) != len(sources):
+            raise ValueError("revenue sources must not repeat")
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def _check_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip().upper()
+        if not CURRENCY_PATTERN.match(value):
+            raise ValueError("currency must be an ISO 4217 code such as 'USD' or 'VND'")
+        return value
+
+    @model_validator(mode="after")
+    def _check_currency_for_targets(self) -> "MonetizationUpdate":
+        targets = any(goal.monthly_target is not None for goal in self.goals)
+        if targets and self.currency is None:
+            raise ValueError("currency is needed when a goal has a monthly target")
+        return self
+
+    def monetization(self) -> Monetization:
+        return Monetization(
+            tuple(
+                RevenueGoal(goal.source, goal.monthly_target, goal.note)
+                for goal in self.goals
+            ),
+            self.currency,
+        )
+
+
 def _body(profile: StrategyProfile) -> dict[str, Any]:
-    return profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
+    body = profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
+    if body["monetization"] is not None:
+        # #052: targets are goals, never promised outcomes.
+        body["monetization"] |= {
+            "goals_are_not_guaranteed": True,
+            "notice": MONETIZATION_NOTICE,
+        }
+    return body
 
 
 @router.get("")
@@ -808,6 +890,25 @@ def put_budget(
     change = settings.set_budget(
         channel_id,
         body.budget(),
+        expected_version=body.expected_version,
+        actor=actor,
+    )
+    if change.created:
+        response.status_code = status.HTTP_201_CREATED
+    return _body(change.profile)
+
+
+@router.put("/monetization")
+def put_monetization(
+    channel_id: str,
+    body: MonetizationUpdate,
+    settings: Settings,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    change = settings.set_monetization(
+        channel_id,
+        body.monetization(),
         expected_version=body.expected_version,
         actor=actor,
     )

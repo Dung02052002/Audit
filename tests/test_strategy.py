@@ -16,6 +16,8 @@ from ai_youtube_agent.content.strategy import (
     Monetization,
     Niche,
     Pillar,
+    RevenueGoal,
+    RevenueSource,
     ShortsFormat,
     StrategyChangeNotAllowedError,
     StrategyProfile,
@@ -39,7 +41,9 @@ SETTINGS = {
     "format": FormatSettings(ShortsFormat(15, 60), LongFormFormat(480, 900)),
     "cadence": Cadence(shorts_per_day=2, longform_per_day=0),
     "budget": Budget("USD", Decimal("5.00"), Decimal("100.00")),
-    "monetization": Monetization(("ads", "affiliate")),
+    "monetization": Monetization(
+        (RevenueGoal(RevenueSource.ADS), RevenueGoal(RevenueSource.AFFILIATE))
+    ),
 }
 
 WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -164,12 +168,17 @@ def test_budget_allows_zero_and_equal_limits() -> None:
     assert Budget("EUR", Decimal("10"), Decimal("10")).currency == "EUR"
 
 
-@pytest.mark.parametrize(
-    "sources", [("",), ("Ads",), ("ad revenue",), ("1ads",), ("ads", "ads")]
-)
-def test_monetization_rejects_malformed_or_repeated_sources(sources) -> None:
+@pytest.mark.parametrize("source", ["", "Ads", "ad revenue", "1ads", "donations"])
+def test_monetization_rejects_unknown_sources(source) -> None:
+    # D-052 (user decision, 2026-10-02): sources are a closed RevenueSource list.
     with pytest.raises(ValueError):
-        Monetization(sources)
+        RevenueGoal(RevenueSource(source))
+
+
+def test_monetization_rejects_repeated_sources() -> None:
+    goal = RevenueGoal(RevenueSource.ADS)
+    with pytest.raises(ValueError):
+        Monetization((goal, goal))
 
 
 # Creating a profile
@@ -410,7 +419,14 @@ def test_as_dict_is_json_friendly() -> None:
             # D-051 added alert thresholds (user decision, 2026-10-02).
             "alert_thresholds": [50, 80, 100],
         },
-        "monetization": {"tracked_sources": ["ads", "affiliate"]},
+        # D-052 replaced the source names with goals (user decision, 2026-10-02).
+        "monetization": {
+            "goals": [
+                {"source": "ads", "monthly_target": None, "note": None},
+                {"source": "affiliate", "monthly_target": None, "note": None},
+            ],
+            "currency": None,
+        },
         "version": 1,
         "updated_by": {"kind": "user", "id": "owner-1"},
         "created_at": "2026-09-29T10:00:00+00:00",

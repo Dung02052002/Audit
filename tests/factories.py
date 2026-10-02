@@ -41,6 +41,8 @@ from ai_youtube_agent.content.strategy import (
     Monetization,
     Niche,
     Pillar,
+    RevenueGoal,
+    RevenueSource,
     ShortsFormat,
     StrategyProfile,
 )
@@ -87,7 +89,9 @@ def make_strategy_profile(channel: Channel, **overrides) -> StrategyProfile:
         format=FormatSettings(ShortsFormat(15, 60), LongFormFormat(480, 900)),
         cadence=Cadence(shorts_per_day=2, longform_per_day=0),
         budget=Budget("USD", Decimal("5.00"), Decimal("100.00")),
-        monetization=Monetization(("ads", "affiliate")),
+        monetization=Monetization(
+            (RevenueGoal(RevenueSource.ADS), RevenueGoal(RevenueSource.AFFILIATE))
+        ),
         actor=USER,
         clock=at(),
     )

@@ -17,6 +17,7 @@ health check.
 """
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
+from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.strategy_settings import StrategySettings
@@ -78,6 +79,12 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(Database),
             c.resolve(SourceDeduplicator),
             c.resolve(TopicExtractor),
+        ),
+    )
+    container.register(
+        ResearchReportGenerator,
+        lambda c: ResearchReportGenerator(
+            c.resolve(Database), c.resolve(SourceDeduplicator), c.resolve(TopicScorer)
         ),
     )
     return container

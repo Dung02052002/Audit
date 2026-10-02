@@ -1,4 +1,4 @@
-"""Repositories for research sources, requests, topics and scores (C4, #055-#059).
+"""Repositories for research sources, requests, topics, scores and reports (C4).
 
 Sources are immutable records: add only. One source per normalised URL;
 ``add_or_get`` returns the stored source when the page is already known.
@@ -10,6 +10,7 @@ import sqlite3
 from collections.abc import Sequence
 from datetime import datetime
 
+from ai_youtube_agent.content.research_report import ResearchReport
 from ai_youtube_agent.content.research_request import (
     CollectedSource,
     CollectionFailure,
@@ -410,3 +411,33 @@ class TopicScoreRepository(Repository):
             missing_inputs=tuple(from_json(row["missing_inputs_json"])),
             scored_at=parse_dt(row["scored_at"]),
         )
+
+
+class ResearchReportRepository(Repository):
+    """Research reports (#060): one per request, written once, never changed."""
+
+    table = "research_reports"
+
+    def add(self, report: ResearchReport) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": report.id,
+                "request_id": report.request_id,
+                "channel_id": report.channel_id,
+                "schema_version": report.schema_version,
+                "uncertainty": report.uncertainty.value,
+                "report_json": to_json(report.as_dict()),
+                "generated_at": dt(report.generated_at),
+            },
+        )
+
+    def get(self, report_id: str) -> ResearchReport | None:
+        row = self._one("SELECT * FROM research_reports WHERE id = ?", (report_id,))
+        return ResearchReport.from_dict(from_json(row["report_json"])) if row else None
+
+    def get_by_request(self, request_id: str) -> ResearchReport | None:
+        row = self._one(
+            "SELECT * FROM research_reports WHERE request_id = ?", (request_id,)
+        )
+        return ResearchReport.from_dict(from_json(row["report_json"])) if row else None

@@ -56,6 +56,7 @@ from ai_youtube_agent.core.db.migrate import (
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
+    _strategy_row,
 )
 from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.gates import GateContext
@@ -152,18 +153,20 @@ def test_migration_0003_keeps_existing_profiles_and_references(tmp_path: Path) -
     migrate(path, migrations=default_migrations()[:2])
     database = Database(path)
     channel = make_channel()
-    profile = make_strategy_profile(channel)
+    # A profile from before #049 has no format; 0004 (D-049) adds that column.
+    profile = make_strategy_profile(channel, format=None)
     item = make_content_item(channel, profile)
+    row = {k: v for k, v in _strategy_row(profile).items() if k != "format_json"}
     with database.transaction() as connection:
         ChannelRepository(connection).add(channel)
-        StrategyProfileRepository(connection).add(profile)
+        StrategyProfileRepository(connection)._insert("strategy_profiles", row)
         ContentItemRepository(connection).add(item)
 
     report = migrate(path)
 
-    assert report.applied == (3,)
+    assert report.applied == (3, 4)
     assert report.backup_path is not None
-    assert current_version(path) == 3
+    assert current_version(path) == 4
     with database.transaction() as connection:
         assert StrategyProfileRepository(connection).get(profile.id) == profile
         assert ContentItemRepository(connection).get(item.id) == item

@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#048), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#049), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -33,17 +33,26 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   their order and do not repeat ignoring case; colours are upper-cased and
   may not repeat. The body replaces the whole brand. The spoken voice is
   ``VoiceProfile`` (#087), not this.
+- ``PUT /channels/{id}/strategy/format`` (#049, user decision 2026-10-02):
+  ``shorts`` and ``longform`` production defaults, both required. Each has
+  ``min_seconds`` and ``max_seconds`` (Shorts 1 to 180, LongForm 181 to
+  14400, min <= max), ``resolution`` (720p, 1080p or 2160p, default 1080p) and
+  ``captions`` (default true); LongForm adds ``chapters`` (default true).
+  ``aspect_ratio`` is fixed (Shorts ``9:16``, LongForm ``16:9``) and may be
+  left out. LongForm defaults can be saved while ``LONGFORM_ENABLED`` is off.
+  The body replaces the whole format setting.
 
 Errors use the envelope of ``core/http.py``.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -53,6 +62,8 @@ from ai_youtube_agent.content.strategy import (
     COUNTRY_PATTERN,
     HEX_COLOR_PATTERN,
     LANGUAGE_TAG_PATTERN,
+    LONGFORM_MAX_SECONDS,
+    LONGFORM_MIN_SECONDS,
     MAX_ACCENT_COLORS,
     MAX_AUDIENCE_AGE,
     MAX_AUDIENCE_DESCRIPTION,
@@ -74,13 +85,20 @@ from ai_youtube_agent.content.strategy import (
     MAX_VOICE_RULE,
     MAX_VOICE_RULES,
     MIN_AUDIENCE_AGE,
+    SHORTS_MAX_SECONDS,
+    SHORTS_MIN_SECONDS,
     AgeRange,
+    AspectRatio,
     Audience,
     AudienceLevel,
     Brand,
     BrandVisual,
+    FormatSettings,
+    LongFormFormat,
     Niche,
     Pillar,
+    Resolution,
+    ShortsFormat,
     StrategyProfile,
     canonical_language_tag,
 )
@@ -395,6 +413,74 @@ class BrandUpdate(BaseModel):
         )
 
 
+def _check_order(body: "ShortsBody | LongFormBody") -> None:
+    if body.min_seconds > body.max_seconds:
+        raise ValueError("min_seconds must not be greater than max_seconds")
+
+
+class ShortsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_seconds: int = Field(ge=SHORTS_MIN_SECONDS, le=SHORTS_MAX_SECONDS, strict=True)
+    max_seconds: int = Field(ge=SHORTS_MIN_SECONDS, le=SHORTS_MAX_SECONDS, strict=True)
+    resolution: Resolution = Resolution.FULL_HD_1080
+    captions: StrictBool = True
+    aspect_ratio: Literal["9:16"] = "9:16"
+
+    @model_validator(mode="after")
+    def _check(self) -> "ShortsBody":
+        _check_order(self)
+        return self
+
+
+class LongFormBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_seconds: int = Field(
+        ge=LONGFORM_MIN_SECONDS, le=LONGFORM_MAX_SECONDS, strict=True
+    )
+    max_seconds: int = Field(
+        ge=LONGFORM_MIN_SECONDS, le=LONGFORM_MAX_SECONDS, strict=True
+    )
+    resolution: Resolution = Resolution.FULL_HD_1080
+    captions: StrictBool = True
+    chapters: StrictBool = True
+    aspect_ratio: Literal["16:9"] = "16:9"
+
+    @model_validator(mode="after")
+    def _check(self) -> "LongFormBody":
+        _check_order(self)
+        return self
+
+
+class FormatUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shorts: ShortsBody
+    longform: LongFormBody
+    expected_version: int | None = Field(default=None, ge=1)
+
+    def formats(self) -> FormatSettings:
+        shorts, longform = self.shorts, self.longform
+        return FormatSettings(
+            ShortsFormat(
+                shorts.min_seconds,
+                shorts.max_seconds,
+                shorts.resolution,
+                shorts.captions,
+                AspectRatio(shorts.aspect_ratio),
+            ),
+            LongFormFormat(
+                longform.min_seconds,
+                longform.max_seconds,
+                longform.resolution,
+                longform.captions,
+                longform.chapters,
+                AspectRatio(longform.aspect_ratio),
+            ),
+        )
+
+
 def _body(profile: StrategyProfile) -> dict[str, Any]:
     return profile.as_dict() | {"missing_settings": list(profile.missing_settings)}
 
@@ -492,6 +578,25 @@ def put_brand(
     change = settings.set_brand(
         channel_id,
         body.brand(),
+        expected_version=body.expected_version,
+        actor=actor,
+    )
+    if change.created:
+        response.status_code = status.HTTP_201_CREATED
+    return _body(change.profile)
+
+
+@router.put("/format")
+def put_format(
+    channel_id: str,
+    body: FormatUpdate,
+    settings: Settings,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    change = settings.set_format(
+        channel_id,
+        body.formats(),
         expected_version=body.expected_version,
         actor=actor,
     )

@@ -8,6 +8,7 @@ A ``StrategyProfile`` is the user-controlled strategy of one channel:
 - ``languages``: a primary BCP-47 tag and optional secondary tags.
 - ``audience``, ``niche``, ``brand``: short descriptions of who the channel is
   for, what it covers and how it presents itself.
+- ``format``: production defaults for Shorts and LongForm (#049).
 - ``cadence``: daily limits per content type (``SHORTS`` and ``LONGFORM``).
 - ``budget``: daily and monthly spend limits as ``Decimal`` in an ISO 4217
   currency.
@@ -71,6 +72,12 @@ MAX_ACCENT_COLORS = 5
 MAX_FONT_FAMILY = 100
 MAX_VISUAL_NOTES = 500
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-F]{6}$")
+# #049 format limits in seconds, user decision 2026-10-02. YouTube Shorts are
+# at most 3 minutes, so LongForm starts above that and ends at 4 hours.
+SHORTS_MIN_SECONDS = 1
+SHORTS_MAX_SECONDS = 180
+LONGFORM_MIN_SECONDS = 181
+LONGFORM_MAX_SECONDS = 4 * 60 * 60
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 Clock = Callable[[], datetime]
 
@@ -358,6 +365,118 @@ class Brand:
             raise TypeError("visual must be a BrandVisual or None")
 
 
+class AspectRatio(StrEnum):
+    VERTICAL = "9:16"
+    HORIZONTAL = "16:9"
+
+
+class Resolution(StrEnum):
+    HD_720 = "720p"
+    FULL_HD_1080 = "1080p"
+    UHD_2160 = "2160p"
+
+
+def _check_duration(name: str, minimum: int, maximum: int, low: int, high: int) -> None:
+    for bound, value in (("min_seconds", minimum), ("max_seconds", maximum)):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not low <= value <= high
+        ):
+            raise ValueError(
+                f"{name} {bound} must be a whole number from {low} to {high}"
+            )
+    if minimum > maximum:
+        raise ValueError(f"{name} min_seconds must not be greater than max_seconds")
+
+
+def _check_production(
+    name: str, aspect: object, expected: AspectRatio, resolution: object, flags: dict
+) -> None:
+    if aspect is not expected:
+        raise ValueError(f"{name} aspect ratio must be {expected.value}")
+    if not isinstance(resolution, Resolution):
+        raise TypeError(f"{name} resolution must be a Resolution")
+    for flag, value in flags.items():
+        if not isinstance(value, bool):
+            raise TypeError(f"{name} {flag} must be true or false")
+
+
+@dataclass(frozen=True)
+class ShortsFormat:
+    """Shorts production defaults (#049): vertical, 1 to 180 seconds."""
+
+    min_seconds: int
+    max_seconds: int
+    resolution: Resolution = Resolution.FULL_HD_1080
+    captions: bool = True
+    aspect_ratio: AspectRatio = AspectRatio.VERTICAL
+
+    def __post_init__(self) -> None:
+        _check_duration(
+            "Shorts",
+            self.min_seconds,
+            self.max_seconds,
+            SHORTS_MIN_SECONDS,
+            SHORTS_MAX_SECONDS,
+        )
+        _check_production(
+            "Shorts",
+            self.aspect_ratio,
+            AspectRatio.VERTICAL,
+            self.resolution,
+            {"captions": self.captions},
+        )
+
+
+@dataclass(frozen=True)
+class LongFormFormat:
+    """LongForm production defaults (#049): horizontal, 181 seconds to 4 hours."""
+
+    min_seconds: int
+    max_seconds: int
+    resolution: Resolution = Resolution.FULL_HD_1080
+    captions: bool = True
+    chapters: bool = True
+    aspect_ratio: AspectRatio = AspectRatio.HORIZONTAL
+
+    def __post_init__(self) -> None:
+        _check_duration(
+            "LongForm",
+            self.min_seconds,
+            self.max_seconds,
+            LONGFORM_MIN_SECONDS,
+            LONGFORM_MAX_SECONDS,
+        )
+        _check_production(
+            "LongForm",
+            self.aspect_ratio,
+            AspectRatio.HORIZONTAL,
+            self.resolution,
+            {"captions": self.captions, "chapters": self.chapters},
+        )
+
+
+@dataclass(frozen=True)
+class FormatSettings:
+    """Production defaults for both content types (#049, user decision 2026-10-02).
+
+    Both formats are always configured together. LongForm defaults may be
+    saved while ``LONGFORM_ENABLED`` is off: the flag controls production
+    (#237), not this setting. Aspect ratios are fixed per type (Shorts 9:16,
+    LongForm 16:9). Project models (#094, #105) read these defaults.
+    """
+
+    shorts: ShortsFormat
+    longform: LongFormFormat
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.shorts, ShortsFormat):
+            raise TypeError("shorts must be a ShortsFormat")
+        if not isinstance(self.longform, LongFormFormat):
+            raise TypeError("longform must be a LongFormFormat")
+
+
 @dataclass(frozen=True)
 class Cadence:
     shorts_per_day: int
@@ -409,6 +528,7 @@ SETTING_TYPES: dict[str, type] = {
     "audience": Audience,
     "niche": Niche,
     "brand": Brand,
+    "format": FormatSettings,
     "cadence": Cadence,
     "budget": Budget,
     "monetization": Monetization,
@@ -424,6 +544,7 @@ class StrategyProfile:
     audience: Audience | None
     niche: Niche | None
     brand: Brand | None
+    format: FormatSettings | None
     cadence: Cadence | None
     budget: Budget | None
     monetization: Monetization | None
@@ -460,6 +581,7 @@ class StrategyProfile:
         audience: Audience | None = None,
         niche: Niche | None = None,
         brand: Brand | None = None,
+        format: FormatSettings | None = None,
         cadence: Cadence | None = None,
         budget: Budget | None = None,
         monetization: Monetization | None = None,
@@ -476,6 +598,7 @@ class StrategyProfile:
             audience=audience,
             niche=niche,
             brand=brand,
+            format=format,
             cadence=cadence,
             budget=budget,
             monetization=monetization,

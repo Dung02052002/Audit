@@ -9,11 +9,14 @@ from ai_youtube_agent.content.strategy import (
     Brand,
     Budget,
     Cadence,
+    FormatSettings,
     LanguageSettings,
+    LongFormFormat,
     Market,
     Monetization,
     Niche,
     Pillar,
+    ShortsFormat,
     StrategyChangeNotAllowedError,
     StrategyProfile,
 )
@@ -33,6 +36,7 @@ SETTINGS = {
     "audience": Audience("Adults interested in personal finance"),
     "niche": Niche("Personal finance", (Pillar("budgeting"), Pillar("investing"))),
     "brand": Brand("Money Minute", "calm and clear"),
+    "format": FormatSettings(ShortsFormat(15, 60), LongFormFormat(480, 900)),
     "cadence": Cadence(shorts_per_day=2, longform_per_day=0),
     "budget": Budget("USD", Decimal("5.00"), Decimal("100.00")),
     "monetization": Monetization(("ads", "affiliate")),
@@ -365,6 +369,24 @@ def test_as_dict_is_json_friendly() -> None:
             "voice_donts": [],
             "banned_phrases": [],
             "visual": None,
+        },
+        # D-049 added the Shorts and LongForm format (user decision, 2026-10-02).
+        "format": {
+            "shorts": {
+                "min_seconds": 15,
+                "max_seconds": 60,
+                "resolution": "1080p",
+                "captions": True,
+                "aspect_ratio": "9:16",
+            },
+            "longform": {
+                "min_seconds": 480,
+                "max_seconds": 900,
+                "resolution": "1080p",
+                "captions": True,
+                "chapters": True,
+                "aspect_ratio": "16:9",
+            },
         },
         "cadence": {"shorts_per_day": 2, "longform_per_day": 0},
         "budget": {

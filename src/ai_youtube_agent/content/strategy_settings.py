@@ -1,9 +1,10 @@
-"""Strategy settings (Prompt Pack v8, prompts #044-#048), context C1.
+"""Strategy settings (Prompt Pack v8, prompts #044-#049), context C1.
 
 ``StrategySettings`` is the service behind the strategy API. #044 adds the
 market, #045 the languages, #046 the audience, #047 the niche, #048 the
-brand; #049-#052 add one setting each through the same ``_save``. The rules
-were approved by the user on 2026-10-01:
+brand, #049 the Shorts and LongForm format defaults; #050-#052 add one
+setting each through the same ``_save``. The rules were approved by the user
+on 2026-10-01 (#049 on 2026-10-02):
 
 - A channel's strategy profile is created by the first setting a user saves,
   with every other setting left unconfigured (``missing_settings``). #053
@@ -38,6 +39,7 @@ from ai_youtube_agent.content.channel_settings import ChannelNotFoundError
 from ai_youtube_agent.content.strategy import (
     Audience,
     Brand,
+    FormatSettings,
     LanguageSettings,
     Market,
     Niche,
@@ -169,6 +171,22 @@ class StrategySettings:
             channel_id,
             "brand",
             brand,
+            expected_version=expected_version,
+            actor=actor,
+        )
+
+    def set_format(
+        self,
+        channel_id: str,
+        formats: FormatSettings,
+        *,
+        expected_version: int | None,
+        actor: Actor,
+    ) -> StrategyChange:
+        return self._save(
+            channel_id,
+            "format",
+            formats,
             expected_version=expected_version,
             actor=actor,
         )

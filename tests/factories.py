@@ -34,11 +34,14 @@ from ai_youtube_agent.content.strategy import (
     Brand,
     Budget,
     Cadence,
+    FormatSettings,
     LanguageSettings,
+    LongFormFormat,
     Market,
     Monetization,
     Niche,
     Pillar,
+    ShortsFormat,
     StrategyProfile,
 )
 from ai_youtube_agent.content.voice import AudioMetadata, VoiceProfile
@@ -81,6 +84,7 @@ def make_strategy_profile(channel: Channel, **overrides) -> StrategyProfile:
         audience=Audience("Adults interested in personal finance"),
         niche=Niche("Personal finance", (Pillar("budgeting"), Pillar("investing"))),
         brand=Brand("Money Minute", "calm and clear"),
+        format=FormatSettings(ShortsFormat(15, 60), LongFormFormat(480, 900)),
         cadence=Cadence(shorts_per_day=2, longform_per_day=0),
         budget=Budget("USD", Decimal("5.00"), Decimal("100.00")),
         monetization=Monetization(("ads", "affiliate")),

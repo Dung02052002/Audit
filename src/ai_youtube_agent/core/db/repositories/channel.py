@@ -6,17 +6,22 @@ from datetime import datetime
 from ai_youtube_agent.content.channel import Channel, ChannelStatus, YouTubeIdentifiers
 from ai_youtube_agent.content.strategy import (
     AgeRange,
+    AspectRatio,
     Audience,
     AudienceLevel,
     Brand,
     BrandVisual,
     Budget,
     Cadence,
+    FormatSettings,
     LanguageSettings,
+    LongFormFormat,
     Market,
     Monetization,
     Niche,
     Pillar,
+    Resolution,
+    ShortsFormat,
     StrategyProfile,
     setting_dict,
 )
@@ -163,6 +168,9 @@ def _strategy_row(profile: StrategyProfile) -> dict:
             else None
         ),
         "brand_json": to_json(setting_dict(brand)) if brand else None,
+        "format_json": (
+            to_json(setting_dict(profile.format)) if profile.format else None
+        ),
         "cadence_shorts_per_day": cadence.shorts_per_day if cadence else None,
         "cadence_longform_per_day": cadence.longform_per_day if cadence else None,
         "budget_currency": budget.currency if budget else None,
@@ -205,6 +213,9 @@ def _strategy(row: sqlite3.Row) -> StrategyProfile:
         ),
         niche=_niche(niche) if niche else None,
         brand=_brand(brand) if brand else None,
+        format=(
+            _format(from_json(row["format_json"])) if present("format_json") else None
+        ),
         cadence=(
             Cadence(
                 shorts_per_day=row["cadence_shorts_per_day"],
@@ -286,6 +297,27 @@ def _brand(data: dict) -> Brand:
             )
             if visual
             else None
+        ),
+    )
+
+
+def _format(data: dict) -> FormatSettings:
+    shorts, longform = data["shorts"], data["longform"]
+    return FormatSettings(
+        ShortsFormat(
+            shorts["min_seconds"],
+            shorts["max_seconds"],
+            Resolution(shorts["resolution"]),
+            shorts["captions"],
+            AspectRatio(shorts["aspect_ratio"]),
+        ),
+        LongFormFormat(
+            longform["min_seconds"],
+            longform["max_seconds"],
+            Resolution(longform["resolution"]),
+            longform["captions"],
+            longform["chapters"],
+            AspectRatio(longform["aspect_ratio"]),
         ),
     )
 

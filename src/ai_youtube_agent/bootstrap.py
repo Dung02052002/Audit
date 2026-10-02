@@ -20,6 +20,7 @@ from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.strategy_settings import StrategySettings
+from ai_youtube_agent.content.topic_extractor import TopicExtractor
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
 from ai_youtube_agent.core.config import (
     Environment,
@@ -65,6 +66,10 @@ def build_container(settings: Settings | None = None) -> Container:
     )
     container.register(
         SourceDeduplicator, lambda c: SourceDeduplicator(c.resolve(Database))
+    )
+    container.register(
+        TopicExtractor,
+        lambda c: TopicExtractor(c.resolve(Database), c.resolve(SourceDeduplicator)),
     )
     return container
 

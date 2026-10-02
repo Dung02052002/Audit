@@ -1,4 +1,4 @@
-"""Repositories for research sources and requests (C4, #055, #056).
+"""Repositories for research sources, requests and topics (C4, #055-#058).
 
 Sources are immutable records: add only. One source per normalised URL;
 ``add_or_get`` returns the stored source when the page is already known.
@@ -23,6 +23,12 @@ from ai_youtube_agent.content.source import (
     EvidenceNote,
     Source,
     SourceDuplicate,
+)
+from ai_youtube_agent.content.topic import (
+    EvidenceField,
+    Topic,
+    TopicEvidence,
+    TopicExtraction,
 )
 from ai_youtube_agent.core.db.repositories.base import (
     Repository,
@@ -262,4 +268,74 @@ class SourceDuplicateRepository(Repository):
                 r["similarity"],
             )
             for r in rows
+        )
+
+
+class TopicRepository(Repository):
+    """Topic extractions (#058): written once per request, never changed."""
+
+    table = "research_topics"
+
+    def add(self, extraction: TopicExtraction) -> None:
+        self._insert(
+            "topic_extractions",
+            {
+                "request_id": extraction.request_id,
+                "extracted_at": dt(extraction.extracted_at),
+            },
+        )
+        for topic in extraction.topics:
+            self._insert(
+                self.table,
+                {
+                    "id": topic.id,
+                    "request_id": topic.request_id,
+                    "rank": topic.rank,
+                    "label": topic.label,
+                    "keyphrases_json": to_json(list(topic.keyphrases)),
+                },
+            )
+            for position, item in enumerate(topic.evidence, start=1):
+                self._insert(
+                    "topic_evidence",
+                    {
+                        "topic_id": topic.id,
+                        "source_id": item.source_id,
+                        "position": position,
+                        "field": item.field.value,
+                        "text": item.text,
+                    },
+                )
+
+    def get(self, request_id: str) -> TopicExtraction | None:
+        row = self._one(
+            "SELECT extracted_at FROM topic_extractions WHERE request_id = ?",
+            (request_id,),
+        )
+        if row is None:
+            return None
+        topics = tuple(
+            self._topic(topic)
+            for topic in self._all(
+                "SELECT * FROM research_topics WHERE request_id = ? ORDER BY rank",
+                (request_id,),
+            )
+        )
+        return TopicExtraction(request_id, topics, parse_dt(row["extracted_at"]))
+
+    def _topic(self, row: sqlite3.Row) -> Topic:
+        evidence = self._all(
+            "SELECT * FROM topic_evidence WHERE topic_id = ? ORDER BY position",
+            (row["id"],),
+        )
+        return Topic(
+            id=row["id"],
+            request_id=row["request_id"],
+            rank=row["rank"],
+            label=row["label"],
+            keyphrases=tuple(from_json(row["keyphrases_json"])),
+            evidence=tuple(
+                TopicEvidence(e["source_id"], EvidenceField(e["field"]), e["text"])
+                for e in evidence
+            ),
         )

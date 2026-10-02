@@ -93,7 +93,7 @@ The requirements define each of these as an abstraction with a mock.
 
 | Interface | Defined by | Purpose | Mock required | Used by |
 |---|---|---|---|---|
-| Research Provider | #054 | Search and fetch sources | Yes (#054) | C4 |
+| Research Provider | #054 | Search and fetch sources. Implemented in `providers/research.py` (sync Protocol, typed values, retryable error codes) with `MockResearchProvider` in `providers/mock_research.py`, chosen by `Settings.research_provider` | Yes (#054) | C4 |
 | Voice (TTS) Provider | #086 | Generate speech audio | Yes (#086) | C7 |
 | Render provider abstraction | #100, #111 | Render vertical and long-form MP4 | Not stated | C8, C9 |
 | Policy Rule Interface | #079 | Versioned policy rules | Yes, mock rules (#079) | C6 |

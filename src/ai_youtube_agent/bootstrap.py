@@ -10,12 +10,21 @@ calls it once at startup, from the FastAPI lifespan in ``main.create_app``.
 ``Database`` is a singleton for ``Settings.database_path``. The audit sink is
 ``SqliteAuditSink`` except in the TEST environment, which keeps events in
 memory (#030).
+
+``ResearchProvider`` (#054) is chosen by ``Settings.research_provider``; only
+the in-memory mock exists, and its ``check`` is the ``research_provider``
+health check.
 """
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
-from ai_youtube_agent.core.config import Environment, Settings, get_settings
+from ai_youtube_agent.core.config import (
+    Environment,
+    ResearchProviderKind,
+    Settings,
+    get_settings,
+)
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import MigrationReport, migrate
 from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
@@ -23,6 +32,8 @@ from ai_youtube_agent.core.di import Container
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
+from ai_youtube_agent.providers.mock_research import MockResearchProvider
+from ai_youtube_agent.providers.research import ResearchProvider
 
 logger = get_logger(__name__)
 
@@ -43,7 +54,15 @@ def build_container(settings: Settings | None = None) -> Container:
         StrategySettings,
         lambda c: StrategySettings(c.resolve(Database), c.resolve(AuditLog)),
     )
+    container.register(ResearchProvider, _build_research_provider)
     return container
+
+
+def _build_research_provider(container: Container) -> ResearchProvider:
+    kind = container.resolve(Settings).research_provider
+    if kind is ResearchProviderKind.MOCK:
+        return MockResearchProvider()
+    raise ValueError(f"unknown research provider {kind!r}")
 
 
 def _build_audit_sink(container: Container) -> AuditSink:
@@ -82,6 +101,13 @@ def _build_health_registry(container: Container) -> HealthRegistry:
             "feature_flags",
             CheckKind.APPLICATION,
             lambda: container.resolve(FeatureFlags),
+        )
+    )
+    registry.register(
+        HealthCheck(
+            "research_provider",
+            CheckKind.PROVIDER,
+            lambda: container.resolve(ResearchProvider).check(),
         )
     )
     return registry

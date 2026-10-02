@@ -114,7 +114,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 
 | Task | Name | Dependency | Status |
 |---|---|---|---|
-| E-054 | Research Provider | D-11 | NOT_STARTED |
+| E-054 | Research Provider | D-11 | PASS. User-approved rules (2026-10-02): `providers/research.py` defines the synchronous `ResearchProvider` Protocol (`name`, `search`, `fetch`, `check`) and typed values: `SearchQuery` (text at most 500, optional BCP-47 `language` and ISO 3166-1 `market`, `max_results` 1 to 50, default 10), `SearchResults` (ranked 1..n `SearchHit`s with absolute http(s) URLs, no URL twice, at most `max_results`; no results is valid) and `FetchedDocument` (url, final_url, title, text at most 200,000 characters with `truncated`, media type, UTC `fetched_at`, provider). Failures raise `ResearchProviderError` (a `ProviderError` with a safe user message) whose `retryable` follows `ResearchErrorCode`: unavailable, rate_limited and timeout retry; not_found, blocked and invalid_query do not. `providers/mock_research.py` adds the thread-safe in-memory `MockResearchProvider` (canned results per text, pages with optional redirect, scripted failures per operation, health switch, recorded calls; no network). `Settings.research_provider` (`ResearchProviderKind`, only `mock`) selects it; bootstrap registers it as a singleton with a `research_provider` provider health check (failure degrades `/health`). No real provider yet. Updated the two A-010 health tests that pinned the check list. `tests/test_research_provider.py` (52 tests). Tests: 2496 passed. |
 | E-055 | Source Model | E-1 | NOT_STARTED |
 | E-056 | Source Collector | E-2 | NOT_STARTED |
 | E-057 | Source Deduplication | E-3 | NOT_STARTED |
@@ -183,4 +183,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - D-051 Budget Settings has PASSED.
 - D-052 Monetization Settings has PASSED.
 - D-053 Strategy Validation has PASSED. Phase D is complete.
-- Next task: **E-054 Research Provider**. It is NOT_STARTED.
+- E-054 Research Provider has PASSED.
+- Next task: **E-055 Source Model**. It is NOT_STARTED.

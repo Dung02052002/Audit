@@ -249,7 +249,8 @@ def test_slow_check_times_out_without_blocking_the_report() -> None:
 def test_container_registers_application_checks(settings: Settings) -> None:
     registry = build_container(settings).resolve(HealthRegistry)
 
-    assert registry.names() == ("settings", "feature_flags")
+    # E-054 added the research provider check (user decision, 2026-10-02).
+    assert registry.names() == ("settings", "feature_flags", "research_provider")
     assert build_container(settings).resolve(HealthRegistry) is not registry
 
 
@@ -270,6 +271,12 @@ def test_endpoint_reports_every_check(settings: Settings) -> None:
             {
                 "name": "feature_flags",
                 "kind": "application",
+                "status": "ok",
+                "detail": None,
+            },
+            {
+                "name": "research_provider",
+                "kind": "provider",
                 "status": "ok",
                 "detail": None,
             },

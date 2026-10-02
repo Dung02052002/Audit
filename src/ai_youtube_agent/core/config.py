@@ -38,6 +38,12 @@ class Environment(StrEnum):
     PRODUCTION = "production"
 
 
+class ResearchProviderKind(StrEnum):
+    """Which research provider bootstrap registers (#054). Only the mock exists."""
+
+    MOCK = "mock"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
@@ -53,6 +59,7 @@ class Settings(BaseSettings):
     log_level: Severity = Severity.INFO
     database_path: Path = DEFAULT_DATABASE_PATH
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
+    research_provider: ResearchProviderKind = ResearchProviderKind.MOCK
 
     @model_validator(mode="after")
     def _forbid_debug_in_production(self) -> "Settings":

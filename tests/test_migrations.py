@@ -45,8 +45,8 @@ TS = format_datetime(T0)
 SHA = "a" * 64
 # 0001 initial schema, 0002 production starts (C-036), 0003 partial strategy
 # (D-044), 0004 format settings (D-049), 0005 cadence schedule (D-050),
-# 0006 budget alerts (D-051)
-LATEST = 6
+# 0006 budget alerts (D-051), 0007 sources (E-055)
+LATEST = 7
 
 ENTITY_TABLES = {
     "channels",
@@ -79,6 +79,7 @@ ENTITY_TABLES = {
     "experiments",
     "experiment_variants",
     "audit_events",
+    "sources",  # E-055
 }
 
 ENUM_COLUMNS = {
@@ -180,7 +181,7 @@ def test_default_migrations_are_packaged() -> None:
     migrations = default_migrations()
     path = files("ai_youtube_agent.core.db") / "migrations" / "0001_initial_schema.sql"
 
-    assert [m.version for m in migrations] == [1, 2, 3, 4, 5, 6]
+    assert [m.version for m in migrations] == [1, 2, 3, 4, 5, 6, 7]
     assert [m.name for m in migrations] == [
         "initial_schema",
         "production_starts",
@@ -188,6 +189,7 @@ def test_default_migrations_are_packaged() -> None:
         "format_settings",
         "cadence_schedule",
         "budget_alerts",
+        "sources",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()

@@ -146,7 +146,7 @@ def test_migration_0006_gives_old_budgets_the_default_thresholds(
 
     report = migrate(path)
 
-    assert report.applied == (6,)
+    assert report.applied == tuple(range(6, len(default_migrations()) + 1))
     with database.transaction() as connection:
         stored = StrategyProfileRepository(connection).get(profile.id)
     assert stored == profile

@@ -173,7 +173,7 @@ def test_migration_0004_leaves_existing_profiles_without_a_format(
 
     report = migrate(path)
 
-    assert report.applied == (4, 5, 6)
+    assert report.applied == tuple(range(4, len(default_migrations()) + 1))
     with database.transaction() as connection:
         stored = StrategyProfileRepository(connection).get(profile.id)
     assert stored == profile

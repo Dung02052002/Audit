@@ -39,7 +39,7 @@ These come directly from the frozen requirements.
 | C1 | Channel & Strategy | User-controlled channel and strategy configuration, and its validation | Channel, StrategyProfile | #013, #014, #043–#053 |
 | C2 | Content Lifecycle | The common content item, versioned artifacts, and lifecycle status and transitions | ContentItem, Artifact | #015, #016, #031, #032 |
 | C3 | Control Gates | The shared gate contract and every blocking gate | (gate results) | #033–#042 |
-| C4 | Research | Collecting, deduplicating and scoring sources and topics, and producing research reports | Source, ResearchReport | #054–#063 |
+| C4 | Research | Collecting, deduplicating and scoring sources and topics, and producing research reports | Source (`content/source.py`, table `sources`, E-055: one per normalised URL), ResearchReport | #054–#063 |
 | C5 | Script & Fact Check | Script generation, claim extraction, evidence matching, fact checking, originality and versioning | Script, Claim, FactCheckResult | #017, #064–#074 |
 | C6 | Rights & Policy | Asset registry, provenance, rights risk, policy rules, AI disclosure and blocking reports | Asset, Provenance, RightsReport, PolicyReport | #019, #075–#085 |
 | C7 | Voice & Audio | Voice profiles, TTS jobs, audio artifacts, validation and cost | VoiceProfile, AudioArtifact | #018, #086–#093 |

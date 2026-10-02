@@ -166,9 +166,10 @@ def test_migration_0003_keeps_existing_profiles_and_references(tmp_path: Path) -
 
     report = migrate(path)
 
-    assert report.applied == (3, 4, 5, 6)
+    # Every later migration applies too (E-055 made this follow the list).
+    assert report.applied == tuple(range(3, len(default_migrations()) + 1))
     assert report.backup_path is not None
-    assert current_version(path) == 6
+    assert current_version(path) == len(default_migrations())
     with database.transaction() as connection:
         assert StrategyProfileRepository(connection).get(profile.id) == profile
         assert ContentItemRepository(connection).get(item.id) == item

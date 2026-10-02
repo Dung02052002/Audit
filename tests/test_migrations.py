@@ -49,8 +49,9 @@ SHA = "a" * 64
 # 0001 initial schema, 0002 production starts (C-036), 0003 partial strategy
 # (D-044), 0004 format settings (D-049), 0005 cadence schedule (D-050),
 # 0006 budget alerts (D-051), 0007 sources (E-055), 0008 research requests
-# (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058)
-LATEST = 10
+# (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058),
+# 0011 topic scores (E-059)
+LATEST = 11
 
 ENTITY_TABLES = {
     "channels",
@@ -91,6 +92,8 @@ ENTITY_TABLES = {
     "topic_extractions",  # E-058
     "research_topics",  # E-058
     "topic_evidence",  # E-058
+    "topic_scorings",  # E-059
+    "topic_scores",  # E-059
 }
 
 ENUM_COLUMNS = {
@@ -196,7 +199,7 @@ def test_default_migrations_are_packaged() -> None:
     migrations = default_migrations()
     path = files("ai_youtube_agent.core.db") / "migrations" / "0001_initial_schema.sql"
 
-    assert [m.version for m in migrations] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert [m.version for m in migrations] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     assert [m.name for m in migrations] == [
         "initial_schema",
         "production_starts",
@@ -208,6 +211,7 @@ def test_default_migrations_are_packaged() -> None:
         "research_requests",
         "source_duplicates",
         "research_topics",
+        "topic_scores",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()

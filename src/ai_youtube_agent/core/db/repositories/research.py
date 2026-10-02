@@ -1,4 +1,4 @@
-"""Repositories for research sources, requests and topics (C4, #055-#058).
+"""Repositories for research sources, requests, topics and scores (C4, #055-#059).
 
 Sources are immutable records: add only. One source per normalised URL;
 ``add_or_get`` returns the stored source when the page is already known.
@@ -30,6 +30,7 @@ from ai_youtube_agent.content.topic import (
     TopicEvidence,
     TopicExtraction,
 )
+from ai_youtube_agent.content.topic_scoring import TopicScore, TopicScoring
 from ai_youtube_agent.core.db.repositories.base import (
     Repository,
     actor_columns,
@@ -338,4 +339,74 @@ class TopicRepository(Repository):
                 TopicEvidence(e["source_id"], EvidenceField(e["field"]), e["text"])
                 for e in evidence
             ),
+        )
+
+
+class TopicScoreRepository(Repository):
+    """Topic scores (#059): written once per request, never changed."""
+
+    table = "topic_scores"
+
+    def add(self, scoring: TopicScoring) -> None:
+        self._insert(
+            "topic_scorings",
+            {
+                "request_id": scoring.request_id,
+                "scored_at": dt(scoring.scored_at),
+                "strategy_version": scoring.strategy_version,
+                "missing_inputs_json": to_json(list(scoring.missing_inputs)),
+            },
+        )
+        for position, score in enumerate(scoring.scores, start=1):
+            self._insert(
+                self.table,
+                {
+                    "topic_id": score.topic_id,
+                    "request_id": scoring.request_id,
+                    "position": position,
+                    "relevance": score.relevance,
+                    "novelty": score.novelty,
+                    "support": score.support,
+                    "score": score.score,
+                    "topic_words_json": to_json(list(score.topic_words)),
+                    "matched_words_json": to_json(list(score.matched_words)),
+                    "seen_in_json": to_json(list(score.seen_in)),
+                    "support_count": score.support_count,
+                    "kept_sources": score.kept_sources,
+                },
+            )
+
+    def get(self, request_id: str) -> TopicScoring | None:
+        row = self._one(
+            "SELECT * FROM topic_scorings WHERE request_id = ?", (request_id,)
+        )
+        if row is None:
+            return None
+        rows = self._all(
+            "SELECT s.*, t.label FROM topic_scores s "
+            "JOIN research_topics t ON t.id = s.topic_id "
+            "WHERE s.request_id = ? ORDER BY s.position",
+            (request_id,),
+        )
+        return TopicScoring(
+            request_id=request_id,
+            scores=tuple(
+                TopicScore(
+                    topic_id=r["topic_id"],
+                    label=r["label"],
+                    relevance=r["relevance"],
+                    novelty=r["novelty"],
+                    support=r["support"],
+                    score=r["score"],
+                    topic_words=tuple(from_json(r["topic_words_json"])),
+                    matched_words=tuple(from_json(r["matched_words_json"])),
+                    seen_in=tuple(from_json(r["seen_in_json"])),
+                    support_count=r["support_count"],
+                    kept_sources=r["kept_sources"],
+                )
+                for r in rows
+            ),
+            strategy_version=row["strategy_version"],
+            missing_inputs=tuple(from_json(row["missing_inputs_json"])),
+            scored_at=parse_dt(row["scored_at"]),
         )

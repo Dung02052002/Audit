@@ -142,6 +142,7 @@ API notes (D-043, approved by the user on 2026-10-01):
 - Cadence (D-050): `PUT /channels/{id}/strategy/cadence` replaces the daily limits (Shorts 0-20, LongForm 0-5), the channel time zone (IANA name, default UTC, data from `tzdata`) and a publish schedule per type (weekdays, up to 5 `HH:MM` times in that zone, a minimum gap in minutes). `DailyLimitGate` counts the day in the cadence time zone; the schedules are preferences for the publishers (#149, #150) and the job scheduler (#205). The limits keep their columns; the rest is `cadence_schedule_json` (migration 0005).
 - Budget (D-051): `PUT /channels/{id}/strategy/budget` replaces the currency, the daily and monthly limits (0 to 1,000,000, at most 2 decimal places) and 1 to 5 alert thresholds in percent of each limit (default 50, 80, 100). Alerts are only configured here: the budget guard (#180) raises them and the alert cards (#202) show them. `BudgetGate` counts the day and month in the cadence time zone. The thresholds are `budget_alert_thresholds_json` (migration 0006).
 - Monetization (D-052): `PUT /channels/{id}/strategy/monetization` replaces 0 to 8 revenue goals from the closed `RevenueSource` list, each with an optional monthly target and note, and a currency that is required once a target is set. Targets are tracking goals, not guaranteed outcomes: the strategy API labels them with the read-only `goals_are_not_guaranteed` and `notice`, and actual revenue stays in `RevenueRecord` (C14).
+- Strategy validation (D-053): `validate_strategy` (`content/strategy_validation.py`) checks a strategy before a run, which is any move into generating. Missing configuration and conflicts that make a run impossible block; other conflicts are warnings. `StrategyGate` (`GateName.STRATEGY`, `core/strategy_gate.py`) blocks the run on the blocking findings, and `GET /channels/{id}/strategy/validation` shows every finding beforehand.
 - Migrations (D-044): the runner applies each migration with foreign keys off and runs `PRAGMA foreign_key_check` before commit, so a migration may rebuild a referenced table (0003 rebuilds `strategy_profiles`).
 
 ## 5. Data flow
@@ -217,7 +218,7 @@ Every gate implements the Pipeline Gate Contract (#033). The Pipeline Runner (#2
 
 The contract (C-033, `core/gates.py`, design approved by the user on 2026-09-30):
 
-- A gate is a `PipelineGate`: a `name` from the closed `GateName` enum (`test`, `qc`, `rights`, `policy`, `approval`; #036–#041 add theirs) and a synchronous `evaluate(context) -> GateResult`.
+- A gate is a `PipelineGate`: a `name` from the closed `GateName` enum (`test`, `qc`, `rights`, `policy`, `approval`; #036–#041 add theirs and D-053 adds `strategy`) and a synchronous `evaluate(context) -> GateResult`.
 - `GateContext` holds the `ContentItem`, the `target_status` it is asked to move to (publishing is the move to `Publishing`), the `Actor` and the UTC time. The move must be allowed by #032. A gate reads anything else through repositories it is given when it is built.
 - `GateResult` either passes with no reasons or blocks with one or more `GateReason` values (a dotted code and a safe message).
 - `evaluate_gates` runs every gate in order and returns a `GateReport` with every result. The report blocks if any gate blocks, and `raise_if_blocked` raises `GateBlockedError` (`domain.gate_blocked`).

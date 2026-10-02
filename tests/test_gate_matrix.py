@@ -14,7 +14,8 @@ Every concrete gate against every status move, as the user approved on
 
 The table of which gate guards which move lives only here; wiring gates into
 the flow is the pipeline runner (#206) and the publishing blocker (#084).
-``GateName.TEST`` and ``GateName.QC`` have no gate yet (Phase K).
+``GateName.TEST`` and ``GateName.QC`` have no gate yet (Phase K). D-053 added
+``StrategyGate`` (user decision 2026-10-02): its worst world has no strategy.
 """
 
 import dataclasses
@@ -39,6 +40,7 @@ from ai_youtube_agent.core.content_item import (
     ContentType,
 )
 from ai_youtube_agent.core.daily_limit_gate import DailyLimitGate
+from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.gates import (
     GateContext,
     GateName,
@@ -50,6 +52,7 @@ from ai_youtube_agent.core.idempotency_gate import IdempotencyGate
 from ai_youtube_agent.core.kill_switch_gate import KillSwitchGate
 from ai_youtube_agent.core.policy_gate import PolicyGate
 from ai_youtube_agent.core.rights_gate import RightsGate
+from ai_youtube_agent.core.strategy_gate import StrategyGate
 from ai_youtube_agent.pipeline.idempotency import GENERATION_KIND
 from ai_youtube_agent.pipeline.job import AIJob
 from ai_youtube_agent.pipeline.kill_switch import EmergencyStop
@@ -96,6 +99,7 @@ GUARDS: dict[GateName, Callable[[ContentStatus, ContentStatus], bool]] = {
     GateName.POLICY: into(S.PUBLISHING),
     GateName.KILL_SWITCH: into(S.GENERATING, S.PUBLISHING),
     GateName.IDEMPOTENCY: into(S.GENERATING, S.PUBLISHING),
+    GateName.STRATEGY: into(S.GENERATING),
 }
 
 
@@ -118,6 +122,7 @@ def worst_codes(gate: GateName, target: ContentStatus) -> list[str]:
             if publishing
             else "idempotency.duplicate_generation"
         ],
+        GateName.STRATEGY: ["strategy.missing"],
     }[gate]
 
 
@@ -234,6 +239,10 @@ def build(gate: GateName, worst: bool) -> PipelineGate:
             )
         )
         return IdempotencyGate(jobs, publishes, Source(list_by_content_item=[APPROVED]))
+    if gate is GateName.STRATEGY:
+        return StrategyGate(
+            Source(get_by_channel=None if worst else STRATEGY), FeatureFlags()
+        )
     raise AssertionError(f"no gate for {gate}")
 
 

@@ -52,6 +52,7 @@ class GateName(StrEnum):
     BUDGET = "budget"  # #037
     KILL_SWITCH = "kill_switch"  # #040
     IDEMPOTENCY = "idempotency"  # #041
+    STRATEGY = "strategy"  # #053
 
 
 class GateOutcome(StrEnum):

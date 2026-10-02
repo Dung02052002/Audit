@@ -110,6 +110,7 @@ def test_later_gates_add_their_names_after_the_five() -> None:
         "budget",
         "kill_switch",
         "idempotency",
+        "strategy",  # D-053, user decision 2026-10-02
     ]
 
 

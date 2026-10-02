@@ -1,4 +1,4 @@
-"""Strategy settings API (Prompt Pack v8, prompts #044-#052), context C1.
+"""Strategy settings API (Prompt Pack v8, prompts #044-#053), context C1.
 
 The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
 #045-#052 add one ``PUT`` per setting next to the market.
@@ -69,6 +69,14 @@ The HTTP API for a channel's strategy, as the user approved on 2026-10-01.
   guaranteed outcomes: whenever monetization is configured, the strategy body
   carries the read-only ``goals_are_not_guaranteed: true`` and ``notice`` in
   the ``monetization`` object (a ``PUT`` that sends them is refused).
+
+- ``GET /channels/{id}/strategy/validation`` (#053, user decision
+  2026-10-02): every finding of ``validate_strategy`` for the channel, with
+  the optional ``content_type`` query (``shorts`` or ``longform``) adding the
+  per-type rules. Answers 200 with ``is_valid`` (no blocking finding) and
+  ``findings`` (code, severity, message, setting), also when the channel has
+  no strategy yet; an unknown channel is 404. ``StrategyGate`` blocks a run on
+  the same blocking findings.
 
 Errors use the envelope of ``core/http.py``.
 """
@@ -153,7 +161,10 @@ from ai_youtube_agent.content.strategy import (
     time_zones,
 )
 from ai_youtube_agent.content.strategy_settings import StrategySettings
+from ai_youtube_agent.content.strategy_validation import validate_strategy
 from ai_youtube_agent.core.audit import Actor
+from ai_youtube_agent.core.content_item import ContentType
+from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.http import current_actor, provide
 
 router = APIRouter(prefix="/channels/{channel_id}/strategy", tags=["strategy"])
@@ -738,6 +749,24 @@ def _body(profile: StrategyProfile) -> dict[str, Any]:
             "notice": MONETIZATION_NOTICE,
         }
     return body
+
+
+@router.get("/validation")
+def get_validation(
+    channel_id: str,
+    settings: Settings,
+    flags: Annotated[FeatureFlags, provide(FeatureFlags)],
+    content_type: ContentType | None = None,
+) -> dict[str, Any]:
+    profile = settings.find(channel_id)
+    validation = validate_strategy(profile, flags, content_type=content_type)
+    return {
+        "channel_id": channel_id,
+        "strategy_version": profile.version if profile else None,
+        "content_type": content_type.value if content_type else None,
+        "is_valid": validation.is_valid,
+        "findings": [finding.as_dict() for finding in validation.findings],
+    }
 
 
 @router.get("")

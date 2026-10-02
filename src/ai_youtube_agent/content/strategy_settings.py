@@ -89,13 +89,17 @@ class StrategySettings:
         self._clock = clock
 
     def get(self, channel_id: str) -> StrategyProfile:
-        with self._database.transaction() as connection:
-            if ChannelRepository(connection).get(channel_id) is None:
-                raise ChannelNotFoundError(f"channel {channel_id} does not exist")
-            profile = StrategyProfileRepository(connection).get_by_channel(channel_id)
+        profile = self.find(channel_id)
         if profile is None:
             raise StrategyNotFoundError(f"channel {channel_id} has no strategy")
         return profile
+
+    def find(self, channel_id: str) -> StrategyProfile | None:
+        """The channel's strategy, or None when it has none (#053)."""
+        with self._database.transaction() as connection:
+            if ChannelRepository(connection).get(channel_id) is None:
+                raise ChannelNotFoundError(f"channel {channel_id} does not exist")
+            return StrategyProfileRepository(connection).get_by_channel(channel_id)
 
     def set_market(
         self,

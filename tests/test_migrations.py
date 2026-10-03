@@ -53,8 +53,8 @@ SHA = "a" * 64
 # 0006 budget alerts (D-051), 0007 sources (E-055), 0008 research requests
 # (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058),
 # 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
-# cache (E-061), 0014 research recovery (E-062)
-LATEST = 14
+# cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064)
+LATEST = 15
 
 ENTITY_TABLES = {
     "channels",
@@ -222,6 +222,7 @@ def test_default_migrations_are_packaged() -> None:
         "research_reports",
         "research_cache",
         "research_recovery",
+        "script_sections",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -350,7 +351,8 @@ def test_foreign_keys_are_enforced(conn) -> None:
         "budget_alert_thresholds_json FROM strategy_profiles",
         "INSERT INTO artifacts VALUES ('a2', 'ci1', 'video', 1, 'u2', '" + SHA + "', "
         "1, 'video/mp4', '" + TS + "')",
-        "INSERT INTO scripts VALUES ('s2', 'ci1', 1, 'Other', '" + TS + "')",
+        "INSERT INTO scripts (id, content_item_id, version, text, created_at) "
+        "VALUES ('s2', 'ci1', 1, 'Other', '" + TS + "')",
     ],
     ids=["one-strategy-per-channel", "artifact-version", "script-version"],
 )
@@ -361,7 +363,11 @@ def test_unique_domain_rules_are_enforced(conn, statement: str) -> None:
         "'video/mp4', ?)",
         (SHA, TS),
     )
-    conn.execute("INSERT INTO scripts VALUES ('s1', 'ci1', 1, 'Text', ?)", (TS,))
+    conn.execute(
+        "INSERT INTO scripts (id, content_item_id, version, text, created_at) "
+        "VALUES ('s1', 'ci1', 1, 'Text', ?)",
+        (TS,),
+    )
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(statement)
 

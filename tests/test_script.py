@@ -222,12 +222,23 @@ def test_as_dict_is_json_friendly() -> None:
         "version": 1,
         "text": TEXT,
         "created_at": stamp,
+        # F-064: sections, duration and version history.
+        "sections": [{"kind": "body", "title": None, "text": TEXT, "seconds": None}],
+        "duration_target": None,
+        "estimated_seconds": 5,
+        "within_target": None,
+        "created_by": None,
+        "reason": None,
+        "parent_id": None,
+        "strategy_version": None,
+        "research_report_id": None,
     }
     assert claim.as_dict() == {
         "id": claim.id,
         "script_id": script.id,
         "text": "A claim",
         "created_at": stamp,
+        "section_index": None,
     }
     assert evidence.as_dict() == {
         "id": evidence.id,

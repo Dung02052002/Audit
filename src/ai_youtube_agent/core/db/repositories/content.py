@@ -3,11 +3,25 @@
 import sqlite3
 from datetime import datetime
 
-from ai_youtube_agent.content.script import Claim, Evidence, Script
+from ai_youtube_agent.content.script import (
+    Claim,
+    DurationTarget,
+    Evidence,
+    Script,
+    ScriptSection,
+)
 from ai_youtube_agent.content.voice import AudioMetadata
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
-from ai_youtube_agent.core.db.repositories.base import Repository, dt, parse_dt
+from ai_youtube_agent.core.db.repositories.base import (
+    Repository,
+    actor_columns,
+    actor_from,
+    dt,
+    from_json,
+    parse_dt,
+    to_json,
+)
 
 
 class ContentItemRepository(Repository):
@@ -79,6 +93,7 @@ class ScriptRepository(Repository):
     table = "scripts"
 
     def add(self, script: Script) -> None:
+        target = script.duration_target
         self._insert(
             "scripts",
             {
@@ -87,6 +102,18 @@ class ScriptRepository(Repository):
                 "version": script.version,
                 "text": script.text,
                 "created_at": dt(script.created_at),
+                "sections_json": to_json([s.as_dict() for s in script.sections]),
+                "duration_min_seconds": target.min_seconds if target else None,
+                "duration_max_seconds": target.max_seconds if target else None,
+                **(
+                    actor_columns("created_by", script.created_by)
+                    if script.created_by
+                    else {"created_by_kind": None, "created_by_id": None}
+                ),
+                "reason": script.reason,
+                "parent_id": script.parent_id,
+                "strategy_version": script.strategy_version,
+                "research_report_id": script.research_report_id,
             },
         )
 
@@ -109,6 +136,7 @@ class ScriptRepository(Repository):
                 "script_id": claim.script_id,
                 "text": claim.text,
                 "created_at": dt(claim.created_at),
+                "section_index": claim.section_index,
             },
         )
 
@@ -118,7 +146,13 @@ class ScriptRepository(Repository):
             (script_id,),
         )
         return [
-            Claim(row["id"], row["script_id"], row["text"], parse_dt(row["created_at"]))
+            Claim(
+                row["id"],
+                row["script_id"],
+                row["text"],
+                parse_dt(row["created_at"]),
+                row["section_index"],
+            )
             for row in rows
         ]
 
@@ -229,8 +263,24 @@ def _script(row: sqlite3.Row) -> Script:
         id=row["id"],
         content_item_id=row["content_item_id"],
         version=row["version"],
-        text=row["text"],
+        sections=tuple(
+            ScriptSection.from_dict(item) for item in from_json(row["sections_json"])
+        ),
         created_at=parse_dt(row["created_at"]),
+        duration_target=(
+            DurationTarget(row["duration_min_seconds"], row["duration_max_seconds"])
+            if row["duration_min_seconds"] is not None
+            else None
+        ),
+        created_by=(
+            actor_from(row, "created_by")
+            if row["created_by_kind"] is not None
+            else None
+        ),
+        reason=row["reason"],
+        parent_id=row["parent_id"],
+        strategy_version=row["strategy_version"],
+        research_report_id=row["research_report_id"],
     )
 
 

@@ -158,6 +158,7 @@ Research (C4): collect #056 → deduplicate #057 → extract topics #058 → sco
   │  ResearchReport (claims, evidence, uncertainty) #060
   ▼
 Script (C5): hook #065 → Shorts #066 or LongForm #067 script
+  │        (Script = ordered sections + duration target + version history #064)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
   │        → originality #071 → validate #072 → version #073
   ▼

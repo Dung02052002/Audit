@@ -131,7 +131,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 
 | Task | Name | Dependency | Status |
 |---|---|---|---|
-| F-064 | Script Model | E-10 | NOT_STARTED |
+| F-064 | Script Model | E-10 | PASS. User-approved rules (2026-10-03): B-017 `Script` is extended, not replaced. `content/script.py`: a version holds 1-100 ordered `ScriptSection`s (closed `SectionKind` hook, intro, body, chapter, outro, cta; trimmed text; optional title <= 100, required for a chapter; optional `seconds` 1-14,400); `text` is now a property joining the sections with blank lines, and `Script.create(item, text)` still works (one body section). `DurationTarget` (min/max seconds) is copied from the strategy format of the content type (`DurationTarget.from_format`); `estimated_seconds` sums each section's seconds or its words at `WORDS_PER_MINUTE` 150, and `within_target` only reports (blocking is #072). Version history: `created_by` (Actor, None for scripts stored before #064), optional `reason` <= 500, `parent_id` (None exactly for version 1), `strategy_version`, `research_report_id`; `next_version` takes text or sections, sets the parent and keeps target/strategy version/report unless given. `Claim` gains optional `section_index`, checked against the version by `Script.claim`. Migration `0015_script_sections.sql` adds `sections_json`, duration, actor, reason, `parent_id` (FK deferred to commit), `strategy_version`, `research_report_id` (FK) to `scripts` and `section_index` to `claims`; old scripts become one body section and later versions get the previous version as parent. Updated the B-017 `as_dict` test (new keys) and the B-029 migration tests (schema version 15; two raw script inserts now name their columns). `tests/test_script_model.py` (31 tests). Tests: 2772 passed. |
 | F-065 | Hook Generator | F-1 | NOT_STARTED |
 | F-066 | Shorts Script Generator | F-2 | NOT_STARTED |
 | F-067 | LongForm Script Generator | F-3 | NOT_STARTED |
@@ -211,4 +211,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - E-061 Research Cache has PASSED.
 - E-062 Research Failure Recovery has PASSED.
 - E-063 Research Tests has PASSED. Phase E is complete.
-- Next task: **F-064 Script Model**. It is NOT_STARTED.
+- F-064 Script Model has PASSED.
+- Next task: **F-065 Hook Generator**. It is NOT_STARTED.

@@ -32,6 +32,12 @@ from ai_youtube_agent.content.script import (
     NumberAgreement,
     Script,
     ScriptSection,
+    SectionKind,
+)
+from ai_youtube_agent.content.script_revision import (
+    ChangeKind,
+    ScriptRevision,
+    SectionChange,
 )
 from ai_youtube_agent.content.script_validation import Finding as ValidationFinding
 from ai_youtube_agent.content.script_validation import (
@@ -662,6 +668,119 @@ def _validation_finding(row: sqlite3.Row) -> ValidationFinding:
         maximum=row["maximum"],
         score=row["score"],
         matched=row["matched"],
+    )
+
+
+class ScriptRevisionRepository(Repository):
+    """Script revisions (#073): one per script, never changed.
+
+    ``add`` stores the revision with its entries; a second revision for the
+    same script breaks the unique ``script_id`` (``sqlite3.IntegrityError``).
+    """
+
+    table = "script_revisions"
+
+    def add(self, revision: ScriptRevision) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": revision.id,
+                "script_id": revision.script_id,
+                "parent_script_id": revision.parent_script_id,
+                "content_item_id": revision.content_item_id,
+                "method": revision.method,
+                "version": revision.version,
+                "added_count": revision.added_count,
+                "removed_count": revision.removed_count,
+                "changed_count": revision.changed_count,
+                "unchanged_count": revision.unchanged_count,
+                "entries_count": revision.entries_count,
+                "words_before": revision.words_before,
+                "words_after": revision.words_after,
+                "seconds_before": revision.seconds_before,
+                "seconds_after": revision.seconds_after,
+                "content_sha256": revision.content_sha256,
+                **actor_columns("requested_by", revision.requested_by),
+                "created_at": dt(revision.created_at),
+            },
+        )
+        for entry in revision.entries:
+            self._insert(
+                "script_revision_sections",
+                {
+                    "id": uuid.uuid4().hex,
+                    "revision_id": revision.id,
+                    "change": entry.change.value,
+                    "kind": entry.kind.value,
+                    "old_index": entry.old_index,
+                    "new_index": entry.new_index,
+                    "text_changed": int(entry.text_changed),
+                    "title_changed": int(entry.title_changed),
+                    "seconds_changed": int(entry.seconds_changed),
+                    "words_delta": entry.words_delta,
+                    "sha256": entry.sha256,
+                },
+            )
+
+    def get(self, revision_id: str) -> ScriptRevision | None:
+        row = self._one("SELECT * FROM script_revisions WHERE id = ?", (revision_id,))
+        return self._revision(row) if row else None
+
+    def get_by_script(self, script_id: str) -> ScriptRevision | None:
+        row = self._one(
+            "SELECT * FROM script_revisions WHERE script_id = ?", (script_id,)
+        )
+        return self._revision(row) if row else None
+
+    def list_by_content_item(self, content_item_id: str) -> list[ScriptRevision]:
+        rows = self._all(
+            "SELECT * FROM script_revisions WHERE content_item_id = ? "
+            "ORDER BY version, rowid",
+            (content_item_id,),
+        )
+        return [self._revision(row) for row in rows]
+
+    def _revision(self, row: sqlite3.Row) -> ScriptRevision:
+        # rowid keeps the order of the entries of the revision.
+        entries = self._all(
+            "SELECT * FROM script_revision_sections "
+            "WHERE revision_id = ? ORDER BY rowid",
+            (row["id"],),
+        )
+        return ScriptRevision(
+            id=row["id"],
+            script_id=row["script_id"],
+            parent_script_id=row["parent_script_id"],
+            content_item_id=row["content_item_id"],
+            method=row["method"],
+            version=row["version"],
+            added_count=row["added_count"],
+            removed_count=row["removed_count"],
+            changed_count=row["changed_count"],
+            unchanged_count=row["unchanged_count"],
+            entries_count=row["entries_count"],
+            words_before=row["words_before"],
+            words_after=row["words_after"],
+            seconds_before=row["seconds_before"],
+            seconds_after=row["seconds_after"],
+            content_sha256=row["content_sha256"],
+            entries=tuple(_section_change(entry) for entry in entries),
+            requested_by=actor_from(row, "requested_by"),
+            created_at=parse_dt(row["created_at"]),
+        )
+
+
+def _section_change(row: sqlite3.Row) -> SectionChange:
+    return SectionChange(
+        change=ChangeKind(row["change"]),
+        kind=SectionKind(row["kind"]),
+        old_index=row["old_index"],
+        new_index=row["new_index"],
+        text_changed=bool(row["text_changed"]),
+        title_changed=bool(row["title_changed"]),
+        seconds_changed=bool(row["seconds_changed"]),
+        words_delta=row["words_delta"],
+        sha256=row["sha256"],
     )
 
 

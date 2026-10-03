@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ai_youtube_agent.bootstrap import build_container
-from ai_youtube_agent.content import script_validation
+from ai_youtube_agent.content import script_revision, script_validation
 from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.channel import ChannelStatus
@@ -31,7 +31,12 @@ from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.research_request import ResearchStatus
 from ai_youtube_agent.content.revenue import RevenueStage
 from ai_youtube_agent.content.rights import RiskLevel, RiskResolution
-from ai_youtube_agent.content.script import ClaimKind, NumberAgreement
+from ai_youtube_agent.content.script import (
+    MAX_SECTIONS,
+    ClaimKind,
+    NumberAgreement,
+    SectionKind,
+)
 from ai_youtube_agent.content.script_validation import ValidationStatus
 from ai_youtube_agent.content.source import DuplicateReason
 from ai_youtube_agent.content.topic import EvidenceField
@@ -67,8 +72,9 @@ SHA = "a" * 64
 # cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064),
 # 0016 hook generations (F-065), 0017 claim extractions (F-068),
 # 0018 evidence matches (F-069), 0019 fact checks (F-070),
-# 0020 originality checks (F-071), 0021 script validations (F-072)
-LATEST = 21
+# 0020 originality checks (F-071), 0021 script validations (F-072),
+# 0022 script revisions (F-073)
+LATEST = 22
 
 ENTITY_TABLES = {
     "channels",
@@ -122,6 +128,8 @@ ENTITY_TABLES = {
     "originality_findings",  # F-071
     "script_validations",  # F-072
     "script_validation_findings",  # F-072
+    "script_revisions",  # F-073
+    "script_revision_sections",  # F-073
 }
 
 ENUM_COLUMNS = {
@@ -163,6 +171,8 @@ ENUM_COLUMNS = {
     ("originality_findings", "status"): OriginalityStatus,  # F-071
     ("script_validations", "requested_by_kind"): ActorKind,  # F-072
     ("script_validation_findings", "status"): ValidationStatus,  # F-072
+    ("script_revisions", "requested_by_kind"): ActorKind,  # F-073
+    ("script_revision_sections", "kind"): SectionKind,  # F-073
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -262,6 +272,7 @@ def test_default_migrations_are_packaged() -> None:
         "fact_checks",
         "originality_checks",
         "script_validations",
+        "script_revisions",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -475,6 +486,38 @@ def test_script_validation_limits_match_the_python_constants(conn) -> None:
     )
     assert code is not None
     assert int(code.group(1)) == 100
+
+
+def test_script_revision_limits_match_the_python_constants(conn) -> None:
+    # The SQL bounds repeat the Python constants; this catches a drift (F-073).
+    sql = {
+        name: conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (name,),
+        ).fetchone()[0]
+        for name in ("script_revisions", "script_revision_sections")
+    }
+    revisions, sections = sql["script_revisions"], sql["script_revision_sections"]
+
+    entries = re.search(r"entries_count BETWEEN 0 AND (\d+)\)", revisions)
+    assert entries is not None
+    assert int(entries.group(1)) == script_revision.MAX_ENTRIES
+    version = re.search(r"version BETWEEN 2 AND (\d+)\)", revisions)
+    assert version is not None
+    assert int(version.group(1)) == script_revision.MAX_VERSION
+    method = re.search(r"length\(trim\(method\)\) BETWEEN 1 AND (\d+)", revisions)
+    assert method is not None
+    assert int(method.group(1)) == script_revision.MAX_METHOD
+    change = re.search(r"length\(trim\(change\)\) BETWEEN 1 AND (\d+)", sections)
+    assert change is not None
+    assert int(change.group(1)) == 100
+    for column in ("old_index", "new_index"):
+        index = re.search(rf"{column} BETWEEN 0 AND (\d+)\)", sections)
+        assert index is not None, column
+        assert int(index.group(1)) == MAX_SECTIONS - 1
+    # A change is open text in SQL, closed in Python: every Python value fits.
+    for kind in script_revision.ChangeKind:
+        assert 1 <= len(kind.value) <= 100
 
 
 def test_foreign_keys_are_enforced(conn) -> None:

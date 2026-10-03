@@ -31,7 +31,7 @@ Script model (#064), approved by the user on 2026-10-03 (B-017 extended):
   optional ``reason`` (at most 500 characters), ``parent_id`` (the version it
   was made from; None exactly for version 1) and what it was made from:
   ``strategy_version`` and ``research_report_id``. Scripts stored before #064
-  have no actor. Diffs are #073.
+  have no actor. Diffs against the parent are #073 (``script_revision.py``).
 - A claim may name the section it comes from (``section_index``);
   ``Script.claim`` checks the index against that version.
 

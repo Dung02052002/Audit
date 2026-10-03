@@ -181,6 +181,10 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │         rules `script-rules-v1`: strict sections per type, length, EN/VI language,
   │         banned phrases, hook length; PASS/WARN/FAIL, a record only (no gate, no
   │         override), run stored #072)
+  │        (versioning: on demand per Script version after the first, rules `script-diff-v1`:
+  │         diff metadata against the parent only (section LCS, counts, words, seconds, SHA-256,
+  │         no script text), a record only, no restore yet, no link to approvals, revision
+  │         stored #073)
   │        → originality #071 → validate #072 → version #073
   ▼
 Rights & Policy (C6): register assets #076 → provenance #077 → rights risk #078
@@ -248,6 +252,8 @@ The contract (C-033, `core/gates.py`, design approved by the user on 2026-09-30)
 - Gates fail closed: a gate that raises or returns something other than its own result is counted as a block (`gate.error` or `gate.invalid_result`), and the detail goes only to the log.
 
 Approval gate (C-034, rules approved by the user on 2026-09-30): `ApprovalGate` judges only the move to `Publishing`. The item's newest `ApprovalRequest` (latest `created_at`, then `id`) must be `approved`, and it must bind every artifact kind the item has at its latest version with the same id, version and sha256. Otherwise it blocks with `approval.missing`, `approval.not_approved` or `approval.not_current`. It always checks and does not read `APPROVAL_REQUIRED`. It reads through `ApprovalSource` and `ArtifactSource`, which the SQLite repositories satisfy.
+
+Approvals bind artifacts only (`ArtifactKind` video, audio, subtitles, thumbnail, metadata), never a script: a new script version (`store_script`, the #073 revisions) invalidates nothing until it is rendered into new artifacts.
 
 Version invalidation (C-035, rules approved by the user on 2026-09-30): `VersionInvalidation.store_artifact_version` stores a new artifact version and, in the same transaction, invalidates every `pending` or `approved` request for the item that `stale_kinds` (in `content/approval.py`, shared with the approval gate) reports as stale. Rejected, changes_requested, expired and invalidated requests stay. If any request was invalidated, an item in `PreviewReady`, `AwaitingApproval` or `Approved` moves back to `Generating`. Each invalidation is audited as `approval.invalidated` by the system after the commit. `VersionInvalidation.invalidate(item_id)` runs the same check on demand, and `invalidate_stale_approvals` runs it inside a caller's transaction.
 

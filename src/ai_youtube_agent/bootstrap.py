@@ -20,6 +20,7 @@ mock exists, and its ``check`` is the ``text_provider`` health check.
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.hook_generator import HookGenerator
+from ai_youtube_agent.content.longform_script_generator import LongFormScriptGenerator
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.shorts_script_generator import ShortsScriptGenerator
 from ai_youtube_agent.content.source_collector import SourceCollector
@@ -106,6 +107,15 @@ def build_container(settings: Settings | None = None) -> Container:
         ShortsScriptGenerator,
         lambda c: ShortsScriptGenerator(
             c.resolve(Database), c.resolve(TextGenerator), c.resolve(AuditLog)
+        ),
+    )
+    container.register(
+        LongFormScriptGenerator,
+        lambda c: LongFormScriptGenerator(
+            c.resolve(Database),
+            c.resolve(TextGenerator),
+            c.resolve(AuditLog),
+            c.resolve(FeatureFlags),
         ),
     )
     return container

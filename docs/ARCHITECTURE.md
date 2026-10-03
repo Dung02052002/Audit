@@ -162,6 +162,8 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │        (Script = ordered sections + duration target + version history #064)
   │        (hooks: 3 checked candidates from TextGenerator, caller picks #065)
   │        (Shorts: chosen hook + 1-3 body + cta, JSON answer, checked, Script version #066)
+  │        (LongForm: refused while LONGFORM_ENABLED is off; outline, then one call per
+  │         chapter; hook + intro + 3-12 chapters + outro + cta, Script version #067)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
   │        → originality #071 → validate #072 → version #073
   ▼

@@ -118,13 +118,18 @@ Every future task must keep these true:
 9. **Do not re-run Phase 0 or re-bootstrap.** The project exists. Do not reset or delete it.
 10. **Keep state files current.** Update `PROJECT_STATE.md`, `TASK_STATUS.md` and `CHANGELOG.md` at the end of each task.
 11. **Push only when the user asks.**
+12. **Route every task first.** Before implementing a task, classify it with the Task/Model Router (`tools/task_router.py`, policy in `.claude/task-router.json`, rules in `docs/TASK_ROUTER.md`, summary in `CLAUDE.md`) and follow the routed model, effort, planner and reviewer; escalate only with a reason and evidence. User overrides win unless they break a rule above.
+
+## Workflow infrastructure
+
+Task/Model Router (2026-10-03, after F-067; not a Prompt Pack task, so it has no TASK_STATUS row and does not change the state machine). User-approved: routed subagents per level generated from the policy (`.claude/agents/task-{planner,coder,reviewer}-<level>.md`), a deterministic scoring script with floors and tests (`tests/test_task_router.py`, 45 tests), the main session keeps the user's Opus setting (no project model setting), commit without push. Default policy: TRIVIAL haiku/low, SIMPLE sonnet/low, NORMAL sonnet/medium + planner, COMPLEX opus/high + planner + reviewer, ARCHITECTURAL opus/high + planner + reviewer + architecture review; escalation at most 2 steps up the ladder, never to xhigh/max without a user override. Nothing in `src/`, the migrations or earlier tests changed.
 
 ## How to resume
 
 ```sh
 git status --short --branch   # expect a clean tree on main
 uv sync                       # recreate .venv if needed
-uv run python -m pytest       # expect 2857 passed (132 at the A-012 baseline)
+uv run python -m pytest       # expect 2902 passed (132 at the A-012 baseline)
 uv run ruff check . && uv run ruff format --check .
 ```
 

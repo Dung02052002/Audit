@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "principle": "Use the cheapest model that is reasonably capable of completing the task safely.",
+  "supported_models": ["haiku", "sonnet", "opus", "fable", "inherit"],
+  "supported_efforts": ["low", "medium", "high", "xhigh", "max"],
+  "levels": {
+    "TRIVIAL": {
+      "model": "haiku",
+      "effort": "low",
+      "planner": false,
+      "reviewer": false,
+      "architecture_review": false
+    },
+    "SIMPLE": {
+      "model": "sonnet",
+      "effort": "low",
+      "planner": false,
+      "reviewer": false,
+      "architecture_review": false
+    },
+    "NORMAL": {
+      "model": "sonnet",
+      "effort": "medium",
+      "planner": true,
+      "reviewer": false,
+      "architecture_review": false
+    },
+    "COMPLEX": {
+      "model": "opus",
+      "effort": "high",
+      "planner": true,
+      "reviewer": true,
+      "architecture_review": false
+    },
+    "ARCHITECTURAL": {
+      "model": "opus",
+      "effort": "high",
+      "planner": true,
+      "reviewer": true,
+      "architecture_review": true
+    }
+  },
+  "escalation": {
+    "max_steps": 2,
+    "escalating_reasons": [
+      "logic_failure",
+      "design_gap",
+      "repeated_test_failure",
+      "insufficient_reasoning"
+    ],
+    "non_escalating_reasons": [
+      "typo",
+      "lint",
+      "format",
+      "simple_import",
+      "environment",
+      "flaky_unrelated"
+    ]
+  }
+}

@@ -34,6 +34,11 @@ Script model (#064), approved by the user on 2026-10-03 (B-017 extended):
   have no actor. Diffs are #073.
 - A claim may name the section it comes from (``section_index``);
   ``Script.claim`` checks the index against that version.
+
+Claim extraction (#068) adds two optional claim fields: ``kind`` (a closed
+``ClaimKind``: numeric, date, entity, comparison, absolute) and
+``extraction_id``, the extraction run that found the claim. Claims stored
+before #068 have neither.
 """
 
 import math
@@ -57,6 +62,16 @@ MAX_TITLE = 100
 MAX_REASON = 500
 WORDS_PER_MINUTE = 150
 _WORD = re.compile(r"\w+")
+
+
+class ClaimKind(StrEnum):
+    """What makes a sentence a factual claim (#068), strongest first."""
+
+    NUMERIC = "numeric"
+    DATE = "date"
+    ENTITY = "entity"
+    COMPARISON = "comparison"
+    ABSOLUTE = "absolute"
 
 
 class SectionKind(StrEnum):
@@ -281,12 +296,25 @@ class Script:
         return self.duration_target.contains(self.estimated_seconds)
 
     def claim(
-        self, text: str, *, section_index: int | None = None, clock: Clock | None = None
+        self,
+        text: str,
+        *,
+        section_index: int | None = None,
+        kind: ClaimKind | None = None,
+        extraction_id: str | None = None,
+        clock: Clock | None = None,
     ) -> "Claim":
         """A claim made by this version, optionally in one of its sections."""
         if section_index is not None:
             _whole("section_index", section_index, 0, len(self.sections) - 1)
-        return Claim.create(self.id, text, section_index=section_index, clock=clock)
+        return Claim.create(
+            self.id,
+            text,
+            section_index=section_index,
+            kind=kind,
+            extraction_id=extraction_id,
+            clock=clock,
+        )
 
     def as_dict(self) -> dict[str, Any]:
         target = self.duration_target
@@ -323,6 +351,8 @@ class Claim:
     text: str
     created_at: datetime
     section_index: int | None = None
+    kind: ClaimKind | None = None
+    extraction_id: str | None = None
 
     def __post_init__(self) -> None:
         _require_ids(self, "id", "script_id")
@@ -330,6 +360,10 @@ class Claim:
         _require_utc(self.created_at)
         if self.section_index is not None:
             _whole("section_index", self.section_index, 0, MAX_SECTIONS - 1)
+        if self.kind is not None and not isinstance(self.kind, ClaimKind):
+            raise TypeError("kind must be a ClaimKind")
+        if self.extraction_id is not None:
+            _require_ids(self, "extraction_id")
 
     @classmethod
     def create(
@@ -338,6 +372,8 @@ class Claim:
         text: str,
         *,
         section_index: int | None = None,
+        kind: ClaimKind | None = None,
+        extraction_id: str | None = None,
         clock: Clock | None = None,
     ) -> "Claim":
         return cls(
@@ -346,6 +382,8 @@ class Claim:
             text=text.strip(),
             created_at=_now(clock),
             section_index=section_index,
+            kind=kind,
+            extraction_id=extraction_id,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -355,6 +393,8 @@ class Claim:
             "text": self.text,
             "created_at": self.created_at.isoformat(),
             "section_index": self.section_index,
+            "kind": self.kind.value if self.kind else None,
+            "extraction_id": self.extraction_id,
         }
 
 

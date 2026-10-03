@@ -16,9 +16,11 @@ the in-memory mock exists, and its ``check`` is the ``research_provider``
 health check. Since #061 it is wrapped in ``ResearchCache``.
 ``TextGenerator`` (#065) is chosen by ``Settings.text_provider``; only the
 mock exists, and its ``check`` is the ``text_provider`` health check.
+``ClaimExtractor`` (#068) uses rules only and needs no provider.
 """
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
+from ai_youtube_agent.content.claim_extractor import ClaimExtractor
 from ai_youtube_agent.content.hook_generator import HookGenerator
 from ai_youtube_agent.content.longform_script_generator import LongFormScriptGenerator
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
@@ -117,6 +119,10 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(AuditLog),
             c.resolve(FeatureFlags),
         ),
+    )
+    container.register(
+        ClaimExtractor,
+        lambda c: ClaimExtractor(c.resolve(Database), c.resolve(AuditLog)),
     )
     return container
 

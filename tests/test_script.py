@@ -239,6 +239,9 @@ def test_as_dict_is_json_friendly() -> None:
         "text": "A claim",
         "created_at": stamp,
         "section_index": None,
+        # F-068: claim kind and extraction run.
+        "kind": None,
+        "extraction_id": None,
     }
     assert evidence.as_dict() == {
         "id": evidence.id,

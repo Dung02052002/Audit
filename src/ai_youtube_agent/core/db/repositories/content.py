@@ -1,8 +1,9 @@
-"""Repositories for content items, artifacts, scripts, hooks and audio metadata."""
+"""Repositories for content items, artifacts, scripts, hooks, claims and audio."""
 
 import sqlite3
 from datetime import datetime
 
+from ai_youtube_agent.content.claim_extraction import ClaimExtraction
 from ai_youtube_agent.content.hook import (
     HookCandidate,
     HookGeneration,
@@ -10,6 +11,7 @@ from ai_youtube_agent.content.hook import (
 )
 from ai_youtube_agent.content.script import (
     Claim,
+    ClaimKind,
     DurationTarget,
     Evidence,
     Script,
@@ -142,24 +144,19 @@ class ScriptRepository(Repository):
                 "text": claim.text,
                 "created_at": dt(claim.created_at),
                 "section_index": claim.section_index,
+                "kind": claim.kind.value if claim.kind else None,
+                "extraction_id": claim.extraction_id,
             },
         )
 
     def list_claims(self, script_id: str) -> list[Claim]:
         rows = self._all(
-            "SELECT * FROM claims WHERE script_id = ? ORDER BY created_at, id",
+            # rowid breaks ties, so the claims of one extraction run (which
+            # share its time) keep their order in the script.
+            "SELECT * FROM claims WHERE script_id = ? ORDER BY created_at, rowid",
             (script_id,),
         )
-        return [
-            Claim(
-                row["id"],
-                row["script_id"],
-                row["text"],
-                parse_dt(row["created_at"]),
-                row["section_index"],
-            )
-            for row in rows
-        ]
+        return [_claim(row) for row in rows]
 
     def add_evidence(self, evidence: Evidence) -> None:
         self._insert(
@@ -228,6 +225,86 @@ class HookGenerationRepository(Repository):
             (content_item_id,),
         )
         return [_hook_generation(row) for row in rows]
+
+
+class ClaimExtractionRepository(Repository):
+    """Claim extraction runs (#068): one per script version, never changed.
+
+    ``add`` stores the run with its claims; a second run for the same script
+    breaks the unique ``script_id`` (``sqlite3.IntegrityError``).
+    """
+
+    table = "claim_extractions"
+
+    def add(self, extraction: ClaimExtraction) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": extraction.id,
+                "script_id": extraction.script_id,
+                "content_item_id": extraction.content_item_id,
+                "method": extraction.method,
+                "claims_count": extraction.claims_count,
+                "skipped_cta": extraction.skipped_cta,
+                "skipped_question": extraction.skipped_question,
+                "skipped_opinion": extraction.skipped_opinion,
+                "skipped_no_signal": extraction.skipped_no_signal,
+                "dropped_duplicates": extraction.dropped_duplicates,
+                "dropped_over_cap": extraction.dropped_over_cap,
+                "dropped_too_long": extraction.dropped_too_long,
+                **actor_columns("requested_by", extraction.requested_by),
+                "created_at": dt(extraction.created_at),
+            },
+        )
+        scripts = ScriptRepository(self.connection)
+        for claim in extraction.claims:
+            scripts.add_claim(claim)
+
+    def get(self, extraction_id: str) -> ClaimExtraction | None:
+        row = self._one(
+            "SELECT * FROM claim_extractions WHERE id = ?", (extraction_id,)
+        )
+        return self._extraction(row) if row else None
+
+    def get_by_script(self, script_id: str) -> ClaimExtraction | None:
+        row = self._one(
+            "SELECT * FROM claim_extractions WHERE script_id = ?", (script_id,)
+        )
+        return self._extraction(row) if row else None
+
+    def _extraction(self, row: sqlite3.Row) -> ClaimExtraction:
+        # The claims of one run share its time; rowid keeps the script order.
+        claims = self._all(
+            "SELECT * FROM claims WHERE extraction_id = ? ORDER BY rowid", (row["id"],)
+        )
+        return ClaimExtraction(
+            id=row["id"],
+            script_id=row["script_id"],
+            content_item_id=row["content_item_id"],
+            method=row["method"],
+            claims=tuple(_claim(claim) for claim in claims),
+            skipped_cta=row["skipped_cta"],
+            skipped_question=row["skipped_question"],
+            skipped_opinion=row["skipped_opinion"],
+            skipped_no_signal=row["skipped_no_signal"],
+            dropped_duplicates=row["dropped_duplicates"],
+            dropped_over_cap=row["dropped_over_cap"],
+            dropped_too_long=row["dropped_too_long"],
+            requested_by=actor_from(row, "requested_by"),
+            created_at=parse_dt(row["created_at"]),
+        )
+
+
+def _claim(row: sqlite3.Row) -> Claim:
+    return Claim(
+        id=row["id"],
+        script_id=row["script_id"],
+        text=row["text"],
+        created_at=parse_dt(row["created_at"]),
+        section_index=row["section_index"],
+        kind=ClaimKind(row["kind"]) if row["kind"] is not None else None,
+        extraction_id=row["extraction_id"],
+    )
 
 
 def _hook_generation(row: sqlite3.Row) -> HookGeneration:

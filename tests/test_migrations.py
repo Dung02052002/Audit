@@ -22,6 +22,7 @@ from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.research_request import ResearchStatus
 from ai_youtube_agent.content.revenue import RevenueStage
 from ai_youtube_agent.content.rights import RiskLevel, RiskResolution
+from ai_youtube_agent.content.script import ClaimKind
 from ai_youtube_agent.content.source import DuplicateReason
 from ai_youtube_agent.content.topic import EvidenceField
 from ai_youtube_agent.core.artifact import ArtifactKind
@@ -54,8 +55,8 @@ SHA = "a" * 64
 # (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058),
 # 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
 # cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064),
-# 0016 hook generations (F-065)
-LATEST = 16
+# 0016 hook generations (F-065), 0017 claim extractions (F-068)
+LATEST = 17
 
 ENTITY_TABLES = {
     "channels",
@@ -101,6 +102,7 @@ ENTITY_TABLES = {
     "research_reports",  # E-060
     "research_cache",  # E-061
     "hook_generations",  # F-065
+    "claim_extractions",  # F-068
 }
 
 ENUM_COLUMNS = {
@@ -134,6 +136,7 @@ ENUM_COLUMNS = {
     ("research_cache", "kind"): CacheKind,  # E-061
     ("hook_generations", "content_type"): ContentType,  # F-065
     ("hook_generations", "requested_by_kind"): ActorKind,  # F-065
+    ("claim_extractions", "requested_by_kind"): ActorKind,  # F-068
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -228,6 +231,7 @@ def test_default_migrations_are_packaged() -> None:
         "research_recovery",
         "script_sections",
         "hook_generations",
+        "claim_extractions",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -333,6 +337,19 @@ def test_enum_checks_match_python_enums(conn) -> None:
     assert found.keys() == ENUM_COLUMNS.keys()
     for key, enum in ENUM_COLUMNS.items():
         assert found[key] == [member.value for member in enum], key
+
+
+def test_nullable_claim_kind_check_matches_the_python_enum(conn) -> None:
+    # Added by ALTER TABLE (F-068), so the NOT NULL pattern above misses it.
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'claims'"
+    ).fetchone()[0]
+    values = re.search(r"kind TEXT CHECK \(kind IS NULL OR kind IN \(([^)]*)\)\)", sql)
+
+    assert values is not None
+    assert [v.strip().strip("'") for v in values.group(1).split(",")] == [
+        member.value for member in ClaimKind
+    ]
 
 
 def test_foreign_keys_are_enforced(conn) -> None:

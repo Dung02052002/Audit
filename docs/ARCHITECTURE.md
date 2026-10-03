@@ -164,6 +164,8 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │        (Shorts: chosen hook + 1-3 body + cta, JSON answer, checked, Script version #066)
   │        (LongForm: refused while LONGFORM_ENABLED is off; outline, then one call per
   │         chapter; hook + intro + 3-12 chapters + outro + cta, Script version #067)
+  │        (claims: on demand per Script version, deterministic rules `rules-v1`,
+  │         CTA/questions/opinions skipped, one ClaimKind each, max 200, run stored #068)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
   │        → originality #071 → validate #072 → version #073
   ▼

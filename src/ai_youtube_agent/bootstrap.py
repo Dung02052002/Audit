@@ -16,8 +16,8 @@ the in-memory mock exists, and its ``check`` is the ``research_provider``
 health check. Since #061 it is wrapped in ``ResearchCache``.
 ``TextGenerator`` (#065) is chosen by ``Settings.text_provider``; only the
 mock exists, and its ``check`` is the ``text_provider`` health check.
-``ClaimExtractor`` (#068), ``EvidenceMatcher`` (#069) and ``FactChecker``
-(#070) use rules only and need no provider.
+``ClaimExtractor`` (#068), ``EvidenceMatcher`` (#069), ``FactChecker``
+(#070) and ``OriginalityChecker`` (#071) use rules only and need no provider.
 """
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
@@ -26,6 +26,7 @@ from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
 from ai_youtube_agent.content.fact_checker import FactChecker
 from ai_youtube_agent.content.hook_generator import HookGenerator
 from ai_youtube_agent.content.longform_script_generator import LongFormScriptGenerator
+from ai_youtube_agent.content.originality_checker import OriginalityChecker
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.shorts_script_generator import ShortsScriptGenerator
 from ai_youtube_agent.content.source_collector import SourceCollector
@@ -134,6 +135,10 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         FactChecker,
         lambda c: FactChecker(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        OriginalityChecker,
+        lambda c: OriginalityChecker(c.resolve(Database), c.resolve(AuditLog)),
     )
     return container
 

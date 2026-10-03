@@ -18,6 +18,13 @@ from ai_youtube_agent.content.comment import CommentLabel, ReplyStatus
 from ai_youtube_agent.content.cost import CostCategory
 from ai_youtube_agent.content.experiment import ExperimentStatus, ExperimentType
 from ai_youtube_agent.content.fact_check import FactCheckStatus
+from ai_youtube_agent.content.originality import (
+    MAX_FINDINGS,
+    MAX_METHOD,
+    MAX_PRIORS,
+    MAX_WORDS,
+    OriginalityStatus,
+)
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.research_request import ResearchStatus
@@ -57,8 +64,9 @@ SHA = "a" * 64
 # 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
 # cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064),
 # 0016 hook generations (F-065), 0017 claim extractions (F-068),
-# 0018 evidence matches (F-069), 0019 fact checks (F-070)
-LATEST = 19
+# 0018 evidence matches (F-069), 0019 fact checks (F-070),
+# 0020 originality checks (F-071)
+LATEST = 20
 
 ENTITY_TABLES = {
     "channels",
@@ -108,6 +116,8 @@ ENTITY_TABLES = {
     "evidence_matches",  # F-069
     "fact_checks",  # F-070
     "fact_check_results",  # F-070
+    "originality_checks",  # F-071
+    "originality_findings",  # F-071
 }
 
 ENUM_COLUMNS = {
@@ -145,6 +155,8 @@ ENUM_COLUMNS = {
     ("evidence_matches", "requested_by_kind"): ActorKind,  # F-069
     ("fact_checks", "requested_by_kind"): ActorKind,  # F-070
     ("fact_check_results", "status"): FactCheckStatus,  # F-070
+    ("originality_checks", "requested_by_kind"): ActorKind,  # F-071
+    ("originality_findings", "status"): OriginalityStatus,  # F-071
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -242,6 +254,7 @@ def test_default_migrations_are_packaged() -> None:
         "claim_extractions",
         "evidence_matches",
         "fact_checks",
+        "originality_checks",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -397,6 +410,35 @@ def test_nullable_fact_check_result_checks_match_the_python_enums(
     assert [v.strip().strip("'") for v in values.group(1).split(",")] == [
         member.value for member in enum
     ]
+
+
+def test_originality_limits_match_the_python_constants(conn) -> None:
+    # The SQL bounds repeat the Python constants; this catches a drift (F-071).
+    sql = {
+        name: conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (name,),
+        ).fetchone()[0]
+        for name in ("originality_checks", "originality_findings")
+    }
+    checks = sql["originality_checks"]
+
+    def upper(column: str) -> int:
+        found = re.search(rf"{column} BETWEEN 0 AND (\d+)\)", checks)
+        assert found is not None, column
+        return int(found.group(1))
+
+    assert upper("words") == MAX_WORDS
+    assert upper("priors_count") == MAX_PRIORS
+    assert upper("findings_count") == MAX_FINDINGS
+    method = re.search(r"length\(trim\(method\)\) BETWEEN 1 AND (\d+)", checks)
+    assert method is not None
+    assert int(method.group(1)) == MAX_METHOD
+    code = re.search(
+        r"length\(trim\(code\)\) BETWEEN 1 AND (\d+)", sql["originality_findings"]
+    )
+    assert code is not None
+    assert int(code.group(1)) == 100
 
 
 def test_foreign_keys_are_enforced(conn) -> None:

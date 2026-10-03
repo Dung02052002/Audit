@@ -17,6 +17,12 @@ from ai_youtube_agent.content.hook import (
     HookGeneration,
     HookRejection,
 )
+from ai_youtube_agent.content.originality import (
+    Finding,
+    OriginalityCheck,
+    OriginalityCode,
+    OriginalityStatus,
+)
 from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.script import (
     Claim,
@@ -142,6 +148,29 @@ class ScriptRepository(Repository):
         rows = self._all(
             "SELECT * FROM scripts WHERE content_item_id = ? ORDER BY version",
             (content_item_id,),
+        )
+        return [_script(row) for row in rows]
+
+    def list_prior_latest(
+        self, channel_id: str, exclude_item_id: str, before: datetime, limit: int
+    ) -> list[Script]:
+        """The latest version of every other item of a channel, newest first.
+
+        Only scripts created strictly before ``before`` count (the times are
+        fixed-width UTC text, so text order is time order), so the latest
+        version of an item is its highest version among those; the item
+        ``exclude_item_id`` is left out, whatever the status of the items. At
+        most ``limit`` scripts, by creation time and then rowid, newest first.
+        """
+        cutoff = dt(before)
+        rows = self._all(
+            "SELECT s.* FROM scripts s "
+            "JOIN content_items c ON c.id = s.content_item_id "
+            "WHERE c.channel_id = ? AND c.id <> ? AND s.created_at < ? "
+            "AND s.version = (SELECT max(o.version) FROM scripts o "
+            "WHERE o.content_item_id = s.content_item_id AND o.created_at < ?) "
+            "ORDER BY s.created_at DESC, s.rowid DESC LIMIT ?",
+            (channel_id, exclude_item_id, cutoff, cutoff, limit),
         )
         return [_script(row) for row in rows]
 
@@ -443,6 +472,92 @@ class FactCheckRepository(Repository):
             requested_by=actor_from(row, "requested_by"),
             created_at=parse_dt(row["created_at"]),
         )
+
+
+class OriginalityRepository(Repository):
+    """Originality check runs (#071): one per script, never changed.
+
+    ``add`` stores the run with its findings; a second run for the same
+    script breaks the unique ``script_id`` (``sqlite3.IntegrityError``).
+    """
+
+    table = "originality_checks"
+
+    def add(self, check: OriginalityCheck) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": check.id,
+                "script_id": check.script_id,
+                "content_item_id": check.content_item_id,
+                "method": check.method,
+                "words": check.words,
+                "priors_count": check.priors_count,
+                "findings_count": check.findings_count,
+                "warn_count": check.warn_count,
+                "fail_count": check.fail_count,
+                **actor_columns("requested_by", check.requested_by),
+                "created_at": dt(check.created_at),
+            },
+        )
+        for finding in check.findings:
+            self._insert(
+                "originality_findings",
+                {
+                    "id": uuid.uuid4().hex,
+                    "check_id": check.id,
+                    "status": finding.status.value,
+                    "code": finding.code.value,
+                    "prior_script_id": finding.prior_script_id,
+                    "prior_content_item_id": finding.prior_content_item_id,
+                    "section_index": finding.section_index,
+                    "score": finding.score,
+                    "matched": finding.matched,
+                },
+            )
+
+    def get(self, check_id: str) -> OriginalityCheck | None:
+        row = self._one("SELECT * FROM originality_checks WHERE id = ?", (check_id,))
+        return self._check(row) if row else None
+
+    def get_by_script(self, script_id: str) -> OriginalityCheck | None:
+        row = self._one(
+            "SELECT * FROM originality_checks WHERE script_id = ?", (script_id,)
+        )
+        return self._check(row) if row else None
+
+    def _check(self, row: sqlite3.Row) -> OriginalityCheck:
+        # rowid keeps the order of the findings of the run.
+        findings = self._all(
+            "SELECT * FROM originality_findings WHERE check_id = ? ORDER BY rowid",
+            (row["id"],),
+        )
+        return OriginalityCheck(
+            id=row["id"],
+            script_id=row["script_id"],
+            content_item_id=row["content_item_id"],
+            method=row["method"],
+            words=row["words"],
+            priors_count=row["priors_count"],
+            findings=tuple(_finding(finding) for finding in findings),
+            findings_count=row["findings_count"],
+            warn_count=row["warn_count"],
+            fail_count=row["fail_count"],
+            requested_by=actor_from(row, "requested_by"),
+            created_at=parse_dt(row["created_at"]),
+        )
+
+
+def _finding(row: sqlite3.Row) -> Finding:
+    return Finding(
+        code=OriginalityCode(row["code"]),
+        status=OriginalityStatus(row["status"]),
+        prior_script_id=row["prior_script_id"],
+        prior_content_item_id=row["prior_content_item_id"],
+        section_index=row["section_index"],
+        score=row["score"],
+        matched=row["matched"],
+    )
 
 
 def _claim_check(row: sqlite3.Row) -> ClaimCheck:

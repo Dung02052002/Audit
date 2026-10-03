@@ -173,6 +173,10 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │         of 9 rows per claim gives PASS/WARN/FAIL + code, derived worst-of run status,
   │         a record only (no gate, no override), run stored #070)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
+  │        (originality: on demand per Script version, rules `originality-rules-v1`, word
+  │         5-gram shingle containment against the latest version of the other items of
+  │         the channel made before it (newest 50) + repeated hook/sentences/openers,
+  │         PASS/WARN/FAIL, a record only (no gate, no override), run stored #071)
   │        → originality #071 → validate #072 → version #073
   ▼
 Rights & Policy (C6): register assets #076 → provenance #077 → rights risk #078

@@ -17,6 +17,7 @@ from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.comment import CommentLabel, ReplyStatus
 from ai_youtube_agent.content.cost import CostCategory
 from ai_youtube_agent.content.experiment import ExperimentStatus, ExperimentType
+from ai_youtube_agent.content.fact_check import FactCheckStatus
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.research_request import ResearchStatus
@@ -56,8 +57,8 @@ SHA = "a" * 64
 # 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
 # cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064),
 # 0016 hook generations (F-065), 0017 claim extractions (F-068),
-# 0018 evidence matches (F-069)
-LATEST = 18
+# 0018 evidence matches (F-069), 0019 fact checks (F-070)
+LATEST = 19
 
 ENTITY_TABLES = {
     "channels",
@@ -105,6 +106,8 @@ ENTITY_TABLES = {
     "hook_generations",  # F-065
     "claim_extractions",  # F-068
     "evidence_matches",  # F-069
+    "fact_checks",  # F-070
+    "fact_check_results",  # F-070
 }
 
 ENUM_COLUMNS = {
@@ -140,6 +143,8 @@ ENUM_COLUMNS = {
     ("hook_generations", "requested_by_kind"): ActorKind,  # F-065
     ("claim_extractions", "requested_by_kind"): ActorKind,  # F-068
     ("evidence_matches", "requested_by_kind"): ActorKind,  # F-069
+    ("fact_checks", "requested_by_kind"): ActorKind,  # F-070
+    ("fact_check_results", "status"): FactCheckStatus,  # F-070
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -236,6 +241,7 @@ def test_default_migrations_are_packaged() -> None:
         "hook_generations",
         "claim_extractions",
         "evidence_matches",
+        "fact_checks",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -368,6 +374,28 @@ def test_nullable_evidence_numbers_check_matches_the_python_enum(conn) -> None:
     assert values is not None
     assert [v.strip().strip("'") for v in values.group(1).split(",")] == [
         member.value for member in NumberAgreement
+    ]
+
+
+@pytest.mark.parametrize(
+    ("column", "enum"),
+    [("numbers", NumberAgreement), ("uncertainty", Uncertainty)],
+)
+def test_nullable_fact_check_result_checks_match_the_python_enums(
+    conn, column, enum
+) -> None:
+    # Nullable columns, so the NOT NULL pattern above misses them (F-070).
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master "
+        "WHERE type = 'table' AND name = 'fact_check_results'"
+    ).fetchone()[0]
+    values = re.search(
+        rf"{column} TEXT CHECK \({column} IS NULL OR {column} IN \(([^)]*)\)\)", sql
+    )
+
+    assert values is not None
+    assert [v.strip().strip("'") for v in values.group(1).split(",")] == [
+        member.value for member in enum
     ]
 
 

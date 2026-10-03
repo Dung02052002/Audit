@@ -169,6 +169,9 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │        (evidence: on demand per claim run, rules `rules-v1`, own research report only,
   │         word containment >= 0.5 and 2 words, numbers/dates agree|differ|none,
   │         max 3 links from distinct sources, run stored #069)
+  │        (fact check: on demand per evidence match run, rules `rules-v1`, first matching
+  │         of 9 rows per claim gives PASS/WARN/FAIL + code, derived worst-of run status,
+  │         a record only (no gate, no override), run stored #070)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
   │        → originality #071 → validate #072 → version #073
   ▼

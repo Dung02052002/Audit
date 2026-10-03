@@ -1,15 +1,23 @@
 """Repositories for content items, artifacts, scripts, hooks, claims and audio."""
 
 import sqlite3
+import uuid
 from datetime import datetime
 
 from ai_youtube_agent.content.claim_extraction import ClaimExtraction
 from ai_youtube_agent.content.evidence_matching import EvidenceMatch
+from ai_youtube_agent.content.fact_check import (
+    ClaimCheck,
+    FactCheck,
+    FactCheckCode,
+    FactCheckStatus,
+)
 from ai_youtube_agent.content.hook import (
     HookCandidate,
     HookGeneration,
     HookRejection,
 )
+from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.script import (
     Claim,
     ClaimKind,
@@ -357,6 +365,100 @@ class EvidenceMatchRepository(Repository):
             requested_by=actor_from(row, "requested_by"),
             created_at=parse_dt(row["created_at"]),
         )
+
+
+class FactCheckRepository(Repository):
+    """Fact check runs (#070): one per evidence matching run, never changed.
+
+    ``add`` stores the run with its results; a second run for the same
+    matching run breaks the unique ``match_id`` (``sqlite3.IntegrityError``).
+    """
+
+    table = "fact_checks"
+
+    def add(self, fact_check: FactCheck) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": fact_check.id,
+                "match_id": fact_check.match_id,
+                "extraction_id": fact_check.extraction_id,
+                "script_id": fact_check.script_id,
+                "content_item_id": fact_check.content_item_id,
+                "research_report_id": fact_check.research_report_id,
+                "method": fact_check.method,
+                "claims_count": fact_check.claims_count,
+                "pass_count": fact_check.pass_count,
+                "warn_count": fact_check.warn_count,
+                "fail_count": fact_check.fail_count,
+                **actor_columns("requested_by", fact_check.requested_by),
+                "created_at": dt(fact_check.created_at),
+            },
+        )
+        for result in fact_check.results:
+            self._insert(
+                "fact_check_results",
+                {
+                    "id": uuid.uuid4().hex,
+                    "fact_check_id": fact_check.id,
+                    "claim_id": result.claim_id,
+                    "status": result.status.value,
+                    "code": result.code.value,
+                    "links": result.links,
+                    "best_score": result.best_score,
+                    "numbers": result.numbers.value if result.numbers else None,
+                    "uncertainty": (
+                        result.uncertainty.value if result.uncertainty else None
+                    ),
+                },
+            )
+
+    def get(self, fact_check_id: str) -> FactCheck | None:
+        row = self._one("SELECT * FROM fact_checks WHERE id = ?", (fact_check_id,))
+        return self._fact_check(row) if row else None
+
+    def get_by_match(self, match_id: str) -> FactCheck | None:
+        row = self._one("SELECT * FROM fact_checks WHERE match_id = ?", (match_id,))
+        return self._fact_check(row) if row else None
+
+    def _fact_check(self, row: sqlite3.Row) -> FactCheck:
+        # rowid keeps the order of the claims of the run.
+        results = self._all(
+            "SELECT * FROM fact_check_results WHERE fact_check_id = ? ORDER BY rowid",
+            (row["id"],),
+        )
+        return FactCheck(
+            id=row["id"],
+            match_id=row["match_id"],
+            extraction_id=row["extraction_id"],
+            script_id=row["script_id"],
+            content_item_id=row["content_item_id"],
+            research_report_id=row["research_report_id"],
+            method=row["method"],
+            results=tuple(_claim_check(result) for result in results),
+            claims_count=row["claims_count"],
+            pass_count=row["pass_count"],
+            warn_count=row["warn_count"],
+            fail_count=row["fail_count"],
+            requested_by=actor_from(row, "requested_by"),
+            created_at=parse_dt(row["created_at"]),
+        )
+
+
+def _claim_check(row: sqlite3.Row) -> ClaimCheck:
+    return ClaimCheck(
+        claim_id=row["claim_id"],
+        status=FactCheckStatus(row["status"]),
+        code=FactCheckCode(row["code"]),
+        links=row["links"],
+        best_score=row["best_score"],
+        numbers=(
+            NumberAgreement(row["numbers"]) if row["numbers"] is not None else None
+        ),
+        uncertainty=(
+            Uncertainty(row["uncertainty"]) if row["uncertainty"] is not None else None
+        ),
+    )
 
 
 def _evidence(row: sqlite3.Row) -> Evidence:

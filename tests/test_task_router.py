@@ -1490,16 +1490,20 @@ EXPECTED_HISTORY = {
 
 def backfilled_routes():
     events = router.read_events()
-    return {e["task"]: e for e in events if e["kind"] == "route" and e["backfilled"]}
+    return {
+        e["task"]: e for e in events if e["kind"] == "route" and e.get("backfilled")
+    }
 
 
 def test_the_committed_telemetry_is_valid_and_backfilled() -> None:
     events = router.read_events()
+    # The log grows with every routed task; the backfill is its fixed start.
+    backfill = [event for event in events if event.get("backfilled")]
 
-    assert events and all(event.get("backfilled") for event in events)
-    for event in events:  # the backfill was written under today's rules
+    assert backfill and events[: len(backfill)] == backfill
+    for event in events:  # every event was written under today's rules
         assert router.validate_event(event, POLICY) == event
-    runs = [e for e in events if e["kind"] == "agent_run"]
+    runs = [e for e in backfill if e["kind"] == "agent_run"]
     assert len(runs) == 8 and {e["profile"] for e in runs} == {"opus/high"}
     results = {e["task"]: e for e in events if e["kind"] == "result"}
     assert results["F-068 Claim Extractor"]["findings"] == {

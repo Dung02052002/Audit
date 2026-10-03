@@ -1,8 +1,13 @@
-"""Repositories for content items, artifacts, scripts and audio metadata."""
+"""Repositories for content items, artifacts, scripts, hooks and audio metadata."""
 
 import sqlite3
 from datetime import datetime
 
+from ai_youtube_agent.content.hook import (
+    HookCandidate,
+    HookGeneration,
+    HookRejection,
+)
 from ai_youtube_agent.content.script import (
     Claim,
     DurationTarget,
@@ -183,6 +188,68 @@ class ScriptRepository(Repository):
             )
             for row in rows
         ]
+
+
+class HookGenerationRepository(Repository):
+    """Hook generator runs (#065): add only, never changed."""
+
+    table = "hook_generations"
+
+    def add(self, generation: HookGeneration) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": generation.id,
+                "content_item_id": generation.content_item_id,
+                "content_type": generation.content_type.value,
+                "language": generation.language,
+                "strategy_version": generation.strategy_version,
+                "research_report_id": generation.research_report_id,
+                "topic_id": generation.topic_id,
+                "topic_label": generation.topic_label,
+                "angle": generation.angle,
+                "candidates_json": to_json([c.text for c in generation.candidates]),
+                "rejected_json": to_json([r.as_dict() for r in generation.rejected]),
+                "provider": generation.provider,
+                "model": generation.model,
+                **actor_columns("requested_by", generation.requested_by),
+                "created_at": dt(generation.created_at),
+            },
+        )
+
+    def get(self, generation_id: str) -> HookGeneration | None:
+        row = self._one("SELECT * FROM hook_generations WHERE id = ?", (generation_id,))
+        return _hook_generation(row) if row else None
+
+    def list_by_content_item(self, content_item_id: str) -> list[HookGeneration]:
+        rows = self._all(
+            "SELECT * FROM hook_generations WHERE content_item_id = ? "
+            "ORDER BY created_at, id",
+            (content_item_id,),
+        )
+        return [_hook_generation(row) for row in rows]
+
+
+def _hook_generation(row: sqlite3.Row) -> HookGeneration:
+    return HookGeneration(
+        id=row["id"],
+        content_item_id=row["content_item_id"],
+        content_type=ContentType(row["content_type"]),
+        language=row["language"],
+        strategy_version=row["strategy_version"],
+        research_report_id=row["research_report_id"],
+        topic_id=row["topic_id"],
+        topic_label=row["topic_label"],
+        angle=row["angle"],
+        candidates=tuple(HookCandidate(t) for t in from_json(row["candidates_json"])),
+        rejected=tuple(
+            HookRejection.from_dict(r) for r in from_json(row["rejected_json"])
+        ),
+        provider=row["provider"],
+        model=row["model"],
+        requested_by=actor_from(row, "requested_by"),
+        created_at=parse_dt(row["created_at"]),
+    )
 
 
 class AudioMetadataRepository(Repository):

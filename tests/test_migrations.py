@@ -53,8 +53,9 @@ SHA = "a" * 64
 # 0006 budget alerts (D-051), 0007 sources (E-055), 0008 research requests
 # (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058),
 # 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
-# cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064)
-LATEST = 15
+# cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064),
+# 0016 hook generations (F-065)
+LATEST = 16
 
 ENTITY_TABLES = {
     "channels",
@@ -99,6 +100,7 @@ ENTITY_TABLES = {
     "topic_scores",  # E-059
     "research_reports",  # E-060
     "research_cache",  # E-061
+    "hook_generations",  # F-065
 }
 
 ENUM_COLUMNS = {
@@ -130,6 +132,8 @@ ENUM_COLUMNS = {
     ("topic_evidence", "field"): EvidenceField,  # E-058
     ("research_reports", "uncertainty"): Uncertainty,  # E-060
     ("research_cache", "kind"): CacheKind,  # E-061
+    ("hook_generations", "content_type"): ContentType,  # F-065
+    ("hook_generations", "requested_by_kind"): ActorKind,  # F-065
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -223,6 +227,7 @@ def test_default_migrations_are_packaged() -> None:
         "research_cache",
         "research_recovery",
         "script_sections",
+        "hook_generations",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()

@@ -94,6 +94,7 @@ The requirements define each of these as an abstraction with a mock.
 | Interface | Defined by | Purpose | Mock required | Used by |
 |---|---|---|---|---|
 | Research Provider | #054 | Search and fetch sources. Implemented in `providers/research.py` (sync Protocol, typed values, retryable error codes) with `MockResearchProvider` in `providers/mock_research.py`, chosen by `Settings.research_provider`; since #061 always used through `ResearchCache` (`providers/research_cache.py`, SQLite, search 6 h, fetch 24 h, stale fallback on retryable errors) | Yes (#054) | C4 |
+| Text Generation Provider | #065 (user decision 2026-10-03, answers Q1) | Generate text candidates (hooks, later scripts). Implemented in `providers/text_generation.py` (sync `TextGenerator` Protocol, `TextRequest`/`GeneratedText`, retryable `TextErrorCode`s) with `MockTextGenerator` in `providers/mock_text_generation.py`, chosen by `Settings.text_provider`, `text_provider` health check | Yes (#065) | C5, C14 (#175 cost) |
 | Voice (TTS) Provider | #086 | Generate speech audio | Yes (#086) | C7 |
 | Render provider abstraction | #100, #111 | Render vertical and long-form MP4 | Not stated | C8, C9 |
 | Policy Rule Interface | #079 | Versioned policy rules | Yes, mock rules (#079) | C6 |
@@ -159,6 +160,7 @@ Research (C4): collect #056 → deduplicate #057 → extract topics #058 → sco
   ▼
 Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │        (Script = ordered sections + duration target + version history #064)
+  │        (hooks: 3 checked candidates from TextGenerator, caller picks #065)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
   │        → originality #071 → validate #072 → version #073
   ▼
@@ -284,7 +286,7 @@ The requirements do not decide these. Each one must be answered by the user or b
 
 | # | Question | Where it matters |
 |---|---|---|
-| Q1 | There is no dedicated **LLM provider interface**, although scripts are generated (#065–#067) and LLM cost is tracked (#175). | C5, C14 |
+| Q1 | There is no dedicated **LLM provider interface**, although scripts are generated (#065–#067) and LLM cost is tracked (#175). **Resolved in F-065 (user decision, 2026-10-03):** a synchronous `TextGenerator` provider interface with a deterministic mock (`providers/text_generation.py`, `providers/mock_text_generation.py`), selected by `Settings.text_provider`; no real provider yet. | C5, C14 |
 | Q2 | The **render provider** is required "through provider abstraction" (#100, #111), but no prompt defines the interface itself. | C8, C9 |
 | Q3 | There is no **email provider interface** for approval emails (#138, #228). | C11 |
 | Q4 | The **Command Center platform** is "iOS-style" (#191). Is it a native iOS app or a web dashboard with an iOS-style design system? The backend is FastAPI. | X3 |

@@ -44,6 +44,12 @@ class ResearchProviderKind(StrEnum):
     MOCK = "mock"
 
 
+class TextProviderKind(StrEnum):
+    """Which text (LLM) provider bootstrap registers (#065). Only the mock exists."""
+
+    MOCK = "mock"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
@@ -60,6 +66,7 @@ class Settings(BaseSettings):
     database_path: Path = DEFAULT_DATABASE_PATH
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
     research_provider: ResearchProviderKind = ResearchProviderKind.MOCK
+    text_provider: TextProviderKind = TextProviderKind.MOCK
 
     @model_validator(mode="after")
     def _forbid_debug_in_production(self) -> "Settings":

@@ -14,9 +14,12 @@ memory (#030).
 ``ResearchProvider`` (#054) is chosen by ``Settings.research_provider``; only
 the in-memory mock exists, and its ``check`` is the ``research_provider``
 health check. Since #061 it is wrapped in ``ResearchCache``.
+``TextGenerator`` (#065) is chosen by ``Settings.text_provider``; only the
+mock exists, and its ``check`` is the ``text_provider`` health check.
 """
 
 from ai_youtube_agent.content.channel_settings import ChannelSettings
+from ai_youtube_agent.content.hook_generator import HookGenerator
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
@@ -28,6 +31,7 @@ from ai_youtube_agent.core.config import (
     Environment,
     ResearchProviderKind,
     Settings,
+    TextProviderKind,
     get_settings,
 )
 from ai_youtube_agent.core.db.database import Database
@@ -38,8 +42,10 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
+from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
 from ai_youtube_agent.providers.research import ResearchProvider
 from ai_youtube_agent.providers.research_cache import ResearchCache
+from ai_youtube_agent.providers.text_generation import TextGenerator
 
 logger = get_logger(__name__)
 
@@ -88,6 +94,13 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(Database), c.resolve(SourceDeduplicator), c.resolve(TopicScorer)
         ),
     )
+    container.register(TextGenerator, _build_text_generator)
+    container.register(
+        HookGenerator,
+        lambda c: HookGenerator(
+            c.resolve(Database), c.resolve(TextGenerator), c.resolve(AuditLog)
+        ),
+    )
     return container
 
 
@@ -99,6 +112,13 @@ def _build_research_provider(container: Container) -> ResearchProvider:
         raise ValueError(f"unknown research provider {kind!r}")
     # #061: every provider is used through the SQLite research cache.
     return ResearchCache(provider, container.resolve(Database))
+
+
+def _build_text_generator(container: Container) -> TextGenerator:
+    kind = container.resolve(Settings).text_provider
+    if kind is TextProviderKind.MOCK:
+        return MockTextGenerator()
+    raise ValueError(f"unknown text provider {kind!r}")
 
 
 def _build_audit_sink(container: Container) -> AuditSink:
@@ -144,6 +164,13 @@ def _build_health_registry(container: Container) -> HealthRegistry:
             "research_provider",
             CheckKind.PROVIDER,
             lambda: container.resolve(ResearchProvider).check(),
+        )
+    )
+    registry.register(
+        HealthCheck(
+            "text_provider",
+            CheckKind.PROVIDER,
+            lambda: container.resolve(TextGenerator).check(),
         )
     )
     return registry

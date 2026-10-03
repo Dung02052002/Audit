@@ -109,14 +109,21 @@ def check_hook(
                 f"{sentences} sentences, at most {limits.max_sentences}",
             )
         )
+    issues += [
+        HookIssue(HookIssueCode.BANNED_PHRASE, f"contains {phrase!r}")
+        for phrase in find_banned_phrases(text, banned_phrases)
+    ]
+    return tuple(issues)
+
+
+def find_banned_phrases(text: str, banned_phrases: Iterable[str]) -> list[str]:
+    """The banned phrases in ``text``: whole words, ignoring case and spacing."""
+    found = []
     for phrase in banned_phrases:
         words = r"\s+".join(re.escape(word) for word in phrase.split())
-        pattern = r"(?<!\w)" + words + r"(?!\w)"
-        if re.search(pattern, text, re.IGNORECASE):
-            issues.append(
-                HookIssue(HookIssueCode.BANNED_PHRASE, f"contains {phrase!r}")
-            )
-    return tuple(issues)
+        if re.search(r"(?<!\w)" + words + r"(?!\w)", text, re.IGNORECASE):
+            found.append(phrase)
+    return found
 
 
 @dataclass(frozen=True)

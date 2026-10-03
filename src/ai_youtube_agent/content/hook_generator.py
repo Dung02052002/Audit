@@ -14,8 +14,9 @@ The rules were approved by the user on 2026-10-03:
   invalid texts and repeats are kept as rejections with their issues. When
   fewer than 3 are valid, the provider is asked once more, told to avoid the
   texts already seen. At most 3 candidates are kept.
-- A retryable provider error is tried up to 3 times (waits 1 then 2 seconds);
-  other errors, or the last one, are audited as ``hook.failed`` and raised.
+- A retryable provider error is tried up to 3 times (waits 1 then 2 seconds,
+  ``text_prompts.call_with_retries``); other errors, or the last one, are
+  audited as ``hook.failed`` and raised.
 - The run is stored as a ``HookGeneration`` (also when no candidate is valid)
   and audited as ``hook.generated`` after commit. Nothing is written to a
   script: the caller picks a candidate (#066, #067).
@@ -25,7 +26,6 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from http import HTTPStatus
-from typing import TypeVar
 
 from ai_youtube_agent.content.hook import (
     HOOK_LIMITS,
@@ -42,6 +42,12 @@ from ai_youtube_agent.content.hook import (
 from ai_youtube_agent.content.research_report import ReportTopic, ResearchReport
 from ai_youtube_agent.content.strategy import StrategyProfile
 from ai_youtube_agent.content.strategy_settings import StrategyNotFoundError
+from ai_youtube_agent.content.text_prompts import (
+    banned_phrases,
+    call_with_retries,
+    fact_lines,
+    strategy_lines,
+)
 from ai_youtube_agent.core.audit import Actor, AuditLog, AuditResult, EntityRef
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
@@ -59,17 +65,13 @@ from ai_youtube_agent.providers.text_generation import (
     TextRequest,
 )
 
-MAX_ATTEMPTS = 3
-BACKOFF_SECONDS = (1.0, 2.0)
 MAX_ROUNDS = 2
-MAX_PROMPT_CLAIMS = 5
 MAX_TOKENS = {ContentType.SHORTS: 80, ContentType.LONGFORM: 240}
 SYSTEM = (
     "You write the opening hook of YouTube videos. Answer with the hook text "
     "only: no title, no quotes, no explanation."
 )
 Clock = Callable[[], datetime]
-T = TypeVar("T")
 
 
 class ContentItemNotFoundError(DomainError):
@@ -150,7 +152,9 @@ class HookGenerator:
                     )
                 else:
                     seen[key] = text
-                    issues = check_hook(text, item.content_type, _banned(strategy))
+                    issues = check_hook(
+                        text, item.content_type, banned_phrases(strategy)
+                    )
                 if issues or len(candidates) == MAX_CANDIDATES:
                     if issues:
                         rejected.append(HookRejection(text, issues))
@@ -225,21 +229,18 @@ class HookGenerator:
     def _call(
         self, request: TextRequest, item: ContentItem, actor: Actor
     ) -> GeneratedText:
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            try:
-                return self._generator.generate(request)
-            except TextGenerationError as error:
-                if not error.retryable or attempt == MAX_ATTEMPTS:
-                    self._audit.record(
-                        "hook.failed",
-                        actor,
-                        EntityRef("content_item", item.id),
-                        AuditResult.FAILURE,
-                        {"code": error.code, "attempts": attempt},
-                    )
-                    raise
-                self._sleep(BACKOFF_SECONDS[attempt - 1])
-        raise AssertionError("unreachable: the last attempt returns or raises")
+        def failed(error: TextGenerationError, attempts: int) -> None:
+            self._audit.record(
+                "hook.failed",
+                actor,
+                EntityRef("content_item", item.id),
+                AuditResult.FAILURE,
+                {"code": error.code, "attempts": attempts},
+            )
+
+        return call_with_retries(
+            self._generator, request, sleep=self._sleep, on_failure=failed
+        )
 
 
 def _topic(report: ResearchReport, topic_id: str | None) -> ReportTopic | None:
@@ -249,10 +250,6 @@ def _topic(report: ResearchReport, topic_id: str | None) -> ReportTopic | None:
         if topic.topic_id == topic_id:
             return topic
     raise HookInputError(f"topic {topic_id} is not in research report {report.id}")
-
-
-def _banned(strategy: StrategyProfile) -> tuple[str, ...]:
-    return strategy.brand.banned_phrases if strategy.brand else ()
 
 
 def build_prompt(
@@ -285,24 +282,8 @@ def build_prompt(
         lines.append(f"Topic: {'; '.join(report.queries)}.")
     if angle:
         lines.append(f"Angle: {angle}")
-    if strategy.audience is not None:
-        lines.append(f"Audience: {strategy.audience.description}")
-    brand = strategy.brand
-    if brand is not None:
-        if brand.tone:
-            lines.append(f"Tone: {brand.tone}")
-        if brand.tone_keywords:
-            lines.append(f"Tone keywords: {', '.join(brand.tone_keywords)}.")
-        lines += [f"Do: {rule}" for rule in brand.voice_dos]
-        lines += [f"Don't: {rule}" for rule in brand.voice_donts]
-        if brand.banned_phrases:
-            lines.append(f"Never use: {'; '.join(brand.banned_phrases)}.")
-    claims = report.claims[:MAX_PROMPT_CLAIMS]
-    if claims:
-        lines.append("State only facts supported by these research claims:")
-        lines += [f"- {claim.text}" for claim in claims]
-    else:
-        lines.append("Do not state specific facts, numbers or claims.")
+    lines += strategy_lines(strategy)
+    lines += fact_lines(report)
     if avoid:
         lines.append("Write something different from:")
         lines += [f"- {text}" for text in avoid]

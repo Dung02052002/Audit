@@ -1,46 +1,65 @@
 {
-  "schema_version": 1,
-  "principle": "Use the cheapest model that is reasonably capable of completing the task safely.",
+  "schema_version": 2,
+  "principle": "Use the cheapest model that is capable for each role; pay for Opus only when evidence demands it.",
   "supported_models": ["haiku", "sonnet", "opus", "fable", "inherit"],
   "supported_efforts": ["low", "medium", "high", "xhigh", "max"],
   "levels": {
     "TRIVIAL": {
-      "model": "haiku",
-      "effort": "low",
-      "planner": false,
-      "reviewer": false,
+      "planner": null,
+      "coder": "haiku/low",
+      "reviewer": null,
+      "risk_reviewer": null,
+      "opus_trigger_profile": null,
+      "risk_effort_bump": false,
       "architecture_review": false
     },
     "SIMPLE": {
-      "model": "sonnet",
-      "effort": "low",
-      "planner": false,
-      "reviewer": false,
+      "planner": null,
+      "coder": "sonnet/low",
+      "reviewer": null,
+      "risk_reviewer": null,
+      "opus_trigger_profile": null,
+      "risk_effort_bump": true,
       "architecture_review": false
     },
     "NORMAL": {
-      "model": "sonnet",
-      "effort": "medium",
-      "planner": true,
-      "reviewer": false,
+      "planner": "sonnet/medium",
+      "coder": "sonnet/medium",
+      "reviewer": null,
+      "risk_reviewer": "sonnet/high",
+      "opus_trigger_profile": "opus/medium",
+      "risk_effort_bump": true,
       "architecture_review": false
     },
     "COMPLEX": {
-      "model": "opus",
-      "effort": "high",
-      "planner": true,
-      "reviewer": true,
+      "planner": "sonnet/high",
+      "coder": "sonnet/high",
+      "reviewer": "opus/high",
+      "risk_reviewer": null,
+      "opus_trigger_profile": "opus/high",
+      "risk_effort_bump": false,
       "architecture_review": false
     },
     "ARCHITECTURAL": {
-      "model": "opus",
-      "effort": "high",
-      "planner": true,
-      "reviewer": true,
+      "planner": "opus/high",
+      "coder": "opus/high",
+      "reviewer": "opus/high",
+      "risk_reviewer": null,
+      "opus_trigger_profile": null,
+      "risk_effort_bump": false,
       "architecture_review": true
     }
   },
+  "opus_reviewer": "opus/high",
   "escalation": {
+    "ladder": [
+      "haiku/low",
+      "sonnet/low",
+      "sonnet/medium",
+      "sonnet/high",
+      "opus/medium",
+      "opus/high"
+    ],
     "max_steps": 2,
     "escalating_reasons": [
       "logic_failure",
@@ -53,6 +72,8 @@
       "lint",
       "format",
       "simple_import",
+      "type",
+      "test_fixture",
       "environment",
       "flaky_unrelated"
     ]

@@ -33,6 +33,12 @@ from ai_youtube_agent.content.script import (
     Script,
     ScriptSection,
 )
+from ai_youtube_agent.content.script_validation import Finding as ValidationFinding
+from ai_youtube_agent.content.script_validation import (
+    ScriptValidation,
+    ValidationCode,
+    ValidationStatus,
+)
 from ai_youtube_agent.content.voice import AudioMetadata
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
@@ -555,6 +561,105 @@ def _finding(row: sqlite3.Row) -> Finding:
         prior_script_id=row["prior_script_id"],
         prior_content_item_id=row["prior_content_item_id"],
         section_index=row["section_index"],
+        score=row["score"],
+        matched=row["matched"],
+    )
+
+
+class ScriptValidationRepository(Repository):
+    """Script validation runs (#072): one per script, never changed.
+
+    ``add`` stores the run with its findings; a second run for the same
+    script breaks the unique ``script_id`` (``sqlite3.IntegrityError``).
+    """
+
+    table = "script_validations"
+
+    def add(self, validation: ScriptValidation) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": validation.id,
+                "script_id": validation.script_id,
+                "content_item_id": validation.content_item_id,
+                "method": validation.method,
+                "words": validation.words,
+                "seconds": validation.seconds,
+                "language_checked": int(validation.language_checked),
+                "language_hits": validation.language_hits,
+                "strategy_version": validation.strategy_version,
+                "script_strategy_version": validation.script_strategy_version,
+                "findings_count": validation.findings_count,
+                "warn_count": validation.warn_count,
+                "fail_count": validation.fail_count,
+                **actor_columns("requested_by", validation.requested_by),
+                "created_at": dt(validation.created_at),
+            },
+        )
+        for finding in validation.findings:
+            self._insert(
+                "script_validation_findings",
+                {
+                    "id": uuid.uuid4().hex,
+                    "validation_id": validation.id,
+                    "status": finding.status.value,
+                    "code": finding.code.value,
+                    "section_index": finding.section_index,
+                    "actual": finding.actual,
+                    "minimum": finding.minimum,
+                    "maximum": finding.maximum,
+                    "score": finding.score,
+                    "matched": finding.matched,
+                },
+            )
+
+    def get(self, validation_id: str) -> ScriptValidation | None:
+        row = self._one(
+            "SELECT * FROM script_validations WHERE id = ?", (validation_id,)
+        )
+        return self._validation(row) if row else None
+
+    def get_by_script(self, script_id: str) -> ScriptValidation | None:
+        row = self._one(
+            "SELECT * FROM script_validations WHERE script_id = ?", (script_id,)
+        )
+        return self._validation(row) if row else None
+
+    def _validation(self, row: sqlite3.Row) -> ScriptValidation:
+        # rowid keeps the order of the findings of the run.
+        findings = self._all(
+            "SELECT * FROM script_validation_findings "
+            "WHERE validation_id = ? ORDER BY rowid",
+            (row["id"],),
+        )
+        return ScriptValidation(
+            id=row["id"],
+            script_id=row["script_id"],
+            content_item_id=row["content_item_id"],
+            method=row["method"],
+            words=row["words"],
+            seconds=row["seconds"],
+            language_checked=bool(row["language_checked"]),
+            language_hits=row["language_hits"],
+            strategy_version=row["strategy_version"],
+            script_strategy_version=row["script_strategy_version"],
+            findings=tuple(_validation_finding(finding) for finding in findings),
+            findings_count=row["findings_count"],
+            warn_count=row["warn_count"],
+            fail_count=row["fail_count"],
+            requested_by=actor_from(row, "requested_by"),
+            created_at=parse_dt(row["created_at"]),
+        )
+
+
+def _validation_finding(row: sqlite3.Row) -> ValidationFinding:
+    return ValidationFinding(
+        code=ValidationCode(row["code"]),
+        status=ValidationStatus(row["status"]),
+        section_index=row["section_index"],
+        actual=row["actual"],
+        minimum=row["minimum"],
+        maximum=row["maximum"],
         score=row["score"],
         matched=row["matched"],
     )

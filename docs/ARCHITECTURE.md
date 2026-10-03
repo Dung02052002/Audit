@@ -177,6 +177,10 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │         5-gram shingle containment against the latest version of the other items of
   │         the channel made before it (newest 50) + repeated hook/sentences/openers,
   │         PASS/WARN/FAIL, a record only (no gate, no override), run stored #071)
+  │        (validation: on demand per Script version against the channel's current strategy,
+  │         rules `script-rules-v1`: strict sections per type, length, EN/VI language,
+  │         banned phrases, hook length; PASS/WARN/FAIL, a record only (no gate, no
+  │         override), run stored #072)
   │        → originality #071 → validate #072 → version #073
   ▼
 Rights & Policy (C6): register assets #076 → provenance #077 → rights risk #078

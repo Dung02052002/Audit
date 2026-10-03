@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ai_youtube_agent.bootstrap import build_container
+from ai_youtube_agent.content import script_validation
 from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.channel import ChannelStatus
@@ -31,6 +32,7 @@ from ai_youtube_agent.content.research_request import ResearchStatus
 from ai_youtube_agent.content.revenue import RevenueStage
 from ai_youtube_agent.content.rights import RiskLevel, RiskResolution
 from ai_youtube_agent.content.script import ClaimKind, NumberAgreement
+from ai_youtube_agent.content.script_validation import ValidationStatus
 from ai_youtube_agent.content.source import DuplicateReason
 from ai_youtube_agent.content.topic import EvidenceField
 from ai_youtube_agent.core.artifact import ArtifactKind
@@ -65,8 +67,8 @@ SHA = "a" * 64
 # cache (E-061), 0014 research recovery (E-062), 0015 script sections (F-064),
 # 0016 hook generations (F-065), 0017 claim extractions (F-068),
 # 0018 evidence matches (F-069), 0019 fact checks (F-070),
-# 0020 originality checks (F-071)
-LATEST = 20
+# 0020 originality checks (F-071), 0021 script validations (F-072)
+LATEST = 21
 
 ENTITY_TABLES = {
     "channels",
@@ -118,6 +120,8 @@ ENTITY_TABLES = {
     "fact_check_results",  # F-070
     "originality_checks",  # F-071
     "originality_findings",  # F-071
+    "script_validations",  # F-072
+    "script_validation_findings",  # F-072
 }
 
 ENUM_COLUMNS = {
@@ -157,6 +161,8 @@ ENUM_COLUMNS = {
     ("fact_check_results", "status"): FactCheckStatus,  # F-070
     ("originality_checks", "requested_by_kind"): ActorKind,  # F-071
     ("originality_findings", "status"): OriginalityStatus,  # F-071
+    ("script_validations", "requested_by_kind"): ActorKind,  # F-072
+    ("script_validation_findings", "status"): ValidationStatus,  # F-072
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -255,6 +261,7 @@ def test_default_migrations_are_packaged() -> None:
         "evidence_matches",
         "fact_checks",
         "originality_checks",
+        "script_validations",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -436,6 +443,35 @@ def test_originality_limits_match_the_python_constants(conn) -> None:
     assert int(method.group(1)) == MAX_METHOD
     code = re.search(
         r"length\(trim\(code\)\) BETWEEN 1 AND (\d+)", sql["originality_findings"]
+    )
+    assert code is not None
+    assert int(code.group(1)) == 100
+
+
+def test_script_validation_limits_match_the_python_constants(conn) -> None:
+    # The SQL bounds repeat the Python constants; this catches a drift (F-072).
+    sql = {
+        name: conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (name,),
+        ).fetchone()[0]
+        for name in ("script_validations", "script_validation_findings")
+    }
+    runs = sql["script_validations"]
+
+    def upper(column: str) -> int:
+        found = re.search(rf"{column} BETWEEN 0 AND (\d+)\)", runs)
+        assert found is not None, column
+        return int(found.group(1))
+
+    assert upper("language_hits") == script_validation.MAX_WORDS
+    assert upper("findings_count") == script_validation.MAX_FINDINGS
+    method = re.search(r"length\(trim\(method\)\) BETWEEN 1 AND (\d+)", runs)
+    assert method is not None
+    assert int(method.group(1)) == script_validation.MAX_METHOD
+    code = re.search(
+        r"length\(trim\(code\)\) BETWEEN 1 AND (\d+)",
+        sql["script_validation_findings"],
     )
     assert code is not None
     assert int(code.group(1)) == 100

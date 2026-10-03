@@ -39,6 +39,13 @@ Claim extraction (#068) adds two optional claim fields: ``kind`` (a closed
 ``ClaimKind``: numeric, date, entity, comparison, absolute) and
 ``extraction_id``, the extraction run that found the claim. Claims stored
 before #068 have neither.
+
+Evidence matching (#069) adds four optional evidence fields: ``match_id``
+(the matching run that made the link), ``research_claim_id`` (the research
+report claim whose evidence entry matched), ``score`` (0 to 1) and
+``numbers`` (a closed ``NumberAgreement``: agree, differ, none), a neutral
+observation, not a verdict (#070 owns verdicts). Evidence stored before
+#069 has none of them.
 """
 
 import math
@@ -72,6 +79,14 @@ class ClaimKind(StrEnum):
     ENTITY = "entity"
     COMPARISON = "comparison"
     ABSOLUTE = "absolute"
+
+
+class NumberAgreement(StrEnum):
+    """How a claim's numbers or dates compare with its evidence (#069)."""
+
+    AGREE = "agree"
+    DIFFER = "differ"
+    NONE = "none"
 
 
 class SectionKind(StrEnum):
@@ -405,12 +420,27 @@ class Evidence:
     source_ref: str
     excerpt: str | None
     created_at: datetime
+    match_id: str | None = None
+    research_claim_id: str | None = None
+    score: float | None = None
+    numbers: NumberAgreement | None = None
 
     def __post_init__(self) -> None:
         _require_ids(self, "id", "claim_id", "source_ref")
         if self.excerpt is not None:
             _require_text("evidence excerpt", self.excerpt)
         _require_utc(self.created_at)
+        for name in ("match_id", "research_claim_id"):
+            if getattr(self, name) is not None:
+                _require_ids(self, name)
+        if self.score is not None and (
+            isinstance(self.score, bool)
+            or not isinstance(self.score, int | float)
+            or not 0 <= self.score <= 1
+        ):
+            raise ValueError("score must be a number from 0 to 1")
+        if self.numbers is not None and not isinstance(self.numbers, NumberAgreement):
+            raise TypeError("numbers must be a NumberAgreement")
 
     @classmethod
     def create(
@@ -419,6 +449,10 @@ class Evidence:
         source_ref: str,
         excerpt: str | None = None,
         *,
+        match_id: str | None = None,
+        research_claim_id: str | None = None,
+        score: float | None = None,
+        numbers: NumberAgreement | None = None,
         clock: Clock | None = None,
     ) -> "Evidence":
         return cls(
@@ -427,6 +461,10 @@ class Evidence:
             source_ref=source_ref,
             excerpt=excerpt.strip() if excerpt is not None else None,
             created_at=_now(clock),
+            match_id=match_id,
+            research_claim_id=research_claim_id,
+            score=score,
+            numbers=numbers,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -436,6 +474,10 @@ class Evidence:
             "source_ref": self.source_ref,
             "excerpt": self.excerpt,
             "created_at": self.created_at.isoformat(),
+            "match_id": self.match_id,
+            "research_claim_id": self.research_claim_id,
+            "score": self.score,
+            "numbers": self.numbers.value if self.numbers else None,
         }
 
 

@@ -166,6 +166,9 @@ Script (C5): hook #065 → Shorts #066 or LongForm #067 script
   │         chapter; hook + intro + 3-12 chapters + outro + cta, Script version #067)
   │        (claims: on demand per Script version, deterministic rules `rules-v1`,
   │         CTA/questions/opinions skipped, one ClaimKind each, max 200, run stored #068)
+  │        (evidence: on demand per claim run, rules `rules-v1`, own research report only,
+  │         word containment >= 0.5 and 2 words, numbers/dates agree|differ|none,
+  │         max 3 links from distinct sources, run stored #069)
   │        → extract claims #068 → match evidence #069 → fact-check PASS/WARN/FAIL #070
   │        → originality #071 → validate #072 → version #073
   ▼

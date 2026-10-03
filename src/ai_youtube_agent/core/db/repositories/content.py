@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime
 
 from ai_youtube_agent.content.claim_extraction import ClaimExtraction
+from ai_youtube_agent.content.evidence_matching import EvidenceMatch
 from ai_youtube_agent.content.hook import (
     HookCandidate,
     HookGeneration,
@@ -14,6 +15,7 @@ from ai_youtube_agent.content.script import (
     ClaimKind,
     DurationTarget,
     Evidence,
+    NumberAgreement,
     Script,
     ScriptSection,
 )
@@ -167,24 +169,21 @@ class ScriptRepository(Repository):
                 "source_ref": evidence.source_ref,
                 "excerpt": evidence.excerpt,
                 "created_at": dt(evidence.created_at),
+                "match_id": evidence.match_id,
+                "research_claim_id": evidence.research_claim_id,
+                "score": evidence.score,
+                "numbers": evidence.numbers.value if evidence.numbers else None,
             },
         )
 
     def list_evidence(self, claim_id: str) -> list[Evidence]:
         rows = self._all(
-            "SELECT * FROM evidence WHERE claim_id = ? ORDER BY created_at, id",
+            # rowid breaks ties, so the links of one matching run (which share
+            # its time) keep their rank.
+            "SELECT * FROM evidence WHERE claim_id = ? ORDER BY created_at, rowid",
             (claim_id,),
         )
-        return [
-            Evidence(
-                row["id"],
-                row["claim_id"],
-                row["source_ref"],
-                row["excerpt"],
-                parse_dt(row["created_at"]),
-            )
-            for row in rows
-        ]
+        return [_evidence(row) for row in rows]
 
 
 class HookGenerationRepository(Repository):
@@ -293,6 +292,87 @@ class ClaimExtractionRepository(Repository):
             requested_by=actor_from(row, "requested_by"),
             created_at=parse_dt(row["created_at"]),
         )
+
+
+class EvidenceMatchRepository(Repository):
+    """Evidence matching runs (#069): one per claim extraction, never changed.
+
+    ``add`` stores the run with its links; a second run for the same
+    extraction breaks the unique ``extraction_id`` (``sqlite3.IntegrityError``).
+    """
+
+    table = "evidence_matches"
+
+    def add(self, match: EvidenceMatch) -> None:
+        self._insert(
+            self.table,
+            {
+                "id": match.id,
+                "extraction_id": match.extraction_id,
+                "script_id": match.script_id,
+                "content_item_id": match.content_item_id,
+                "research_report_id": match.research_report_id,
+                "method": match.method,
+                "claims_count": match.claims_count,
+                "matched": match.matched,
+                "unmatched": match.unmatched,
+                "links": match.links_count,
+                "numbers_differ": match.numbers_differ,
+                **actor_columns("requested_by", match.requested_by),
+                "created_at": dt(match.created_at),
+            },
+        )
+        scripts = ScriptRepository(self.connection)
+        for link in match.links:
+            scripts.add_evidence(link)
+
+    def get(self, match_id: str) -> EvidenceMatch | None:
+        row = self._one("SELECT * FROM evidence_matches WHERE id = ?", (match_id,))
+        return self._match(row) if row else None
+
+    def get_by_extraction(self, extraction_id: str) -> EvidenceMatch | None:
+        row = self._one(
+            "SELECT * FROM evidence_matches WHERE extraction_id = ?", (extraction_id,)
+        )
+        return self._match(row) if row else None
+
+    def _match(self, row: sqlite3.Row) -> EvidenceMatch:
+        # The links of one run share its time; rowid keeps the claim and rank
+        # order.
+        links = self._all(
+            "SELECT * FROM evidence WHERE match_id = ? ORDER BY rowid", (row["id"],)
+        )
+        return EvidenceMatch(
+            id=row["id"],
+            extraction_id=row["extraction_id"],
+            script_id=row["script_id"],
+            content_item_id=row["content_item_id"],
+            research_report_id=row["research_report_id"],
+            method=row["method"],
+            links=tuple(_evidence(link) for link in links),
+            claims_count=row["claims_count"],
+            matched=row["matched"],
+            unmatched=row["unmatched"],
+            numbers_differ=row["numbers_differ"],
+            requested_by=actor_from(row, "requested_by"),
+            created_at=parse_dt(row["created_at"]),
+        )
+
+
+def _evidence(row: sqlite3.Row) -> Evidence:
+    return Evidence(
+        id=row["id"],
+        claim_id=row["claim_id"],
+        source_ref=row["source_ref"],
+        excerpt=row["excerpt"],
+        created_at=parse_dt(row["created_at"]),
+        match_id=row["match_id"],
+        research_claim_id=row["research_claim_id"],
+        score=row["score"],
+        numbers=(
+            NumberAgreement(row["numbers"]) if row["numbers"] is not None else None
+        ),
+    )
 
 
 def _claim(row: sqlite3.Row) -> Claim:

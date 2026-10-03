@@ -249,4 +249,9 @@ def test_as_dict_is_json_friendly() -> None:
         "source_ref": "source-1",
         "excerpt": None,
         "created_at": stamp,
+        # F-069: the matching run, research claim, score and numbers.
+        "match_id": None,
+        "research_claim_id": None,
+        "score": None,
+        "numbers": None,
     }

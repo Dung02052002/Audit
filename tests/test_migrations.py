@@ -53,8 +53,8 @@ SHA = "a" * 64
 # 0006 budget alerts (D-051), 0007 sources (E-055), 0008 research requests
 # (E-056), 0009 source duplicates (E-057), 0010 research topics (E-058),
 # 0011 topic scores (E-059), 0012 research reports (E-060), 0013 research
-# cache (E-061)
-LATEST = 13
+# cache (E-061), 0014 research recovery (E-062)
+LATEST = 14
 
 ENTITY_TABLES = {
     "channels",
@@ -221,6 +221,7 @@ def test_default_migrations_are_packaged() -> None:
         "topic_scores",
         "research_reports",
         "research_cache",
+        "research_recovery",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()

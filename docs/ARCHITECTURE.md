@@ -154,6 +154,7 @@ StrategyProfile (C1, user-owned)
   │  research request
   ▼
 Research (C4): collect #056 → deduplicate #057 → extract topics #058 → score #059
+  │  (collection saves progress per item; resume / retry failures #062)
   │  ResearchReport (claims, evidence, uncertainty) #060
   ▼
 Script (C5): hook #065 → Shorts #066 or LongForm #067 script

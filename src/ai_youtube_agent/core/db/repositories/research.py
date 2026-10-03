@@ -3,7 +3,8 @@
 Sources are immutable records: add only. One source per normalised URL;
 ``add_or_get`` returns the stored source when the page is already known.
 Research requests change through optimistic ``update`` calls; the links to
-collected sources are added when the request finishes and never removed.
+collected sources are added as the request saves its progress (#062) and
+never removed.
 """
 
 import sqlite3
@@ -14,7 +15,6 @@ from ai_youtube_agent.content.research_report import ResearchReport
 from ai_youtube_agent.content.research_request import (
     CollectedSource,
     CollectionFailure,
-    CollectionOperation,
     ResearchLimits,
     ResearchRequest,
     ResearchStatus,
@@ -143,6 +143,18 @@ class ResearchRequestRepository(Repository):
         )
         self._add_links(request)
 
+    def has_results(self, request_id: str) -> bool:
+        """Whether deduplication, topics, scores or a report are stored for it."""
+        row = self._one(
+            "SELECT EXISTS (SELECT 1 FROM source_deduplications WHERE request_id = ?)"
+            " OR EXISTS (SELECT 1 FROM topic_extractions WHERE request_id = ?)"
+            " OR EXISTS (SELECT 1 FROM topic_scorings WHERE request_id = ?)"
+            " OR EXISTS (SELECT 1 FROM research_reports WHERE request_id = ?)"
+            " AS found",
+            (request_id,) * 4,
+        )
+        return bool(row["found"])
+
     def _add_links(self, request: ResearchRequest) -> None:
         stored = {
             row["source_id"]
@@ -191,14 +203,12 @@ class ResearchRequestRepository(Repository):
                 for link in links
             ),
             failures=tuple(
-                CollectionFailure(
-                    CollectionOperation(item["operation"]),
-                    item["target"],
-                    item["code"],
-                    item["attempts"],
-                )
+                CollectionFailure.from_dict(item)
                 for item in from_json(row["failures_json"])
             ),
+            queries_done=row["queries_done"],
+            lease_expires_at=parse_dt(row["lease_expires_at"]),
+            retries=row["retries"],
         )
 
 
@@ -218,6 +228,9 @@ def _request_row(request: ResearchRequest) -> dict:
         "started_at": dt(request.started_at),
         "finished_at": dt(request.finished_at),
         "failures_json": to_json([f.as_dict() for f in request.failures]),
+        "queries_done": request.queries_done,
+        "lease_expires_at": dt(request.lease_expires_at),
+        "retries": request.retries,
     }
 
 

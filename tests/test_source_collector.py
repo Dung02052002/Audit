@@ -8,7 +8,7 @@ Rules the user approved on 2026-10-02:
   linked in order with the query and rank that found each;
 - the collector runs sequentially and retries each retryable search or fetch
   up to 3 attempts (waits 1 s and 2 s); other failures are recorded at once;
-  resuming a whole request is #062;
+  resuming and retrying a request are E-062 (tests/test_research_recovery.py);
 - limits: ``max_sources`` (1-100, default 20), ``max_results_per_query``
   (1-50, default 10), ``max_per_domain`` (1-20, default 3);
 - a hit whose fetch fails is not a source, a failed search skips that query,
@@ -370,7 +370,12 @@ def test_retryable_failures_give_up_after_three_attempts(database) -> None:
     assert request.status is ResearchStatus.PARTIAL
     assert request.failures == (
         CollectionFailure(
-            CollectionOperation.FETCH, "https://a.org/", "research.rate_limited", 3
+            CollectionOperation.FETCH,
+            "https://a.org/",
+            "research.rate_limited",
+            3,
+            "q",
+            1,
         ),
     )
     assert [s.normalized_url for s in world.sources(request)] == ["https://b.org/"]

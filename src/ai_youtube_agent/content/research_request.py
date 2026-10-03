@@ -21,6 +21,18 @@ channel. The rules were approved by the user on 2026-10-02:
 ``query_warnings`` (#057) lists pairs of queries that are near-duplicates
 (word Jaccard from 0.8); they are allowed, only reported.
 
+Failure recovery (#062), approved by the user on 2026-10-03:
+
+- A running request is saved after each collected source or failure
+  (``progress``); ``queries_done`` counts the queries fully handled and
+  ``lease_expires_at`` is renewed on every save (``LEASE``, 10 minutes). Only
+  a running request has a lease; once it has expired the request may be
+  resumed from what was saved.
+- ``reopen`` turns a partial or failed request back into a running one for a
+  retry of its failures; ``retries`` counts these runs. A failure records the
+  ``round`` (the value of ``retries``) it happened in, and a fetch failure the
+  ``query`` and ``rank`` of its hit, so that a retry can collect the page.
+
 Any actor may make a request; ``requested_by`` records who. A request is
 frozen: ``start`` and ``finish`` return new values.
 """
@@ -38,6 +50,7 @@ from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.providers.research import MAX_QUERY_LENGTH
 
 MAX_QUERIES = 10
+LEASE = timedelta(minutes=10)
 Clock = Callable[[], datetime]
 
 
@@ -108,12 +121,20 @@ class CollectedSource:
 
 @dataclass(frozen=True)
 class CollectionFailure:
-    """A search or fetch that failed after its attempts."""
+    """A search or fetch that failed after its attempts.
+
+    A fetch failure names the ``query`` and ``rank`` of its hit (None for
+    failures stored before #062, which cannot be retried); ``round`` is the
+    run it happened in: 0 for the first run, then the retry number.
+    """
 
     operation: CollectionOperation
     target: str
     code: str
     attempts: int
+    query: str | None = None
+    rank: int | None = None
+    round: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation, CollectionOperation):
@@ -123,6 +144,20 @@ class CollectionFailure:
         if not self.code:
             raise ValueError("code must not be empty")
         _whole("attempts", self.attempts, 1, 10)
+        if (self.query is None) != (self.rank is None):
+            raise ValueError("a failure has both a query and a rank, or neither")
+        if self.query is not None:
+            if self.operation is not CollectionOperation.FETCH:
+                raise ValueError("only a fetch failure names its query and rank")
+            if not self.query.strip():
+                raise ValueError("query must not be empty")
+            _whole("rank", self.rank, 1, 50)
+        _whole("round", self.round, 0, 1_000_000)
+
+    @property
+    def is_retryable(self) -> bool:
+        """A search can always be redone; a fetch needs its hit's query and rank."""
+        return self.operation is CollectionOperation.SEARCH or self.query is not None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -130,7 +165,22 @@ class CollectionFailure:
             "target": self.target,
             "code": self.code,
             "attempts": self.attempts,
+            "query": self.query,
+            "rank": self.rank,
+            "round": self.round,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CollectionFailure":
+        return cls(
+            CollectionOperation(data["operation"]),
+            data["target"],
+            data["code"],
+            data["attempts"],
+            data.get("query"),
+            data.get("rank"),
+            data.get("round", 0),
+        )
 
 
 @dataclass(frozen=True)
@@ -158,6 +208,9 @@ class ResearchRequest:
     finished_at: datetime | None = None
     collected: tuple[CollectedSource, ...] = ()
     failures: tuple[CollectionFailure, ...] = ()
+    queries_done: int = 0
+    lease_expires_at: datetime | None = None
+    retries: int = 0
 
     def __post_init__(self) -> None:
         if not self.id or not self.channel_id:
@@ -188,6 +241,14 @@ class ResearchRequest:
             raise ValueError("only a pending request has no start time")
         if (self.finished_at is None) == (self.status in FINAL_STATUSES):
             raise ValueError("exactly the finished requests have a finish time")
+        if (self.lease_expires_at is None) == (self.status is ResearchStatus.RUNNING):
+            raise ValueError("exactly the running requests have a lease")
+        if self.lease_expires_at is not None:
+            _require_utc("lease_expires_at", self.lease_expires_at)
+        _whole("queries_done", self.queries_done, 0, len(self.queries))
+        _whole("retries", self.retries, 0, 1_000_000)
+        if any(f.round > self.retries for f in self.failures):
+            raise ValueError("a failure cannot come from a later run")
         if len(self.collected) > self.limits.max_sources:
             raise ValueError("a request must not collect more than max_sources")
         if len({c.source_id for c in self.collected}) != len(self.collected):
@@ -232,14 +293,75 @@ class ResearchRequest:
     def is_finished(self) -> bool:
         return self.status in FINAL_STATUSES
 
-    def start(self, *, clock: Clock | None = None) -> "ResearchRequest":
+    def lease_expired(self, now: datetime) -> bool:
+        """Whether a running request's worker has stopped renewing its lease."""
+        return self.lease_expires_at is not None and self.lease_expires_at <= now
+
+    @property
+    def retry_targets(self) -> tuple[CollectionFailure, ...]:
+        """The failures the current retry run still has to redo."""
+        return tuple(
+            f for f in self.failures if f.round < self.retries and f.is_retryable
+        )
+
+    def start(
+        self, *, clock: Clock | None = None, lease: timedelta = LEASE
+    ) -> "ResearchRequest":
         if self.status is not ResearchStatus.PENDING:
             raise ResearchRequestStateError(
                 f"research request {self.id} is {self.status.value}, not pending"
             )
         now = _now(clock)
         return replace(
-            self, status=ResearchStatus.RUNNING, started_at=now, updated_at=now
+            self,
+            status=ResearchStatus.RUNNING,
+            started_at=now,
+            updated_at=now,
+            lease_expires_at=now + lease,
+        )
+
+    def progress(
+        self,
+        collected: Iterable[CollectedSource],
+        failures: Iterable[CollectionFailure],
+        *,
+        queries_done: int,
+        clock: Clock | None = None,
+        lease: timedelta = LEASE,
+    ) -> "ResearchRequest":
+        """Save how far a running request got, and renew its lease."""
+        self._require_running()
+        now = _now(clock)
+        return replace(
+            self,
+            collected=tuple(collected),
+            failures=tuple(failures),
+            queries_done=queries_done,
+            updated_at=now,
+            lease_expires_at=now + lease,
+        )
+
+    def reopen(
+        self, *, clock: Clock | None = None, lease: timedelta = LEASE
+    ) -> "ResearchRequest":
+        """Run a partial or failed request again to retry its failures."""
+        if self.status not in (ResearchStatus.PARTIAL, ResearchStatus.FAILED):
+            raise ResearchRequestStateError(
+                f"research request {self.id} is {self.status.value}, "
+                "not partial or failed"
+            )
+        if not any(f.is_retryable for f in self.failures):
+            raise ResearchRequestStateError(
+                f"research request {self.id} has no failure that can be retried"
+            )
+        now = _now(clock)
+        return replace(
+            self,
+            status=ResearchStatus.RUNNING,
+            finished_at=None,
+            updated_at=now,
+            lease_expires_at=now + lease,
+            retries=self.retries + 1,
         )
 
     def finish(
@@ -249,10 +371,7 @@ class ResearchRequest:
         *,
         clock: Clock | None = None,
     ) -> "ResearchRequest":
-        if self.status is not ResearchStatus.RUNNING:
-            raise ResearchRequestStateError(
-                f"research request {self.id} is {self.status.value}, not running"
-            )
+        self._require_running()
         collected, failures = tuple(collected), tuple(failures)
         if not failures:
             status = ResearchStatus.COMPLETED
@@ -268,7 +387,15 @@ class ResearchRequest:
             failures=failures,
             finished_at=now,
             updated_at=now,
+            lease_expires_at=None,
+            queries_done=len(self.queries),
         )
+
+    def _require_running(self) -> None:
+        if self.status is not ResearchStatus.RUNNING:
+            raise ResearchRequestStateError(
+                f"research request {self.id} is {self.status.value}, not running"
+            )
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -296,6 +423,11 @@ class ResearchRequest:
                 for c in self.collected
             ],
             "failures": [failure.as_dict() for failure in self.failures],
+            "queries_done": self.queries_done,
+            "lease_expires_at": (
+                self.lease_expires_at.isoformat() if self.lease_expires_at else None
+            ),
+            "retries": self.retries,
         }
 
 

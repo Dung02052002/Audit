@@ -11,9 +11,9 @@ approved by the user on 2026-10-01:
 - An item without any policy check blocks with ``policy.not_checked``: the gate
   fails closed.
 
-The gate reads through ``PolicySource``. No repository exists yet; the policy
-check (#080) and report (#083) supply one, and #084 wires rights and policy
-into the shared publish gate.
+The gate reads through ``PolicySource``. No repository exists; since G-084 the
+shared publish gate (``core/publish_gate.py``) supplies ``CheckedPolicySource``,
+which checks the item with the G-080 policy checker when the gate runs.
 """
 
 from collections.abc import Sequence

@@ -2,9 +2,9 @@
 
 Rules the user approved on 2026-10-04:
 
-- ``PublishGate`` runs the approval, daily limit, rights and idempotency gates
-  (the C-042 order) over one read snapshot of the database; policy and the kill
-  switch are deferred (``DEFERRED_GATES``);
+- ``PublishGate`` runs the approval, daily limit, rights, policy (since G-084)
+  and idempotency gates (the C-042 order) over one read snapshot of the
+  database; the kill switch is deferred (``DEFERRED_GATES``);
 - the rights gate blocks on the levels of ``Settings.rights_block_levels`` and on
   a stale assessment: a record never assessed, or assessed on another asset or
   provenance than the current one, blocks with ``rights.assessment_stale``;
@@ -105,6 +105,7 @@ GATE_ORDER = (
     GateName.APPROVAL,
     GateName.DAILY_LIMIT,
     GateName.RIGHTS,
+    GateName.POLICY,
     GateName.IDEMPOTENCY,
 )
 SETTINGS_VALUES = [
@@ -291,7 +292,7 @@ def test_the_gate_runs_the_real_gates_in_the_matrix_order(world: World) -> None:
 
 
 def test_the_deferred_gates_are_pinned() -> None:
-    assert DEFERRED_GATES == (GateName.POLICY, GateName.KILL_SWITCH)
+    assert DEFERRED_GATES == (GateName.KILL_SWITCH,)
     assert not set(DEFERRED_GATES) & set(GATE_ORDER)
 
 
@@ -646,7 +647,7 @@ def test_a_failing_source_blocks_that_gate_and_still_releases_the_connection(
 def test_the_connection_is_closed_when_the_gate_set_itself_fails(
     world: World, monkeypatch: pytest.MonkeyPatch, tracked: list[TrackedConnection]
 ) -> None:
-    def boom(self, connection):
+    def boom(self, connection, context=None):
         raise RuntimeError("cannot build the gates")
 
     tracked.clear()

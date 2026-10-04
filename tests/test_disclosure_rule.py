@@ -503,7 +503,7 @@ def test_the_deferred_gates_are_unchanged() -> None:
     from ai_youtube_agent.core.gates import GateName
     from ai_youtube_agent.core.publish_gate import DEFERRED_GATES
 
-    assert DEFERRED_GATES == (GateName.POLICY, GateName.KILL_SWITCH)
+    assert DEFERRED_GATES == (GateName.KILL_SWITCH,)
 
 
 def _attribute_calls(path: Path, name: str) -> list[int]:

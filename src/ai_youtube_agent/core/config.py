@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     rights_block_levels: Annotated[frozenset[RightsBlockLevel], NoDecode] = frozenset(
         {RightsBlockLevel.HIGH}
     )
+    # Version of the policy rule set the publish gate checks with (G-084). An
+    # integer >= 1 (not a bool); a version the catalog does not know fails when
+    # the publish gate is built, with no fallback to another version.
+    policy_rule_set_version: int = Field(default=1, ge=1)
 
     @field_validator("rights_block_levels", mode="before")
     @classmethod
@@ -111,6 +115,13 @@ class Settings(BaseSettings):
     ) -> frozenset[RightsBlockLevel]:
         if RightsBlockLevel.HIGH not in value:
             raise ValueError("rights_block_levels must contain high")
+        return value
+
+    @field_validator("policy_rule_set_version", mode="before")
+    @classmethod
+    def _refuse_bool_policy_rule_set_version(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("policy_rule_set_version must be an integer, not a bool")
         return value
 
     @model_validator(mode="after")

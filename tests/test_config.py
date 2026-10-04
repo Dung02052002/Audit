@@ -278,3 +278,53 @@ def test_env_example_documents_the_rights_block_levels(tmp_path: Path) -> None:
         example.replace(f"# {RIGHTS_VARIABLE}=high", f"{RIGHTS_VARIABLE}=high")
     )
     assert load_settings(tmp_path).rights_block_levels == {HIGH}
+
+
+# Policy rule set version (G-084)
+
+POLICY_VERSION_VARIABLE = f"{ENV_PREFIX}POLICY_RULE_SET_VERSION"
+
+
+def test_policy_rule_set_version_defaults_to_one(tmp_path: Path) -> None:
+    assert load_settings(tmp_path).policy_rule_set_version == 1
+
+
+def test_policy_rule_set_version_reads_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(POLICY_VERSION_VARIABLE, "3")
+
+    assert load_settings(tmp_path).policy_rule_set_version == 3
+
+
+def test_policy_rule_set_version_reads_an_env_file(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(f"{POLICY_VERSION_VARIABLE}=2\n")
+
+    assert load_settings(tmp_path).policy_rule_set_version == 2
+
+
+@pytest.mark.parametrize("value", [0, -1, "x", "", True, False, None, 1.5])
+def test_policy_rule_set_version_refuses_bad_values(value) -> None:
+    with pytest.raises(ValidationError, match="policy_rule_set_version"):
+        Settings(policy_rule_set_version=value)
+
+
+@pytest.mark.parametrize("text", ["0", "-1", "x", "true"])
+def test_an_invalid_policy_rule_set_version_variable_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
+) -> None:
+    monkeypatch.setenv(POLICY_VERSION_VARIABLE, text)
+
+    with pytest.raises(ValidationError, match="policy_rule_set_version"):
+        load_settings(tmp_path)
+
+
+def test_env_example_documents_the_policy_rule_set_version(tmp_path: Path) -> None:
+    example = (REPO_ROOT / ".env.example").read_text()
+    line = f"# {POLICY_VERSION_VARIABLE}=1"
+    assert line in example
+    assert "(#084)" not in example
+
+    # With the commented line switched on, the example file still parses.
+    (tmp_path / ".env").write_text(example.replace(line, line[2:]))
+    assert load_settings(tmp_path).policy_rule_set_version == 1

@@ -5,8 +5,8 @@
 2026-10-04:
 
 - The gates run in the order of the C-042 gate matrix (``tests/test_gate_matrix.py``):
-  approval, daily limit, rights, idempotency. ``DEFERRED_GATES`` lists the two
-  that have no store yet.
+  approval, daily limit, rights, policy, idempotency. ``DEFERRED_GATES`` lists the
+  kill switch, which has no store yet.
 - The rights gate uses the levels of ``Settings.rights_block_levels`` and checks
   freshness (``RepositoryFreshness``): a record whose newest assessment was made
   on other facts than the current asset and provenance blocks with
@@ -18,6 +18,18 @@
 - Since G-079 the basis also holds the rules version (``RULES_VERSION`` by
   default). A record whose newest assessment used another version blocks with
   ``rights.rules_outdated`` until it is assessed again; a stale basis has priority.
+- Since G-084 the policy gate judges the item with the G-080 ``PolicyChecker``
+  (``CheckedPolicySource``): the item title and the banned phrases of its
+  channel strategy, checked against the rule set ``policy`` at
+  ``Settings.policy_rule_set_version`` when the gate is evaluated. Nothing is
+  stored. A version the catalog does not know raises
+  ``PolicyRuleSetNotFoundError`` when ``PublishGate`` is built, with no fallback.
+  ``PolicyGate`` then gives one ``policy.failed`` reason per blocking finding,
+  in catalog order, and a warning passes. A channel without a strategy profile
+  fails closed (``gate.error``). The item has no description or tags at publish
+  time, so the gate checks the title only; ``PolicyReporter`` (G-083) may also
+  check a caller's description and tags and can therefore block where the gate
+  passes.
 - ``evaluate`` only reads. It opens one connection with a deferred ``BEGIN``, so
   every gate sees the same snapshot, shares it between all repositories and rolls
   it back and closes it at the end. It takes no write lock, writes nothing and
@@ -30,9 +42,21 @@ Nothing calls ``PublishGate`` yet: the pipeline runner (#206) does.
 """
 
 import sqlite3
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from ai_youtube_agent.content.policy import PolicyCheck
+from ai_youtube_agent.content.policy_check import (
+    POLICY_RULES,
+    PolicyChecker,
+    PolicyInput,
+    PolicyRuleSetCatalog,
+    default_catalog,
+)
+from ai_youtube_agent.content.policy_rule import RuleSet
 from ai_youtube_agent.content.rights_assessment import RULES_VERSION, current_facts
+from ai_youtube_agent.content.strategy_settings import StrategyNotFoundError
+from ai_youtube_agent.content.text_prompts import banned_phrases
 from ai_youtube_agent.core.approval_gate import ApprovalGate
 from ai_youtube_agent.core.audit import Actor
 from ai_youtube_agent.core.config import Settings
@@ -61,16 +85,17 @@ from ai_youtube_agent.core.gates import (
     evaluate_gates,
 )
 from ai_youtube_agent.core.idempotency_gate import IdempotencyGate
+from ai_youtube_agent.core.policy_gate import PolicyGate
 from ai_youtube_agent.core.rights_gate import (
     AssessmentBasis,
     RightsGate,
     blocking_levels_for,
 )
 
-DEFERRED_GATES = (GateName.POLICY, GateName.KILL_SWITCH)
-"""Gates that guard a publish but are not part of the set yet. Policy has no store
-before #080 and the kill switch none before #213. #084 and #213 add them. Budget
-and strategy guard ``GENERATING`` only, so a publish does not run them."""
+DEFERRED_GATES = (GateName.KILL_SWITCH,)
+"""Gates that guard a publish but are not part of the set yet. The kill switch has
+no store before #213, which adds it. Budget and strategy guard ``GENERATING``
+only, so a publish does not run them."""
 
 
 class RepositoryFreshness:
@@ -118,10 +143,63 @@ class RepositoryFreshness:
         )
 
 
+class CheckedPolicySource:
+    """``PolicySource`` that checks the item being evaluated with the G-080
+    ``PolicyChecker`` instead of reading stored checks.
+
+    It judges ``context.item`` (the item passed to ``evaluate``, as the other
+    gates do) and answers only for that item: without a context or for another
+    id it raises. The banned phrases come from the strategy profile of the
+    item's channel; a channel without one raises ``StrategyNotFoundError``, so
+    the gate fails closed. The check is built at ``context.at`` and never
+    stored."""
+
+    def __init__(
+        self,
+        profiles: StrategyProfileRepository,
+        checker: PolicyChecker,
+        rule_set: RuleSet,
+        context: GateContext | None,
+    ) -> None:
+        self._profiles = profiles
+        self._checker = checker
+        self._rule_set = rule_set
+        self._context = context
+
+    def list_by_content_item(self, content_item_id: str) -> Sequence[PolicyCheck]:
+        context = self._context
+        if context is None or content_item_id != context.item.id:
+            raise ValueError("the policy source only checks the item being evaluated")
+        item = context.item
+        profile = self._profiles.get_by_channel(item.channel_id)
+        if profile is None:
+            raise StrategyNotFoundError(f"channel {item.channel_id} has no strategy")
+        policy_input = PolicyInput(
+            item.id,
+            item.channel_id,
+            item.title,
+            banned_phrases=banned_phrases(profile),
+        )
+        result = self._checker.check(policy_input, rule_set=self._rule_set)
+        return (result.to_policy_check(item.id, clock=lambda: context.at),)
+
+
 class PublishGate:
-    def __init__(self, database: Database, settings: Settings) -> None:
+    def __init__(
+        self,
+        database: Database,
+        settings: Settings,
+        *,
+        catalog: PolicyRuleSetCatalog | None = None,
+    ) -> None:
         self._database = database
         self._blocking_levels = blocking_levels_for(settings.rights_block_levels)
+        self._catalog = catalog if catalog is not None else default_catalog()
+        self._rule_set = RuleSet(POLICY_RULES.id, settings.policy_rule_set_version)
+        # An unknown rule set raises PolicyRuleSetNotFoundError here, not at the
+        # first publish, and never falls back to another version.
+        self._catalog.rules_for(self._rule_set)
+        self._checker = PolicyChecker(self._catalog)
         # Build the set once without a connection, so that a bad configuration
         # fails here and not at the first publish.
         self._gates(None)
@@ -140,7 +218,7 @@ class PublishGate:
         try:
             connection.execute("BEGIN")
             try:
-                return evaluate_gates(self._gates(connection), context)
+                return evaluate_gates(self._gates(connection, context), context)
             finally:
                 if connection.in_transaction:
                     connection.execute("ROLLBACK")
@@ -154,13 +232,16 @@ class PublishGate:
         report.raise_if_blocked()
         return report
 
-    def _gates(self, connection: sqlite3.Connection | None) -> list[PipelineGate]:
+    def _gates(
+        self,
+        connection: sqlite3.Connection | None,
+        context: GateContext | None = None,
+    ) -> list[PipelineGate]:
         approvals = ApprovalRequestRepository(connection)
+        profiles = StrategyProfileRepository(connection)
         return [
             ApprovalGate(approvals, ArtifactRepository(connection)),
-            DailyLimitGate(
-                StrategyProfileRepository(connection), DailyUsageRepository(connection)
-            ),
+            DailyLimitGate(profiles, DailyUsageRepository(connection)),
             RightsGate(
                 RightsRecordRepository(connection),
                 blocking_levels=self._blocking_levels,
@@ -169,6 +250,9 @@ class PublishGate:
                     AssetRepository(connection),
                     ProvenanceRepository(connection),
                 ),
+            ),
+            PolicyGate(
+                CheckedPolicySource(profiles, self._checker, self._rule_set, context)
             ),
             IdempotencyGate(
                 AIJobRepository(connection),

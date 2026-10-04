@@ -24,9 +24,11 @@ mock exists, and its ``check`` is the ``text_provider`` health check.
 need no provider.
 ``RightsReporter`` gets the levels of ``Settings.rights_block_levels``.
 ``PolicyReporter`` reports through the default policy rule set catalog.
-``PublishGate`` (G-078b) builds the approval, daily limit, rights and
-idempotency gates over the database, with the rights levels of
-``Settings.rights_block_levels``; the policy and kill switch gates join it later.
+``PublishGate`` (G-078b) builds the approval, daily limit, rights, policy
+(G-084) and idempotency gates over the database, with the rights levels of
+``Settings.rights_block_levels`` and the default policy rule set catalog at
+``Settings.policy_rule_set_version`` (an unknown version fails when it is
+resolved); the kill switch gate joins it later.
 """
 
 from ai_youtube_agent.content.asset_registry import AssetRegistry

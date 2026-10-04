@@ -7,12 +7,24 @@ Two frozen entities:
   ``voice_id``, a BCP-47 ``language`` and an optional ``speaking_style``. Like
   the strategy, only a user may create or change it
   (``VoiceChangeNotAllowedError``), and every real change returns a new
-  profile with ``version`` + 1. Pronunciation and style rules come with #087.
+  profile with ``version`` + 1. ``speech_request(text)`` bridges the profile to
+  the TTS provider interface (#086): it builds a ``SpeechRequest`` from the
+  profile's voice id, language and style, and calls no provider.
 - ``AudioMetadata``: what is known about one generated audio file. It points to
   the ``Artifact`` of kind audio that holds the file (uri, checksum, size and
   media type), the exact ``Script`` version that was voiced, and the voice
   profile id and version used, and it records the provider and the duration in
   whole milliseconds.
+
+The rules match the provider request: ``voice_id`` has no whitespace and no
+control characters and is at most 200 characters; ``language`` must fully match
+a BCP-47 tag; ``speaking_style`` is at most 200 characters without control
+characters; ``provider`` must fully match a lowercase name. Errors name the
+field, never the value. Stored rows that break these (tighter) rules now fail
+to load.
+
+Pronunciation is deferred: there is no field, the table has no column, and
+persistence or a migration was out of scope for #087.
 
 No cost is stored here: TTS cost is recorded by #092 and the Cost entity
 (#025). The TTS provider interface (#086) is
@@ -20,6 +32,7 @@ No cost is stored here: TTS cost is recorded by #092 and the Cost entity
 """
 
 import re
+import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -31,6 +44,11 @@ from ai_youtube_agent.content.strategy import LANGUAGE_TAG_PATTERN
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.errors import DomainError
+from ai_youtube_agent.providers.speech_synthesis import (
+    MAX_STYLE,
+    MAX_VOICE_ID,
+    SpeechRequest,
+)
 
 PROVIDER_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 Clock = Callable[[], datetime]
@@ -58,14 +76,27 @@ class VoiceProfile:
     def __post_init__(self) -> None:
         _require_ids(self, "id", "channel_id")
         _require_provider(self.provider)
-        if not self.voice_id or any(char.isspace() for char in self.voice_id):
-            raise ValueError("voice_id must not be empty or contain whitespace")
-        if not LANGUAGE_TAG_PATTERN.match(self.language):
+        if (
+            not self.voice_id
+            or any(char.isspace() for char in self.voice_id)
+            or len(self.voice_id) > MAX_VOICE_ID
+            or _has_control(self.voice_id)
+        ):
             raise ValueError(
-                f"language {self.language!r} must be a BCP-47 tag such as 'en-US'"
+                f"voice_id must be 1 to {MAX_VOICE_ID} characters without "
+                "whitespace or control characters"
             )
-        if self.speaking_style is not None and not self.speaking_style.strip():
-            raise ValueError("speaking_style must not be empty")
+        if not LANGUAGE_TAG_PATTERN.fullmatch(self.language):
+            raise ValueError("language must be a BCP-47 tag such as 'en-US'")
+        if self.speaking_style is not None and (
+            not self.speaking_style.strip()
+            or len(self.speaking_style) > MAX_STYLE
+            or _has_control(self.speaking_style)
+        ):
+            raise ValueError(
+                f"speaking_style must be 1 to {MAX_STYLE} characters "
+                "without control characters"
+            )
         _require_whole(self.version, "version")
         _ensure_user(self.updated_by)
         _require_utc(self.created_at, "created_at")
@@ -122,6 +153,20 @@ class VoiceProfile:
             version=self.version + 1,
             updated_by=actor,
             updated_at=_now(clock),
+        )
+
+    def speech_request(self, text: str) -> SpeechRequest:
+        """Build the provider request that speaks ``text`` with this voice.
+
+        The voice id, language and style are passed on unchanged. No provider
+        is called and no audio is made; ``text`` is validated by
+        ``SpeechRequest``.
+        """
+        return SpeechRequest(
+            text=text,
+            voice_id=self.voice_id,
+            language=self.language,
+            speaking_style=self.speaking_style,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -215,10 +260,12 @@ def _require_ids(entity: object, *names: str) -> None:
 
 
 def _require_provider(provider: str) -> None:
-    if not PROVIDER_PATTERN.match(provider):
-        raise ValueError(
-            f"provider {provider!r} must be a lowercase name such as 'mock_tts'"
-        )
+    if not PROVIDER_PATTERN.fullmatch(provider):
+        raise ValueError("provider must be a lowercase name such as 'mock_tts'")
+
+
+def _has_control(value: str) -> bool:
+    return any(unicodedata.category(char) == "Cc" for char in value)
 
 
 def _require_whole(value: object, name: str) -> None:

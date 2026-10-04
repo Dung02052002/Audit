@@ -12,6 +12,7 @@ from ai_youtube_agent.content.voice import (
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.errors import DomainError
+from ai_youtube_agent.providers.speech_synthesis import SpeechRequest
 
 T0 = datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
 T1 = T0 + timedelta(minutes=5)
@@ -185,6 +186,150 @@ def test_update_only_accepts_voice_settings(name: str) -> None:
 def test_update_validates_new_values() -> None:
     with pytest.raises(ValueError):
         new_voice().update(actor=USER, clock=at(T1), language="Vietnamese")
+
+
+# Voice profile rules (#087)
+
+MARKER = "SECRET-9x"
+
+
+def test_create_accepts_a_valid_profile() -> None:
+    voice = new_voice(speaking_style="calm")
+    assert (voice.provider, voice.voice_id, voice.language) == (
+        "mock_tts",
+        "vi-female-01",
+        "vi",
+    )
+    assert voice.speaking_style == "calm"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"provider": ""}, {"voice_id": ""}, {"language": ""}, {"speaking_style": ""}],
+)
+def test_empty_required_fields_are_rejected(overrides) -> None:
+    with pytest.raises(ValueError):
+        new_voice(**overrides)
+
+
+def test_voice_id_length_limit() -> None:
+    assert new_voice(voice_id="v" * 200).voice_id == "v" * 200
+    with pytest.raises(ValueError, match="voice_id"):
+        new_voice(voice_id="v" * 201)
+
+
+@pytest.mark.parametrize("voice_id", ["a\nb", "a\x00b", "a\x7fb", "a\x85b"])
+def test_voice_id_rejects_whitespace_and_control_characters(voice_id) -> None:
+    with pytest.raises(ValueError, match="voice_id"):
+        new_voice(voice_id=voice_id)
+
+
+@pytest.mark.parametrize("language", ["vi", "en-US", "zh-Hant-TW"])
+def test_language_accepts_bcp47_tags(language) -> None:
+    assert new_voice(language=language).language == language
+
+
+@pytest.mark.parametrize("language", ["vi\n", "Vietnamese", "vi_VN", ""])
+def test_language_rejects_malformed_tags(language) -> None:
+    with pytest.raises(ValueError, match="language"):
+        new_voice(language=language)
+
+
+def test_speaking_style_length_limit() -> None:
+    assert new_voice(speaking_style="s" * 200).speaking_style == "s" * 200
+    padded = "  " + "s" * 200 + "  "
+    assert new_voice(speaking_style=padded).speaking_style == "s" * 200
+    with pytest.raises(ValueError, match="speaking_style"):
+        new_voice(speaking_style="s" * 201)
+
+
+@pytest.mark.parametrize("style", ["a\nb", "a\x00b"])
+def test_speaking_style_rejects_internal_control_characters(style) -> None:
+    with pytest.raises(ValueError, match="speaking_style"):
+        new_voice(speaking_style=style)
+
+
+def test_speaking_style_is_stripped_and_may_be_none() -> None:
+    assert new_voice(speaking_style="  calm \n").speaking_style == "calm"
+    assert new_voice(speaking_style=None).speaking_style is None
+
+
+def test_provider_must_fully_match() -> None:
+    with pytest.raises(ValueError, match="provider"):
+        new_voice(provider="mock_tts\n")
+    audio = AudioMetadata.create(*audio_parts(), duration_ms=1)
+    with pytest.raises(ValueError, match="provider"):
+        rebuild(audio, provider="mock_tts\n")
+
+
+@pytest.mark.parametrize(
+    ("field", "bad"),
+    [
+        ("voice_id", f"{MARKER} x"),
+        ("language", MARKER),
+        ("provider", MARKER),
+        ("speaking_style", f"{MARKER}\x00"),
+    ],
+)
+def test_errors_name_the_field_and_never_the_value(field, bad) -> None:
+    with pytest.raises(ValueError) as info:
+        new_voice(**{field: bad})
+    assert field in str(info.value)
+    assert MARKER not in str(info.value)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"voice_id": "v" * 201},
+        {"voice_id": "a\x00b"},
+        {"language": "vi_VN"},
+        {"language": "vi\n"},
+        {"speaking_style": "s" * 201},
+        {"speaking_style": "a\x00b"},
+        {"provider": "mock_tts\n"},
+    ],
+)
+def test_update_enforces_the_same_rules(changes) -> None:
+    with pytest.raises(ValueError):
+        new_voice().update(actor=USER, clock=at(T1), **changes)
+
+
+def test_noop_update_returns_self() -> None:
+    voice = new_voice(speaking_style="calm")
+    assert voice.update(actor=USER, speaking_style=" calm ") is voice
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {"voice_id": "v" * 200},
+        {"speaking_style": "s" * 200},
+        {"speaking_style": "warm", "language": "en-US"},
+    ],
+)
+def test_speech_request_carries_the_profile_fields(overrides) -> None:
+    voice = new_voice(**overrides)
+
+    request = voice.speech_request("Hello there.")
+
+    assert isinstance(request, SpeechRequest)
+    assert request.text == "Hello there."
+    assert request.voice_id == voice.voice_id
+    assert request.language == voice.language
+    assert request.speaking_style == voice.speaking_style
+
+
+@pytest.mark.parametrize("text", ["", "   ", "x" * 5_001])
+def test_speech_request_text_errors_come_from_the_request(text) -> None:
+    with pytest.raises(ValueError, match="text"):
+        new_voice().speech_request(text)
+
+
+def test_previously_valid_data_is_still_valid() -> None:
+    assert new_voice().voice_id == VOICE["voice_id"]
+    assert new_voice(speaking_style="warm, calm").speaking_style == "warm, calm"
 
 
 # Audio metadata

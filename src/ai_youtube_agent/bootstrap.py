@@ -16,6 +16,8 @@ the in-memory mock exists, and its ``check`` is the ``research_provider``
 health check. Since #061 it is wrapped in ``ResearchCache``.
 ``TextGenerator`` (#065) is chosen by ``Settings.text_provider``; only the
 mock exists, and its ``check`` is the ``text_provider`` health check.
+``SpeechSynthesizer`` (#086) is chosen by ``Settings.voice_provider``; only
+the mock exists, and its ``check`` is the ``voice_provider`` health check.
 ``ClaimExtractor`` (#068), ``EvidenceMatcher`` (#069), ``FactChecker``
 (#070), ``OriginalityChecker`` (#071), ``ScriptValidator`` (#072),
 ``ScriptVersioner`` (#073), ``AssetRegistry`` (#076), ``ProvenanceRecorder``
@@ -59,6 +61,7 @@ from ai_youtube_agent.core.config import (
     ResearchProviderKind,
     Settings,
     TextProviderKind,
+    VoiceProviderKind,
     get_settings,
 )
 from ai_youtube_agent.core.db.database import Database
@@ -70,9 +73,11 @@ from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
+from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
 from ai_youtube_agent.providers.research import ResearchProvider
 from ai_youtube_agent.providers.research_cache import ResearchCache
+from ai_youtube_agent.providers.speech_synthesis import SpeechSynthesizer
 from ai_youtube_agent.providers.text_generation import TextGenerator
 
 logger = get_logger(__name__)
@@ -189,6 +194,7 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda c: RightsReporter(c.resolve(Database), c.resolve(Settings)),
     )
     container.register(PolicyReporter, lambda c: PolicyReporter(c.resolve(Database)))
+    container.register(SpeechSynthesizer, _build_speech_synthesizer)
     container.register(
         PublishGate, lambda c: PublishGate(c.resolve(Database), c.resolve(Settings))
     )
@@ -210,6 +216,13 @@ def _build_text_generator(container: Container) -> TextGenerator:
     if kind is TextProviderKind.MOCK:
         return MockTextGenerator()
     raise ValueError(f"unknown text provider {kind!r}")
+
+
+def _build_speech_synthesizer(container: Container) -> SpeechSynthesizer:
+    kind = container.resolve(Settings).voice_provider
+    if kind is VoiceProviderKind.MOCK:
+        return MockSpeechSynthesizer()
+    raise ValueError(f"unknown voice provider {kind!r}")
 
 
 def _build_audit_sink(container: Container) -> AuditSink:
@@ -262,6 +275,13 @@ def _build_health_registry(container: Container) -> HealthRegistry:
             "text_provider",
             CheckKind.PROVIDER,
             lambda: container.resolve(TextGenerator).check(),
+        )
+    )
+    registry.register(
+        HealthCheck(
+            "voice_provider",
+            CheckKind.PROVIDER,
+            lambda: container.resolve(SpeechSynthesizer).check(),
         )
     )
     return registry

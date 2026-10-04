@@ -15,7 +15,8 @@ Two frozen entities:
   whole milliseconds.
 
 No cost is stored here: TTS cost is recorded by #092 and the Cost entity
-(#025). The TTS provider interface is #086.
+(#025). The TTS provider interface (#086) is
+``providers/speech_synthesis.py``.
 """
 
 import re

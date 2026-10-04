@@ -95,7 +95,7 @@ The requirements define each of these as an abstraction with a mock.
 |---|---|---|---|---|
 | Research Provider | #054 | Search and fetch sources. Implemented in `providers/research.py` (sync Protocol, typed values, retryable error codes) with `MockResearchProvider` in `providers/mock_research.py`, chosen by `Settings.research_provider`; since #061 always used through `ResearchCache` (`providers/research_cache.py`, SQLite, search 6 h, fetch 24 h, stale fallback on retryable errors) | Yes (#054) | C4 |
 | Text Generation Provider | #065 (user decision 2026-10-03, answers Q1) | Generate text candidates (hooks, later scripts). Implemented in `providers/text_generation.py` (sync `TextGenerator` Protocol, `TextRequest`/`GeneratedText`, retryable `TextErrorCode`s) with `MockTextGenerator` in `providers/mock_text_generation.py`, chosen by `Settings.text_provider`, `text_provider` health check | Yes (#065) | C5, C14 (#175 cost) |
-| Voice (TTS) Provider | #086 | Generate speech audio | Yes (#086) | C7 |
+| Voice (TTS) Provider | #086 | Generate speech audio. Implemented in `providers/speech_synthesis.py` (sync `SpeechSynthesizer` Protocol, `SpeechRequest`/`SynthesizedSpeech`, retryable `VoiceErrorCode`s) with `MockSpeechSynthesizer` in `providers/mock_speech_synthesis.py` (deterministic WAV tone), chosen by `Settings.voice_provider`, `voice_provider` health check | Yes (#086) | C7 |
 | Render provider abstraction | #100, #111 | Render vertical and long-form MP4 | Not stated | C8, C9 |
 | Policy Rule Interface | #079 | Versioned policy rules | Yes, mock rules (#079) | C6 |
 | OAuth / token interface | #145 | Secure YouTube authorization | Not stated | C12, X4 (#217) |

@@ -52,6 +52,12 @@ class TextProviderKind(StrEnum):
     MOCK = "mock"
 
 
+class VoiceProviderKind(StrEnum):
+    """Which voice (TTS) provider bootstrap registers (#086). Only the mock exists."""
+
+    MOCK = "mock"
+
+
 class RightsBlockLevel(StrEnum):
     """A rights risk level the rights gate may block on (#078).
 
@@ -80,6 +86,7 @@ class Settings(BaseSettings):
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
     research_provider: ResearchProviderKind = ResearchProviderKind.MOCK
     text_provider: TextProviderKind = TextProviderKind.MOCK
+    voice_provider: VoiceProviderKind = VoiceProviderKind.MOCK
     # Rights levels that block a publish (#078): a comma separated list
     # ("medium,high") or a JSON list (["medium", "high"]). ``high`` is required.
     rights_block_levels: Annotated[frozenset[RightsBlockLevel], NoDecode] = frozenset(

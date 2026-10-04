@@ -10,6 +10,7 @@ from ai_youtube_agent.core.config import (
     Environment,
     RightsBlockLevel,
     Settings,
+    VoiceProviderKind,
     get_settings,
     load_settings,
 )
@@ -328,3 +329,51 @@ def test_env_example_documents_the_policy_rule_set_version(tmp_path: Path) -> No
     # With the commented line switched on, the example file still parses.
     (tmp_path / ".env").write_text(example.replace(line, line[2:]))
     assert load_settings(tmp_path).policy_rule_set_version == 1
+
+
+# Voice provider (H-086)
+
+VOICE_PROVIDER_VARIABLE = f"{ENV_PREFIX}VOICE_PROVIDER"
+
+
+def test_voice_provider_defaults_to_the_mock(tmp_path: Path) -> None:
+    assert load_settings(tmp_path).voice_provider is VoiceProviderKind.MOCK
+
+
+def test_voice_provider_reads_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(VOICE_PROVIDER_VARIABLE, "mock")
+
+    assert load_settings(tmp_path).voice_provider is VoiceProviderKind.MOCK
+
+
+def test_voice_provider_reads_an_env_file(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(f"{VOICE_PROVIDER_VARIABLE}=mock\n")
+
+    assert load_settings(tmp_path).voice_provider is VoiceProviderKind.MOCK
+
+
+@pytest.mark.parametrize("value", ["elevenlabs", "", "MOCK ", None, 1])
+def test_voice_provider_refuses_unknown_kinds(value) -> None:
+    with pytest.raises(ValidationError, match="voice_provider"):
+        Settings(voice_provider=value)
+
+
+def test_an_unknown_voice_provider_variable_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(VOICE_PROVIDER_VARIABLE, "elevenlabs")
+
+    with pytest.raises(ValidationError, match="voice_provider"):
+        load_settings(tmp_path)
+
+
+def test_env_example_documents_the_voice_provider(tmp_path: Path) -> None:
+    example = (REPO_ROOT / ".env.example").read_text()
+    line = f"# {VOICE_PROVIDER_VARIABLE}=mock"
+    assert line in example
+
+    # With the commented line switched on, the example file still parses.
+    (tmp_path / ".env").write_text(example.replace(line, line[2:]))
+    assert load_settings(tmp_path).voice_provider is VoiceProviderKind.MOCK

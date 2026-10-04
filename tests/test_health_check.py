@@ -250,12 +250,14 @@ def test_container_registers_application_checks(settings: Settings) -> None:
     registry = build_container(settings).resolve(HealthRegistry)
 
     # E-054 added the research provider check (user decision, 2026-10-02),
-    # F-065 the text provider check (user decision, 2026-10-03).
+    # F-065 the text provider check (user decision, 2026-10-03), H-086 the
+    # voice provider check.
     assert registry.names() == (
         "settings",
         "feature_flags",
         "research_provider",
         "text_provider",
+        "voice_provider",
     )
     assert build_container(settings).resolve(HealthRegistry) is not registry
 
@@ -288,6 +290,12 @@ def test_endpoint_reports_every_check(settings: Settings) -> None:
             },
             {
                 "name": "text_provider",
+                "kind": "provider",
+                "status": "ok",
+                "detail": None,
+            },
+            {
+                "name": "voice_provider",
                 "kind": "provider",
                 "status": "ok",
                 "detail": None,

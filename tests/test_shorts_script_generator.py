@@ -20,7 +20,13 @@ import pytest
 
 from ai_youtube_agent.bootstrap import build_container
 from ai_youtube_agent.content.hook_generator import ContentItemNotFoundError
-from ai_youtube_agent.content.script import DurationTarget, Script, SectionKind
+from ai_youtube_agent.content.script import (
+    DurationTarget,
+    Script,
+    ScriptSection,
+    SectionKind,
+)
+from ai_youtube_agent.content.script_generation import ScriptConflictError
 from ai_youtube_agent.content.shorts_script_generator import (
     HookGenerationNotFoundError,
     ScriptGenerationError,
@@ -272,6 +278,97 @@ def test_a_provider_failure_is_audited_and_raised(world) -> None:
     )
     assert event.metadata == {"code": "text.refused", "attempts": 1, "rejected": 0}
     assert world.stored() == []
+
+
+# Another version stored while the provider answers (F-074)
+
+
+class Racing:
+    """A provider that lets another writer store a version while it answers."""
+
+    def __init__(self, inner, race) -> None:
+        self.inner, self.race = inner, race
+
+    def generate(self, request):
+        race, self.race = self.race, None
+        if race is not None:
+            race()
+        return self.inner.generate(request)
+
+
+def racing_scripts(world: ShortsWorld, race) -> ShortsScriptGenerator:
+    return ShortsScriptGenerator(
+        world.database,
+        Racing(world.text, race),
+        AuditLog(world.sink),
+        clock=world.clock,
+        sleep=world.sleeps.append,
+    )
+
+
+def other_writer(world: ShortsWorld, parent: Script | None) -> Script:
+    sections = (ScriptSection(SectionKind.BODY, "Another writer was faster."),)
+    values = {"sections": sections, "created_by": USER, "clock": world.clock}
+    script = (
+        Script.create(world.item.id, **values)
+        if parent is None
+        else parent.next_version(**values)
+    )
+    with world.database.transaction() as connection:
+        ScriptRepository(connection).add(script)
+    return script
+
+
+def test_a_first_script_is_not_stored_when_another_first_version_appeared(
+    world,
+) -> None:
+    racer: list[Script] = []
+    scripts = racing_scripts(world, lambda: racer.append(other_writer(world, None)))
+    world.text.queue(answer(words(40)))
+
+    with pytest.raises(ScriptConflictError) as caught:
+        scripts.generate(world.item.id, world.hooks_run.id, 0, actor=USER)
+
+    public = caught.value.to_public()
+    assert (public.code, public.http_status) == ("domain.script_conflict", 409)
+    assert world.stored() == racer  # nothing was stored, nothing re-parented
+    [event] = world.events()
+    assert (event.action, event.result) == (
+        "script.generation_failed",
+        AuditResult.FAILURE,
+    )
+    assert event.metadata == {
+        "stage": "store",
+        "code": "script_conflict",
+        "expected_version": 0,
+        "latest_version": 1,
+    }
+
+
+def test_a_next_version_is_not_stored_when_another_version_appeared(world) -> None:
+    first = world.write(answer(words(40)))
+    racer: list[Script] = []
+    scripts = racing_scripts(world, lambda: racer.append(other_writer(world, first)))
+    world.text.queue(answer(words(40, "save")))
+
+    with pytest.raises(ScriptConflictError) as caught:
+        scripts.generate(world.item.id, world.hooks_run.id, 0, actor=USER)
+
+    assert caught.value.to_public().http_status == 409
+    assert world.stored() == [first, *racer]
+    assert [e.action for e in world.events()] == [
+        "script.generated",
+        "script.generation_failed",
+    ]
+    assert world.events()[-1].metadata == {
+        "stage": "store",
+        "code": "script_conflict",
+        "expected_version": 1,
+        "latest_version": 2,
+    }
+    # Asked again, the script is written from the version that now exists.
+    third = world.write(answer(words(40, "keep")))
+    assert (third.version, third.parent_id) == (3, racer[0].id)
 
 
 # Parsing

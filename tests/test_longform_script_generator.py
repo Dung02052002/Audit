@@ -28,8 +28,14 @@ from ai_youtube_agent.content.longform_script_generator import (
     chapter_share,
     parse_outline,
 )
-from ai_youtube_agent.content.script import DurationTarget, Script, SectionKind
+from ai_youtube_agent.content.script import (
+    DurationTarget,
+    Script,
+    ScriptSection,
+    SectionKind,
+)
 from ai_youtube_agent.content.script_generation import (
+    ScriptConflictError,
     ScriptGenerationError,
     ScriptInputError,
     load_inputs,
@@ -390,6 +396,101 @@ def test_chapter_shares_keep_the_whole_script_within_the_target(world) -> None:
     # hook 4 s, intro/outro/cta 1 s each = 7 s fixed.
     assert share == ChapterShare(158, 297)
     assert 7 + 3 * share.min_seconds >= 480 and 7 + 3 * share.max_seconds <= 900
+
+
+# Another version stored while the provider answers (F-074)
+
+
+class Racing:
+    """A provider that lets another writer store a version while it answers."""
+
+    def __init__(self, inner, race) -> None:
+        self.inner, self.race = inner, race
+
+    def generate(self, request):
+        race, self.race = self.race, None
+        if race is not None:
+            race()
+        return self.inner.generate(request)
+
+
+def racing_scripts(world: LongFormWorld, race) -> LongFormScriptGenerator:
+    return LongFormScriptGenerator(
+        world.database,
+        Racing(world.text, race),
+        AuditLog(world.sink),
+        FeatureFlags(longform_enabled=True),
+        clock=world.clock,
+        sleep=world.sleeps.append,
+    )
+
+
+def other_writer(world: LongFormWorld, parent: Script | None) -> Script:
+    sections = (ScriptSection(SectionKind.BODY, "Another writer was faster."),)
+    values = {"sections": sections, "created_by": USER, "clock": world.clock}
+    script = (
+        Script.create(world.item.id, **values)
+        if parent is None
+        else parent.next_version(**values)
+    )
+    with world.database.transaction() as connection:
+        ScriptRepository(connection).add(script)
+    return script
+
+
+def test_a_first_script_is_not_stored_when_another_first_version_appeared(
+    world,
+) -> None:
+    racer: list[Script] = []
+    scripts = racing_scripts(world, lambda: racer.append(other_writer(world, None)))
+    for text in (outline(), GOOD, GOOD, GOOD):
+        world.text.queue(text)
+
+    with pytest.raises(ScriptConflictError) as caught:
+        scripts.generate(world.item.id, world.hooks_run.id, 0, actor=USER)
+
+    public = caught.value.to_public()
+    assert (public.code, public.http_status) == ("domain.script_conflict", 409)
+    assert len(world.text.calls) == 4  # the whole script was written first
+    assert world.stored() == racer  # nothing was stored, nothing re-parented
+    [event] = world.events()
+    assert (event.action, event.result) == (
+        "script.generation_failed",
+        AuditResult.FAILURE,
+    )
+    assert event.metadata == {
+        "stage": "store",
+        "code": "script_conflict",
+        "expected_version": 0,
+        "latest_version": 1,
+    }
+
+
+def test_a_next_version_is_not_stored_when_another_version_appeared(world) -> None:
+    first = world.write(outline(), GOOD, GOOD, GOOD)
+    racer: list[Script] = []
+    scripts = racing_scripts(world, lambda: racer.append(other_writer(world, first)))
+    for text in (outline(), GOOD, chapter(words(450)), GOOD):
+        world.text.queue(text)
+
+    with pytest.raises(ScriptConflictError) as caught:
+        scripts.generate(world.item.id, world.hooks_run.id, 0, actor=USER)
+
+    assert caught.value.to_public().http_status == 409
+    assert world.stored() == [first, *racer]
+    assert [e.action for e in world.events()] == [
+        "script.generated",
+        "script.generation_failed",
+    ]
+    assert world.events()[-1].metadata == {
+        "stage": "store",
+        "code": "script_conflict",
+        "expected_version": 1,
+        "latest_version": 2,
+    }
+    # Asked again, the script is written from the version that now exists.
+    third = world.write(outline(), GOOD, chapter(words(450)), GOOD)
+    assert (third.version, third.parent_id) == (3, racer[0].id)
 
 
 # Provider failures

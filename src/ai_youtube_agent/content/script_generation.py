@@ -10,7 +10,11 @@
   banned phrases used by any section.
 - ``store_script`` stores the accepted sections as version 1 or the next
   version of the latest script, written by the AI actor ``<provider>/<model>``,
-  and audits ``script.generated`` for the caller after commit;
+  and audits ``script.generated`` for the caller after commit. Inside the
+  write transaction it re-reads the latest script of the item: when another
+  version was stored while the provider was answering, it stores nothing,
+  audits ``script.generation_failed`` (stage ``store``) and raises
+  ``ScriptConflictError`` (409), so a script is never silently re-parented;
   ``record_failure`` audits ``script.generation_failed``.
 """
 
@@ -68,6 +72,15 @@ class HookGenerationNotFoundError(DomainError):
 class ScriptInputError(DomainError):
     default_code = "domain.script_input"
     default_user_message = "A script cannot be written from these inputs."
+
+
+class ScriptConflictError(DomainError):
+    default_code = "domain.script_conflict"
+    default_user_message = (
+        "Another version of this script was stored while it was being written. "
+        "Please try again."
+    )
+    default_http_status = HTTPStatus.CONFLICT
 
 
 class ScriptGenerationError(DomainError):
@@ -223,7 +236,31 @@ def store_script(
     else:
         script = inputs.latest.next_version(**values)
     with database.transaction() as connection:
-        ScriptRepository(connection).add(script)
+        scripts = ScriptRepository(connection).list_by_content_item(inputs.item.id)
+        current = scripts[-1] if scripts else None
+        expected = inputs.latest
+        conflict = (current.id if current else None) != (
+            expected.id if expected else None
+        )
+        if not conflict:
+            ScriptRepository(connection).add(script)
+    if conflict:
+        record_failure(
+            audit,
+            inputs.item,
+            actor,
+            {
+                "stage": "store",
+                "code": "script_conflict",
+                "expected_version": expected.version if expected else 0,
+                "latest_version": current.version if current else 0,
+            },
+        )
+        raise ScriptConflictError(
+            f"content item {inputs.item.id} changed while its script was written: "
+            f"expected version {expected.version if expected else 0}, "
+            f"found {current.version if current else 0}"
+        )
     audit.record(
         "script.generated",
         actor,

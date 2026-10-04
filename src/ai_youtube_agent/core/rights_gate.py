@@ -36,7 +36,14 @@ each record, gives at most one reason, in this order:
    ``provenance_id``) is not the current basis of its ``asset_ref`` for the
    channel of the item, ``rights.assessment_stale`` ("Asset X has no current
    rights assessment."), because the level on the record may no longer be true;
-3. otherwise the record passes. A resolved record is never checked for freshness.
+3. else, if the pair is the same but the ``rules_version`` of the assessment
+   differs from the current one, ``rights.rules_outdated`` ("Asset X was assessed
+   with outdated rights rules."): the rules changed since;
+4. otherwise the record passes. A resolved record is never checked for freshness.
+
+A stale record gives only the stale reason (the pair is compared before the
+version). The gate compares the ``rules_version`` strings it is given and never
+imports the rules.
 
 Without a ``freshness`` source the behaviour is exactly as before. The gate only
 compares two bases it is given: how a basis is read, and the rules that turn it
@@ -60,11 +67,13 @@ ALLOWED_BLOCKING_LEVELS = frozenset(
 
 
 class AssessmentBasis(NamedTuple):
-    """What an assessment was based on: the asset and its latest provenance.
-    Both are ``None`` when the asset is not a registered asset of the channel."""
+    """What an assessment was based on: the asset, its latest provenance and the
+    version of the rules. The first two are ``None`` when the asset is not a
+    registered asset of the channel."""
 
     asset_id: str | None
     provenance_id: str | None
+    rules_version: str
 
 
 class RightsSource(Protocol):
@@ -123,18 +132,23 @@ class RightsGate:
             return None
         if record.risk_level in self._blocking_levels:
             return _reason(record)
-        if self._freshness is not None and self._is_stale(record, context):
+        if self._freshness is None:
+            return None
+        assessed = self._freshness.assessed_basis(record.id)
+        current = self._freshness.current_basis(
+            record.asset_ref, context.item.channel_id
+        )
+        if assessed is None or assessed[:2] != current[:2]:
             return GateReason(
                 "rights.assessment_stale",
                 f"Asset {record.asset_ref} has no current rights assessment.",
             )
+        if assessed.rules_version != current.rules_version:
+            return GateReason(
+                "rights.rules_outdated",
+                f"Asset {record.asset_ref} was assessed with outdated rights rules.",
+            )
         return None
-
-    def _is_stale(self, record: RightsRecord, context: GateContext) -> bool:
-        assessed = self._freshness.assessed_basis(record.id)
-        return assessed is None or assessed != self._freshness.current_basis(
-            record.asset_ref, context.item.channel_id
-        )
 
 
 def blocking_levels_for(configured: Iterable[RightsBlockLevel]) -> frozenset[RiskLevel]:

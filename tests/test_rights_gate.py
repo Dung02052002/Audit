@@ -20,6 +20,7 @@ assessment is not the current basis. The level reason has priority, a resolved
 record is never checked, and without a source nothing changes.
 """
 
+import ast
 import dataclasses
 from datetime import UTC, datetime, timedelta
 
@@ -440,7 +441,8 @@ def test_blocking_levels_for_builds_a_valid_gate(records: Records) -> None:
 
 # Freshness (G-078b)
 
-BASIS = AssessmentBasis("asset-1", "prov-1")
+V1 = "rights-rules-v1"
+BASIS = AssessmentBasis("asset-1", "prov-1", V1)
 
 
 class Freshness:
@@ -517,7 +519,10 @@ def test_an_equal_basis_passes(records: Records, freshness: Freshness) -> None:
 
 @pytest.mark.parametrize(
     "current",
-    [AssessmentBasis("asset-1", "prov-2"), AssessmentBasis("asset-2", "prov-1")],
+    [
+        AssessmentBasis("asset-1", "prov-2", V1),
+        AssessmentBasis("asset-2", "prov-1", V1),
+    ],
     ids=["other-provenance", "other-asset"],
 )
 def test_a_different_basis_is_stale(
@@ -539,7 +544,7 @@ def test_a_provenance_that_appeared_after_the_assessment_is_stale(
     item = new_item()
     low = record(item, "photo-3", RiskLevel.LOW)
     records.records.append(low)
-    freshness.set(low, AssessmentBasis("asset-1", None), BASIS)
+    freshness.set(low, AssessmentBasis("asset-1", None, V1), BASIS)
 
     result = RightsGate(records, freshness=freshness).evaluate(context(item))
 
@@ -552,7 +557,7 @@ def test_no_asset_and_no_provenance_on_both_sides_passes(
     item = new_item()
     low = record(item, "ghost", RiskLevel.LOW)
     records.records.append(low)
-    nothing = AssessmentBasis(None, None)
+    nothing = AssessmentBasis(None, None, V1)
     freshness.set(low, nothing, nothing)
 
     assert RightsGate(records, freshness=freshness).evaluate(context(item)).is_passed
@@ -614,7 +619,7 @@ def test_mixed_reasons_follow_the_record_order(
     records.records += [medium_stale, done, high, fresh, stale]
     freshness.set(stale, None, BASIS)
     freshness.set(fresh, BASIS, BASIS)
-    freshness.set(medium_stale, BASIS, AssessmentBasis("asset-1", "prov-9"))
+    freshness.set(medium_stale, BASIS, AssessmentBasis("asset-1", "prov-9", V1))
 
     result = RightsGate(records, freshness=freshness).evaluate(context(item))
 
@@ -636,7 +641,7 @@ def test_a_stale_message_holds_the_asset_ref_and_no_url_or_id(
     records.records.append(low)
     freshness.set(
         low,
-        AssessmentBasis("asset-https://x.example/a", "prov-https://x.example/p"),
+        AssessmentBasis("asset-https://x.example/a", "prov-https://x.example/p", V1),
         BASIS,
     )
 
@@ -680,3 +685,190 @@ def test_a_failing_freshness_source_blocks_through_evaluate_gates(
 
     assert report.outcome is GateOutcome.BLOCK
     assert [r.code for r in report.reasons] == ["gate.error"]
+
+
+# Rules version (G-079)
+
+V2 = "rights-rules-v2"
+OUTDATED_MESSAGE = "Asset photo-3 was assessed with outdated rights rules."
+
+
+def outdated(records: Records, freshness: Freshness, level: RiskLevel, **options):
+    item = new_item()
+    rec = record(item, "photo-3", level, **options)
+    records.records.append(rec)
+    freshness.set(rec, AssessmentBasis("asset-1", "prov-1", V1), BASIS)
+    freshness.current["photo-3"] = AssessmentBasis("asset-1", "prov-1", V2)
+    return item
+
+
+def test_the_same_facts_with_another_rules_version_are_outdated(
+    records: Records, freshness: Freshness
+) -> None:
+    item = outdated(records, freshness, RiskLevel.LOW)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert result.outcome is GateOutcome.BLOCK
+    assert codes(result) == ["rights.rules_outdated"]
+    assert result.reasons[0].message == OUTDATED_MESSAGE
+
+
+def test_the_same_facts_with_the_same_rules_version_pass(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(low, BASIS, BASIS)
+
+    assert RightsGate(records, freshness=freshness).evaluate(context(item)).is_passed
+
+
+def test_stale_and_outdated_together_give_only_stale(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(low, BASIS, AssessmentBasis("asset-1", "prov-2", V2))
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == ["rights.assessment_stale"]
+
+
+def test_never_assessed_gives_only_stale_even_with_a_new_version(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(low, None, AssessmentBasis("asset-1", "prov-1", V2))
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == ["rights.assessment_stale"]
+
+
+@pytest.mark.parametrize(
+    ("level", "code"),
+    [
+        (RiskLevel.HIGH, "rights.unresolved_high"),
+        (RiskLevel.UNKNOWN, "rights.unresolved_unknown"),
+    ],
+)
+def test_a_blocking_level_and_outdated_give_only_the_level_reason(
+    records: Records, freshness: Freshness, level: RiskLevel, code: str
+) -> None:
+    item = outdated(records, freshness, level)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == [code]
+
+
+def test_a_configured_medium_and_outdated_give_only_unresolved_medium(
+    records: Records, freshness: Freshness
+) -> None:
+    item = outdated(records, freshness, RiskLevel.MEDIUM)
+
+    gate = RightsGate(records, blocking_levels=CONFIGURED, freshness=freshness)
+
+    assert codes(gate.evaluate(context(item))) == ["rights.unresolved_medium"]
+
+
+def test_an_unconfigured_medium_and_outdated_is_outdated(
+    records: Records, freshness: Freshness
+) -> None:
+    item = outdated(records, freshness, RiskLevel.MEDIUM)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == ["rights.rules_outdated"]
+
+
+def test_a_resolved_record_with_an_old_version_passes(
+    records: Records, freshness: Freshness
+) -> None:
+    item = outdated(records, freshness, RiskLevel.LOW, resolved=True)
+
+    assert RightsGate(records, freshness=freshness).evaluate(context(item)).is_passed
+    assert freshness.assessed_asked == []
+
+
+def test_without_a_freshness_source_the_version_is_not_checked(
+    records: Records,
+) -> None:
+    item = new_item()
+    records.records.append(record(item, "photo-3", RiskLevel.LOW))
+
+    assert RightsGate(records).evaluate(context(item)).is_passed
+
+
+def test_each_record_gives_one_reason_in_order_and_one_call_each(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    old = record(item, "a-old", RiskLevel.LOW, minutes=0)
+    stale = record(item, "b-stale", RiskLevel.LOW, minutes=1)
+    high = record(item, "c-high", RiskLevel.HIGH, minutes=2)
+    fine = record(item, "d-fine", RiskLevel.LOW, minutes=3)
+    records.records += [fine, high, stale, old]
+    freshness.set(old, BASIS, AssessmentBasis("asset-1", "prov-1", V2))
+    freshness.set(stale, BASIS, AssessmentBasis("asset-1", "prov-2", V2))
+    freshness.set(fine, BASIS, BASIS)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == [
+        "rights.rules_outdated",
+        "rights.assessment_stale",
+        "rights.unresolved_high",
+    ]
+    assert freshness.assessed_asked == [old.id, stale.id, fine.id]
+    assert [a for a, _ in freshness.current_asked] == ["a-old", "b-stale", "d-fine"]
+
+
+def test_an_outdated_message_holds_only_the_asset_ref(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(
+        low,
+        AssessmentBasis("asset-1", "prov-1", "https://x.example/v1?t=secret"),
+        AssessmentBasis("asset-1", "prov-1", "https://x.example/v2?t=secret"),
+    )
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    (reason,) = result.reasons
+    assert reason.code == "rights.rules_outdated"
+    assert reason.message == OUTDATED_MESSAGE
+    assert "http" not in reason.message and "secret" not in reason.message
+
+
+def test_the_rules_version_is_required_on_a_basis() -> None:
+    with pytest.raises(TypeError):
+        AssessmentBasis("asset-1", "prov-1")
+
+
+def test_the_gate_does_not_import_the_rules() -> None:
+    from pathlib import Path
+
+    import ai_youtube_agent.core.rights_gate as module
+
+    source = Path(module.__file__).read_text(encoding="utf-8")
+    forbidden = {"rights_assessment", "policy_rule"}
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or "", *(alias.name for alias in node.names)]
+        else:
+            continue
+        for name in names:
+            assert not forbidden & set(name.split("."))
+    assert "RULES_VERSION" not in source

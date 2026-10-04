@@ -37,6 +37,9 @@ the level. The rules were approved by the user on 2026-10-04:
   rules version. When the asset is registered the outcome carries the id of the
   current provenance, so a new provenance record gives a new assessment.
 - A code, an id or an error message never holds a URL, a licence or a text.
+- Since G-079 the rules are named by ``RIGHTS_RULES``, a ``RuleSet`` (see
+  ``content/policy_rule.py``), and ``RULES_VERSION`` is its stored string,
+  ``rights-rules-v1``. Changing the rules means raising the version of the set.
 """
 
 import uuid
@@ -46,11 +49,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory
+from ai_youtube_agent.content.policy_rule import RuleSet
 from ai_youtube_agent.content.provenance import Provenance
 from ai_youtube_agent.content.rights import RiskLevel
 from ai_youtube_agent.core.audit import Actor
 
-RULES_VERSION = "rights-rules-v1"
+RIGHTS_RULES = RuleSet("rights", 1)
+RULES_VERSION = RIGHTS_RULES.stored_version
 NOT_REGISTERED = "asset.not_registered"
 CATEGORY_UNKNOWN = "asset.category_unknown"
 LICENSED_NO_PROVENANCE = "licensed.no_provenance"

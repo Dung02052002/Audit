@@ -15,6 +15,9 @@
   is not registered in the channel of the item has the basis ``(None, None)``, so
   an unregistered asset is never stale (it blocks as high), and registering it
   later makes the record stale until it is assessed.
+- Since G-079 the basis also holds the rules version (``RULES_VERSION`` by
+  default). A record whose newest assessment used another version blocks with
+  ``rights.rules_outdated`` until it is assessed again; a stale basis has priority.
 - ``evaluate`` only reads. It opens one connection with a deferred ``BEGIN``, so
   every gate sees the same snapshot, shares it between all repositories and rolls
   it back and closes it at the end. It takes no write lock, writes nothing and
@@ -29,7 +32,7 @@ Nothing calls ``PublishGate`` yet: the pipeline runner (#206) does.
 import sqlite3
 from datetime import UTC, datetime
 
-from ai_youtube_agent.content.rights_assessment import current_facts
+from ai_youtube_agent.content.rights_assessment import RULES_VERSION, current_facts
 from ai_youtube_agent.core.approval_gate import ApprovalGate
 from ai_youtube_agent.core.audit import Actor
 from ai_youtube_agent.core.config import Settings
@@ -72,31 +75,47 @@ and strategy guard ``GENERATING`` only, so a publish does not run them."""
 
 class RepositoryFreshness:
     """``FreshnessSource`` over the assessment, asset and provenance repositories
-    of one connection."""
+    of one connection.
+
+    ``rules_version`` exists to simulate a rules change in tests. In production it
+    must equal what the engine writes (``RULES_VERSION``)."""
 
     def __init__(
         self,
         assessments: RightsAssessmentRepository,
         assets: AssetRepository,
         provenances: ProvenanceRepository,
+        *,
+        rules_version: str = RULES_VERSION,
     ) -> None:
+        if (
+            not isinstance(rules_version, str)
+            or not rules_version.strip()
+            or rules_version != rules_version.strip()
+        ):
+            raise ValueError("rules_version must be text without outer whitespace")
         self._assessments = assessments
         self._assets = assets
         self._provenances = provenances
+        self._rules_version = rules_version
 
     def assessed_basis(self, rights_record_id: str) -> AssessmentBasis | None:
         newest = self._assessments.latest(rights_record_id)
         if newest is None:
             return None
-        return AssessmentBasis(newest.asset_id, newest.provenance_id)
+        return AssessmentBasis(
+            newest.asset_id, newest.provenance_id, newest.rules_version
+        )
 
     def current_basis(self, asset_ref: str, channel_id: str) -> AssessmentBasis:
         asset, provenance = current_facts(
             self._assets, self._provenances, asset_ref, channel_id
         )
         if asset is None:
-            return AssessmentBasis(None, None)
-        return AssessmentBasis(asset.id, provenance.id if provenance else None)
+            return AssessmentBasis(None, None, self._rules_version)
+        return AssessmentBasis(
+            asset.id, provenance.id if provenance else None, self._rules_version
+        )
 
 
 class PublishGate:

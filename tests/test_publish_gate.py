@@ -28,6 +28,11 @@ from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
 from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
+from ai_youtube_agent.content.rights_assessment import (
+    RULES_VERSION,
+    RightsAssessment,
+    classify,
+)
 from ai_youtube_agent.content.rights_risk_engine import (
     RightsRecordNotFoundError,
     RightsRiskEngine,
@@ -66,6 +71,7 @@ from ai_youtube_agent.core.db.repositories.rights_assessment import (
 )
 from ai_youtube_agent.core.gates import (
     GateBlockedError,
+    GateContext,
     GateName,
     GateOutcome,
     GateReport,
@@ -75,6 +81,7 @@ from ai_youtube_agent.core.publish_gate import (
     PublishGate,
     RepositoryFreshness,
 )
+from ai_youtube_agent.core.rights_gate import RightsGate
 from factories import (
     make_artifact,
     make_channel,
@@ -738,15 +745,121 @@ def test_the_freshness_basis_is_what_the_engine_assessed(world: World) -> None:
             assert freshness.current_basis(record.asset_ref, world.channel.id) == (
                 newest.asset_id,
                 newest.provenance_id,
+                newest.rules_version,
             )
             assert freshness.assessed_basis(record.id) == (
                 newest.asset_id,
                 newest.provenance_id,
+                newest.rules_version,
             )
         assert freshness.current_basis(documented.id, world.channel.id)[1] is not None
-        assert freshness.current_basis(bare.id, world.channel.id) == (bare.id, None)
-        assert freshness.current_basis("ghost-asset", world.channel.id) == (None, None)
-        assert freshness.current_basis(foreign.id, world.channel.id) == (None, None)
+        assert freshness.current_basis(bare.id, world.channel.id) == (
+            bare.id,
+            None,
+            RULES_VERSION,
+        )
+        ghost = freshness.current_basis("ghost-asset", world.channel.id)
+        assert ghost == (None, None, RULES_VERSION)
+        assert freshness.current_basis(foreign.id, world.channel.id) == (
+            None,
+            None,
+            RULES_VERSION,
+        )
+
+
+def _freshness(world: World, connection, **options) -> RepositoryFreshness:
+    return RepositoryFreshness(
+        RightsAssessmentRepository(connection),
+        AssetRepository(connection),
+        ProvenanceRepository(connection),
+        **options,
+    )
+
+
+@pytest.mark.parametrize("value", ["", "  ", " v1", "v1 ", None, 1])
+def test_freshness_refuses_a_bad_rules_version(world: World, value) -> None:
+    with world.database.transaction() as connection, pytest.raises(ValueError):
+        _freshness(world, connection, rules_version=value)
+
+
+def test_another_rules_version_makes_the_assessment_outdated(world: World) -> None:
+    asset = world.documented()
+    world.assess()
+    assert codes(world.evaluate()) == []
+
+    with world.database.transaction() as connection:
+        record = RightsRecordRepository(connection).list_by_content_item(world.item.id)[
+            0
+        ]
+        freshness = _freshness(world, connection, rules_version="rights-rules-v2")
+        assert freshness.current_basis(asset.id, world.channel.id).rules_version == (
+            "rights-rules-v2"
+        )
+        assert freshness.assessed_basis(record.id).rules_version == RULES_VERSION
+        default = _freshness(world, connection)
+        assert default.current_basis(asset.id, world.channel.id).rules_version == (
+            RULES_VERSION
+        )
+
+    context = GateContext(world.approved, ContentStatus.PUBLISHING, USER, EVALUATED)
+    with world.database.transaction() as connection:
+        records = RightsRecordRepository(connection)
+        outdated = RightsGate(
+            records,
+            freshness=_freshness(world, connection, rules_version="rights-rules-v2"),
+        ).evaluate(context)
+        current = RightsGate(records, freshness=_freshness(world, connection)).evaluate(
+            context
+        )
+    assert [r.code for r in outdated.reasons] == ["rights.rules_outdated"]
+    assert outdated.reasons[0].message == (
+        f"Asset {asset.id} was assessed with outdated rights rules."
+    )
+    assert current.is_passed
+
+
+def test_an_old_rules_row_is_kept_and_a_new_assessment_is_appended(
+    world: World,
+) -> None:
+    asset = world.documented()
+    record = world.record_of(asset.id)
+    with world.database.transaction() as connection:
+        facts = (
+            AssetRepository(connection).get(asset.id),
+            ProvenanceRepository(connection).latest(asset.id),
+        )
+        outcome = classify(facts[0], world.channel.id, facts[1])
+        old = dataclasses.replace(
+            RightsAssessment.create(
+                record.id, world.item.id, outcome, assessed_by=SYSTEM, clock=lambda: T0
+            ),
+            rules_version="rights-rules-v0",
+        )
+        RightsAssessmentRepository(connection).add(old)
+        RightsRecordRepository(connection).update(
+            record.with_risk_level(LOW, clock=world.clock),
+            expected_updated_at=record.updated_at,
+        )
+
+    assert codes(world.evaluate()) == ["rights.rules_outdated"]
+
+    world.assess()
+
+    with world.database.transaction() as connection:
+        history = RightsAssessmentRepository(connection).list_by_rights_record(
+            record.id
+        )
+    assert [a.rules_version for a in history] == ["rights-rules-v0", RULES_VERSION]
+    assert history[0] == old
+    assert codes(world.evaluate()) == []
+
+
+def test_an_unregistered_asset_current_basis_carries_the_version(
+    world: World,
+) -> None:
+    with world.database.transaction() as connection:
+        basis = _freshness(world, connection).current_basis("ghost", world.channel.id)
+    assert tuple(basis) == (None, None, RULES_VERSION)
 
 
 def test_a_changed_provenance_makes_the_assessment_stale_until_it_is_redone(

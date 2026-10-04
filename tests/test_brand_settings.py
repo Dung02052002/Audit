@@ -200,8 +200,9 @@ def test_setting_the_brand_touches_nothing_else(database: Database) -> None:
 
 
 @pytest.fixture
-def client(tmp_path: Path):
-    settings = Settings(environment=Environment.TEST, database_path=tmp_path / "a.db")
+def client(tmp_path: Path, database_copy):
+    path = database_copy(tmp_path / "a.db")
+    settings = Settings(environment=Environment.TEST, database_path=path)
     container = build_container(settings)
     with TestClient(create_app(container)) as test_client:
         test_client.sink = container.resolve(AuditSink)

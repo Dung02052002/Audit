@@ -12,7 +12,9 @@ You are the planner (opus/high) for a task the task router sent to you.
 
 Read CLAUDE.md, the task's row in TASK_STATUS.md and the code the task
 touches. Read only the "Current state", "Next task" and "Invariants" sections of
-PROJECT_STATE.md (the task history lives in CHANGELOG.md). Do not edit files.
+PROJECT_STATE.md (the task history lives in CHANGELOG.md). Do not edit files. Never run git commands that change the working tree, index, branches or
+stashes (stash, checkout, reset, restore, clean, commit, push); read-only git
+(status, diff, log, show) only.
 
 Return:
 1. The routing criteria you measured, as JSON for tools/task_router.py, the
@@ -27,3 +29,7 @@ Return:
    update.
 4. Risks and what must not change (behaviour of finished tasks, provider
    contracts, strategy, migration history).
+5. The affected tests to run: the new test files, the existing test files the
+   change can touch and the related regression, each with the reason, and
+   whether a full suite run or the migration chain (tests/test_migrations.py,
+   tests/test_bootstrap.py and the upgrade tests) is justified, and why.

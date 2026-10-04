@@ -18,7 +18,6 @@ from ai_youtube_agent.core.audit import (
 )
 from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.migrate import migrate
 from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from factories import make_channel
@@ -126,10 +125,9 @@ def test_test_environment_keeps_events_in_memory(tmp_path: Path) -> None:
     "environment", [Environment.DEVELOPMENT, Environment.PRODUCTION]
 )
 def test_application_environments_store_events_in_sqlite(
-    tmp_path: Path, environment: Environment
+    tmp_path: Path, environment: Environment, database_copy
 ) -> None:
-    path = tmp_path / "app.db"
-    migrate(path)
+    path = database_copy(tmp_path / "app.db")
     container = build_container(Settings(environment=environment, database_path=path))
 
     sink = container.resolve(AuditSink)

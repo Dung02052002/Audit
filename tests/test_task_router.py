@@ -1112,6 +1112,67 @@ def test_every_coder_still_forbids_deleting_tests_or_lowering_coverage() -> None
         )
 
 
+def flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_every_coder_states_the_smart_test_rules_and_the_tests_block() -> None:
+    specs = router.agent_specs(POLICY)
+    coders = [flat(text) for name, text in specs.items() if "-coder-" in name]
+
+    assert len(coders) == len(router.ALLOWED_PROFILES)
+    for text in coders:
+        assert "run the single failing test id first" in text
+        assert "Do not run the full suite" in text
+        assert "unless the main session's brief explicitly asks for it" in text
+        assert "the main session owns the one justified full suite" in text
+        assert "run it at most once and never after every fix" in text
+        assert 'the full suite is "NOT RUN (main session owns it)"' in text
+        assert "the full suite only if the brief asks for it" in text
+        assert "Do not re-run passing tests" in text
+        assert "must not run the migration chain" in text
+        assert "`database` template fixture" in text
+        assert "weaken an assertion" in text
+        assert (
+            "Tests block: new tests, affected tests, regression, full suite, "
+            "migration chain" in text
+        )
+        assert "RUN (with the count) or NOT RUN (with the reason)" in text
+        assert "same test rules" in text
+
+
+def test_every_planner_lists_the_affected_tests_to_run() -> None:
+    specs = router.agent_specs(POLICY)
+    planners = [flat(text) for name, text in specs.items() if "-planner-" in name]
+
+    assert planners
+    for text in planners:
+        assert "5. The affected tests to run" in text
+        assert "whether a full suite run or the migration chain" in text
+
+
+def test_every_reviewer_runs_targeted_tests_only() -> None:
+    specs = router.agent_specs(POLICY)
+    reviewers = [flat(text) for name, text in specs.items() if "-reviewer-" in name]
+
+    assert reviewers
+    for text in reviewers:
+        assert "Run targeted tests only" in text
+        assert "never the full suite or the migration chain" in text
+
+
+def test_every_agent_never_runs_git_commands_that_change_state() -> None:
+    specs = router.agent_specs(POLICY)
+
+    assert len(specs) == sum(len(p) for p in router.agent_profiles(POLICY).values())
+    for text in specs.values():
+        assert (
+            "Never run git commands that change the working tree, index, branches "
+            "or stashes (stash, checkout, reset, restore, clean, commit, push); "
+            "read-only git (status, diff, log, show) only."
+        ) in flat(text)
+
+
 def test_every_agent_reads_only_the_short_state_sections() -> None:
     for content in router.agent_specs(POLICY).values():
         assert '"Current state", "Next task" and "Invariants"' in content

@@ -20,9 +20,17 @@ effort; use the cheapest capable profile per role, Opus only on evidence.
    `task-reviewer-<model>-<effort>` from `.claude/agents/` (only the roles
    that are on; ask the reviewer for an architecture review on ARCHITECTURAL).
 3. Open decisions are asked of the user in the main session; the main session
-   runs the green gate itself (pytest, ruff check, ruff format --check,
-   uv build); the reviewer does not repeat it. Fix rounds go to a fresh coder
-   given only the findings, the decisions and the file list.
+   runs the green gate itself: ruff check and ruff format --check always,
+   uv build when packaging-relevant code changed or before a checkpoint, and
+   the full pytest suite at most once per task, run by the main session only
+   (a coder runs it only if the brief asks), only when justified (core or
+   shared code, DB or migration, API contract, architecture, test
+   infrastructure, dependency, many modules, before a checkpoint, high-risk
+   end of task); when it is skipped, say why. The end-of-task report includes
+   a Tests block (new tests, affected tests, regression, full suite,
+   migration chain: each RUN or NOT RUN with the reason). The reviewer does
+   not repeat the gate. Fix rounds go to a fresh coder given only the
+   findings, the decisions and the file list.
 4. Escalate only through `tools/task_router.py escalate --record` with an
    escalating reason and evidence; never for typo, lint, format, simple
    import, type, test fixture or environment problems; at most 2 steps, then
@@ -40,11 +48,23 @@ The policy lives only in `.claude/task-router.json`; after changing it run
 ## Commands
 
 ```sh
-uv run python -m pytest
+uv run python -m pytest tests/test_x.py            # targeted files first
+uv run python -m pytest tests/test_x.py::test_name # one failing test id
+uv run python -m pytest                            # full suite: once, when justified
 uv run python -m ruff check .
 uv run python -m ruff format --check .
-uv build
+uv build                                           # packaging code or checkpoint
 ```
+
+Smart test execution: run the single failing test id, then the new tests,
+then the affected tests, then the related regression; the full suite at most
+once per task, owned by the main session (coders and fix rounds do not run it
+unless the brief asks), and only when justified, never after each fix. Subagents
+never run git commands that change the working tree, index, branches or stashes
+(read-only git only). Normal tests get
+a migrated database from the `database` fixture in `tests/conftest.py` (a
+template migrated once per session, copied per test); only migration and
+upgrade tests run the migration chain on a fresh file.
 
 `pytest.exe` is blocked by Windows Application Control on this machine; use
 `python -m pytest`. Print Vietnamese with `PYTHONIOENCODING=utf-8`.

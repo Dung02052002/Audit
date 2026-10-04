@@ -1068,12 +1068,17 @@ ROLE_TOOLS = {
 STATE_SECTIONS = """\
 Read only the "Current state", "Next task" and "Invariants" sections of
 PROJECT_STATE.md (the task history lives in CHANGELOG.md)."""
+GIT_SAFETY = (
+    "Never run git commands that change the working tree, index, branches or\n"
+    "stashes (stash, checkout, reset, restore, clean, commit, push); read-only git\n"
+    "(status, diff, log, show) only."
+)
 ROLE_TEXT = {
     "planner": """\
 You are the planner ({profile}) for a task the task router sent to you.
 
 Read CLAUDE.md, the task's row in TASK_STATUS.md and the code the task
-touches. {state} Do not edit files.
+touches. {state} Do not edit files. {git}
 
 Return:
 1. The routing criteria you measured, as JSON for tools/task_router.py, the
@@ -1088,6 +1093,10 @@ Return:
    update.
 4. Risks and what must not change (behaviour of finished tasks, provider
    contracts, strategy, migration history).
+5. The affected tests to run: the new test files, the existing test files the
+   change can touch and the related regression, each with the reason, and
+   whether a full suite run or the migration chain (tests/test_migrations.py,
+   tests/test_bootstrap.py and the upgrade tests) is justified, and why.
 """,
     "coder": """\
 You are the coder ({profile}) for a task the task router sent to you.
@@ -1099,15 +1108,33 @@ the scope or take architecture decisions on your own. Write code that reads
 like the surrounding code. Stack: Python 3.11, uv, pytest, ruff (no type
 checker). Never edit an applied migration, delete tests or lower coverage.
 
-While you iterate, run only the targeted tests of the code you change. Once,
-before you report:
-- run `uv run python -m pytest` (the full suite), `uv run python -m ruff check .`
-  and `uv run python -m ruff format --check .`;
-- report the files changed, the test count, and every failure with its output.
+Tests (smart test execution): while you iterate, run the single failing test
+id first, then the new tests, then the affected tests, then the related
+regression. Do not run the full suite (`uv run python -m pytest`) unless the
+main session's brief explicitly asks for it: the main session owns the one
+justified full suite per task (core or shared code, a database or migration
+change, an API contract, architecture, test infrastructure, a dependency, many
+modules, before a checkpoint, or the end of a high-risk task). If the brief
+asks for it, run it at most once and never after every fix. Do not re-run
+passing tests a change cannot affect. Normal tests must not run the migration
+chain: use the `database` template fixture from tests/conftest.py; only
+migration and upgrade tests migrate a fresh file. Never skip or delete tests,
+weaken an assertion or mock an integration a test needs.
+
+Before you report, run `uv run python -m ruff check .` and
+`uv run python -m ruff format --check .`, then report the files changed, every
+failure with its output, and a Tests block: new tests, affected tests,
+regression, full suite, migration chain, each marked RUN (with the count) or
+NOT RUN (with the reason); by default the full suite is "NOT RUN (main session
+owns it)".
+
+{git}
 
 Fix round: when you are given review findings, you get only the findings,
-the user's decisions and the file list. Fix exactly those findings, run their
-targeted tests, then the full suite and ruff once, and report as above.
+the user's decisions and the file list. Fix exactly those findings under the
+same test rules: run the single failing test id and the tests of the finding,
+the full suite only if the brief asks for it (the main session owns it), ruff
+once, and report the same Tests block.
 
 If a failure needs deeper reasoning than you can give (a logic or design
 problem, not a typo, lint, format, simple import, type, test fixture or
@@ -1118,13 +1145,14 @@ can escalate. Do not commit or push.
 You are the reviewer ({profile}) for a task the task router sent to you.
 
 Review the uncommitted changes (`git diff`, `git status`) against the task,
-the user's decisions and the plan. {state} Do not edit files.
+the user's decisions and the plan. {state} Do not edit files. {git}
 
 Check: correctness and edge cases, that finished tasks keep their behaviour,
 provider contracts and migration history are unchanged, and tests cover the
 new rules. Do not re-run the full gate (pytest, ruff check, ruff format
---check, uv build): the main session runs it. Run targeted tests only where
-they settle a finding.
+--check, uv build): the main session runs it. Run targeted tests only, by
+test id or file, where they settle a finding; never the full suite or the
+migration chain.
 
 Architecture review, only when the dispatch prompt asks for it (ARCHITECTURAL
 tasks): also review module boundaries and dependencies
@@ -1170,7 +1198,9 @@ def agent_specs(policy: Policy) -> dict[str, str]:
         for profile in profiles:
             name = agent_name(role, profile)
             model, effort = split_profile(profile)
-            body = ROLE_TEXT[role].format(profile=profile, state=STATE_SECTIONS)
+            body = ROLE_TEXT[role].format(
+                profile=profile, state=STATE_SECTIONS, git=GIT_SAFETY
+            )
             front = [
                 "---",
                 f"name: {name}",

@@ -233,12 +233,15 @@ def test_the_mock_is_deterministic_scriptable_and_recorded() -> None:
         mock.check()
 
 
-def test_settings_and_bootstrap_choose_the_mock(tmp_path: Path) -> None:
+def test_settings_and_bootstrap_choose_the_mock(tmp_path: Path, database_copy) -> None:
     assert Settings().text_provider is TextProviderKind.MOCK
     with pytest.raises(ValueError):
         Settings(text_provider="openai")
     container = build_container(
-        Settings(environment=Environment.TEST, database_path=tmp_path / "a.db")
+        Settings(
+            environment=Environment.TEST,
+            database_path=database_copy(tmp_path / "a.db"),
+        )
     )
     assert isinstance(container.resolve(TextGenerator), MockTextGenerator)
     assert container.resolve(TextGenerator) is container.resolve(TextGenerator)

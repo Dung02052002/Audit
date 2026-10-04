@@ -352,9 +352,12 @@ def test_bootstrap_registers_one_mock(tmp_path: Path) -> None:
     assert container.resolve(ResearchProvider) is provider
 
 
-def test_an_unhealthy_provider_degrades_health(tmp_path: Path) -> None:
+def test_an_unhealthy_provider_degrades_health(tmp_path: Path, database_copy) -> None:
     container = build_container(
-        Settings(environment=Environment.TEST, database_path=tmp_path / "a.db")
+        Settings(
+            environment=Environment.TEST,
+            database_path=database_copy(tmp_path / "a.db"),
+        )
     )
     container.resolve(ResearchProvider).inner.set_healthy(False)
 

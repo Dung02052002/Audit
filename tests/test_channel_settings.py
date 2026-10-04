@@ -276,8 +276,9 @@ def test_updating_a_missing_channel_is_not_found(service: ChannelSettings) -> No
 
 
 @pytest.fixture
-def client(tmp_path: Path):
-    settings = Settings(environment=Environment.TEST, database_path=tmp_path / "api.db")
+def client(tmp_path: Path, database_copy):
+    path = database_copy(tmp_path / "api.db")
+    settings = Settings(environment=Environment.TEST, database_path=path)
     container = build_container(settings)
     app = create_app(container)
     with TestClient(app, raise_server_exceptions=False) as test_client:

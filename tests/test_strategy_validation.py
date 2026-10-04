@@ -332,8 +332,9 @@ def test_the_gate_reads_the_stored_strategy(database: Database) -> None:
 
 
 @pytest.fixture
-def client(tmp_path: Path):
-    settings = Settings(environment=Environment.TEST, database_path=tmp_path / "a.db")
+def client(tmp_path: Path, database_copy):
+    path = database_copy(tmp_path / "a.db")
+    settings = Settings(environment=Environment.TEST, database_path=path)
     with TestClient(create_app(build_container(settings))) as test_client:
         yield test_client
 

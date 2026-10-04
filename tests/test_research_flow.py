@@ -39,7 +39,6 @@ from ai_youtube_agent.content.topic_scorer import TopicScorer
 from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.migrate import migrate
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
@@ -217,9 +216,10 @@ def test_a_second_request_is_served_from_the_cache(flow: Flow) -> None:
     assert len(report.sources) == 3
 
 
-def test_the_chain_works_through_the_bootstrap_container(tmp_path: Path) -> None:
-    path = tmp_path / "app.db"
-    migrate(path)
+def test_the_chain_works_through_the_bootstrap_container(
+    tmp_path: Path, database_copy
+) -> None:
+    path = database_copy(tmp_path / "app.db")
     container = build_container(
         Settings(environment=Environment.TEST, database_path=path)
     )

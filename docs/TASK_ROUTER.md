@@ -181,8 +181,9 @@ architecture question does not fit a SIMPLE task.
   the review, with its architecture section, is mandatory unless the user
   explicitly skips the reviewer (recorded, see User override).
 - The reviewer does **not** re-run the full gate (the main session runs
-  pytest, ruff check, ruff format --check and uv build); it may run targeted
-  tests to settle a finding.
+  pytest, ruff check, ruff format --check and uv build); it runs targeted
+  tests only (by id or file) to settle a finding, never the full suite or the
+  migration chain.
 - **Architecture review** is a section of the reviewer's prompt file that the
   main session activates by asking for it in the dispatch prompt (ARCHITECTURAL
   tasks). One `task-reviewer-opus-high` file serves COMPLEX and ARCHITECTURAL;
@@ -202,12 +203,19 @@ architecture question does not fit a SIMPLE task.
    plan. If its criteria or risk profile change the routing, re-route.
 4. Ask the user every open decision in the main session.
 5. **Coder**: dispatch `task-coder-<model>-<effort>` with the plan and the
-   decisions. It runs targeted tests while iterating, and the full suite +
-   ruff once before reporting. A one-line TRIVIAL edit may be done in the
-   main session when an agent would cost more; say so.
-6. Green gate in the main session: full `pytest`, `ruff check .`,
-   `ruff format --check .`, `uv build`. Never trust a report without running
-   them. Record it (`record --event '{"kind": "gate", ...}'`).
+   decisions. While iterating it runs the single failing test id, then the
+   new tests, the affected tests and the related regression (the planner
+   lists them), not the full suite unless the brief explicitly asks for it
+   (the main session owns it, see Smart test execution below); ruff before
+   reporting. It reports a Tests block, with the full suite "NOT RUN (main
+   session owns it)" by default. A one-line TRIVIAL edit may be done in the main session when an
+   agent would cost more; say so.
+6. Green gate in the main session: `ruff check .` and `ruff format --check .`
+   always; `uv build` when packaging-relevant code changed or before a
+   checkpoint; the full `pytest` suite at most once per task, when justified
+   (see Smart test execution below), stating the reason when it is skipped.
+   Never trust a report without checking it. Record it
+   (`record --event '{"kind": "gate", ...}'`).
 7. **Reviewer** (if on): dispatch `task-reviewer-<model>-<effort>` (add the
    architecture-review request for ARCHITECTURAL).
 8. **Fix round**: give the review findings to a **fresh** coder of the
@@ -220,6 +228,43 @@ architecture question does not fit a SIMPLE task.
 
 Agents read only the Current state, Next task and Invariants sections of
 `PROJECT_STATE.md`; the per-task history lives in `CHANGELOG.md`.
+
+### Smart test execution (TOOL-003)
+
+The test order is: the single failing test id, the new tests, the affected
+tests, the related regression, then (only when justified) the full suite. A
+passing test that a change cannot affect is not re-run.
+
+The full suite runs **at most once per task, and the main session owns it**:
+a coder or fix-round coder does not run it unless the main session's brief
+explicitly asks for it. It runs only for one of these triggers: core or shared code,
+a database or migration change, an API contract, architecture, test
+infrastructure, a dependency change, many modules, before a checkpoint, or the
+end of a high-risk task. It is never run after each fix. When it is skipped
+the report says why.
+
+The migration chain (`tests/test_migrations.py`, `tests/test_bootstrap.py`
+and the upgrade tests that migrate a fresh file) runs when migrations or the
+migration runner changed, and is part of the full suite. Normal tests must
+not run it: `tests/conftest.py` migrates a template database once per test
+session (read-only) and the `database` fixture, or `database_copy(path)` for
+an app started by a test, copies it. A test that needs a fresh file (an
+upgrade test, a startup test) migrates its own.
+
+The planner lists the affected tests and whether a full suite or the
+migration chain is justified; there is no automatic affected-tests helper.
+Every coder and main-session report includes a Tests block: new tests,
+affected tests, regression, full suite, migration chain, each RUN (with the
+count) or NOT RUN (with the reason); a coder reports the full suite as "NOT RUN
+(main session owns it)" by default. The reviewer runs targeted tests only.
+
+### Git safety for subagents
+
+Every planner, coder and reviewer file says: never run git commands that
+change the working tree, index, branches or stashes (stash, checkout, reset,
+restore, clean, commit, push); read-only git (status, diff, log, show) only.
+(A reviewer once ran `git stash` and `git stash pop` on the uncommitted work.)
+Commits and pushes stay with the main session, on the user's request.
 
 ## Escalation
 

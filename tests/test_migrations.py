@@ -81,8 +81,8 @@ SHA = "a" * 64
 # 0018 evidence matches (F-069), 0019 fact checks (F-070),
 # 0020 originality checks (F-071), 0021 script validations (F-072),
 # 0022 script revisions (F-073), 0023 asset registry (G-076),
-# 0024 asset provenance (G-077)
-LATEST = 24
+# 0024 asset provenance (G-077), 0025 rights assessments (G-078)
+LATEST = 25
 
 ENTITY_TABLES = {
     "channels",
@@ -141,6 +141,7 @@ ENTITY_TABLES = {
     "assets",  # G-076
     "asset_usages",  # G-076
     "asset_provenance",  # G-077
+    "rights_assessments",  # G-078
 }
 
 ENUM_COLUMNS = {
@@ -188,6 +189,8 @@ ENUM_COLUMNS = {
     ("assets", "category"): AssetCategory,  # G-076
     ("asset_usages", "attached_by_kind"): ActorKind,  # G-076
     ("asset_provenance", "recorded_by_kind"): ActorKind,  # G-077
+    ("rights_assessments", "level"): RiskLevel,  # G-078
+    ("rights_assessments", "assessed_by_kind"): ActorKind,  # G-078
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -290,6 +293,7 @@ def test_default_migrations_are_packaged() -> None:
         "script_revisions",
         "asset_registry",
         "asset_provenance",
+        "rights_assessments",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -1015,6 +1019,218 @@ def test_the_provenance_migration_changes_no_other_table(conn) -> None:
         "created_at",
         "updated_at",
     ]
+
+
+def assessment_row(**overrides) -> dict:
+    row = {
+        "id": "ra1",
+        "rights_record_id": "rr1",
+        "content_item_id": "ci1",
+        "asset_id": "as1",
+        "level": "medium",
+        "rule_codes_json": '["licensed.licence_without_evidence"]',
+        "rules_version": "rights-rules-v1",
+        "provenance_id": "pv1",
+        "assessed_by_kind": "system",
+        "assessed_by_id": "pipeline",
+        "created_at": TS,
+    }
+    return row | overrides
+
+
+def insert_assessment(connection: sqlite3.Connection, **overrides) -> None:
+    row = assessment_row(**overrides)
+    connection.execute(
+        f"INSERT INTO rights_assessments ({', '.join(row)}) "
+        f"VALUES ({', '.join('?' * len(row))})",
+        tuple(row.values()),
+    )
+
+
+def seed_assessable(connection: sqlite3.Connection) -> None:
+    seed_item(connection)
+    insert_asset(connection)
+    insert_provenance(connection)
+    connection.execute(
+        "INSERT INTO rights_records VALUES ('rr1', 'ci1', 'as1', 'stock.example', "
+        "NULL, 'unknown', 'unresolved', NULL, NULL, NULL, ?, ?)",
+        (TS, TS),
+    )
+
+
+def test_a_valid_assessment_row_is_accepted(conn) -> None:
+    seed_assessable(conn)
+    insert_assessment(conn)
+
+    assert conn.execute("SELECT count(*) FROM rights_assessments").fetchone() == (1,)
+
+
+def test_an_assessment_of_an_unregistered_asset_has_no_asset_or_provenance(
+    conn,
+) -> None:
+    seed_assessable(conn)
+    insert_assessment(
+        conn,
+        asset_id=None,
+        provenance_id=None,
+        level="high",
+        rule_codes_json='["asset.not_registered"]',
+    )
+
+    assert conn.execute("SELECT count(*) FROM rights_assessments").fetchone() == (1,)
+
+
+def test_an_assessment_of_an_asset_without_provenance_is_accepted(conn) -> None:
+    seed_assessable(conn)
+    insert_assessment(conn, provenance_id=None)
+
+    assert conn.execute("SELECT count(*) FROM rights_assessments").fetchone() == (1,)
+
+
+@pytest.mark.parametrize("level", ["low", "medium", "high"])
+@pytest.mark.parametrize("kind", ["user", "system", "ai"])
+def test_assessment_levels_and_actor_kinds_are_accepted(conn, level, kind) -> None:
+    seed_assessable(conn)
+    insert_assessment(conn, level=level, assessed_by_kind=kind)
+
+    assert conn.execute("SELECT count(*) FROM rights_assessments").fetchone() == (1,)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"level": "unknown"},
+        {"level": "critical"},
+        {"level": None},
+        {"rule_codes_json": "[]"},
+        {"rule_codes_json": "{}"},
+        {"rule_codes_json": '"asset.not_registered"'},
+        {"rule_codes_json": "not json"},
+        {"rule_codes_json": None},
+        {"rules_version": ""},
+        {"rules_version": "   "},
+        {"rules_version": "v" * 51},
+        {"rules_version": None},
+        {"assessed_by_kind": "robot"},
+        {"assessed_by_kind": None},
+        {"assessed_by_id": None},
+        {"assessed_by_id": " "},
+        {"asset_id": ""},
+        {"asset_id": "nope"},
+        {"provenance_id": ""},
+        {"provenance_id": "nope"},
+        {"asset_id": None},  # a provenance id needs an asset id
+        {"created_at": "2026-09-30T08:00:00Z"},
+        {"created_at": None},
+        {"rights_record_id": "nope"},
+        {"rights_record_id": None},
+        {"content_item_id": "nope"},
+        {"content_item_id": None},
+    ],
+)
+def test_assessment_rules_are_enforced_in_sql(conn, overrides) -> None:
+    seed_assessable(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_assessment(conn, **overrides)
+
+
+def test_assessment_boundaries_are_accepted_in_sql(conn) -> None:
+    seed_assessable(conn)
+    insert_assessment(
+        conn,
+        rules_version="v" * 50,
+        rule_codes_json='["a.one", "b.two"]',
+        assessed_by_kind="ai",
+    )
+
+    assert conn.execute("SELECT count(*) FROM rights_assessments").fetchone() == (1,)
+
+
+def test_a_rights_record_may_have_many_assessments(conn) -> None:
+    seed_assessable(conn)
+    insert_assessment(conn)
+    insert_assessment(conn, id="ra2")  # the same outcome again
+    insert_assessment(conn, id="ra3", level="low")
+
+    assert conn.execute(
+        "SELECT count(*) FROM rights_assessments WHERE rights_record_id = 'rr1'"
+    ).fetchone() == (3,)
+
+
+def test_assessment_rows_are_indexed_by_record_and_item(conn) -> None:
+    indexes = {
+        name: [row[2] for row in conn.execute(f"PRAGMA index_info({name})")]
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'rights_assessments' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    unique = {
+        row[3]
+        for row in conn.execute("PRAGMA index_list(rights_assessments)")
+        if row[2]
+    }
+
+    assert indexes == {
+        "rights_assessments_by_record": ["rights_record_id", "created_at"],
+        "rights_assessments_by_item": ["content_item_id", "created_at"],
+    }
+    assert unique == {"pk"}  # only the primary key is unique: no UNIQUE key
+
+
+def test_the_assessment_table_is_strict_and_has_the_expected_columns(conn) -> None:
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'rights_assessments'"
+    ).fetchone()[0]
+
+    assert sql.rstrip().endswith("STRICT")
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(rights_assessments)")]
+    assert columns == [
+        "id",
+        "rights_record_id",
+        "content_item_id",
+        "asset_id",
+        "level",
+        "rule_codes_json",
+        "rules_version",
+        "provenance_id",
+        "assessed_by_kind",
+        "assessed_by_id",
+        "created_at",
+    ]
+
+
+def test_the_assessment_migration_changes_no_other_table(conn) -> None:
+    columns = {
+        table: [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+        for table in ("rights_records", "asset_provenance")
+    }
+    rights_indexes = {
+        name
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'rights_records' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+
+    assert rights_indexes == set()
+    assert columns["rights_records"] == [
+        "id",
+        "content_item_id",
+        "asset_ref",
+        "source",
+        "license",
+        "risk_level",
+        "resolution",
+        "resolved_by_kind",
+        "resolved_by_id",
+        "resolved_at",
+        "created_at",
+        "updated_at",
+    ]
+    assert columns["asset_provenance"][:3] == ["id", "asset_id", "source_url"]
+    assert len(columns["asset_provenance"]) == 14
 
 
 def test_foreign_keys_are_enforced(conn) -> None:

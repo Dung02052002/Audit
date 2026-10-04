@@ -18,8 +18,8 @@ health check. Since #061 it is wrapped in ``ResearchCache``.
 mock exists, and its ``check`` is the ``text_provider`` health check.
 ``ClaimExtractor`` (#068), ``EvidenceMatcher`` (#069), ``FactChecker``
 (#070), ``OriginalityChecker`` (#071), ``ScriptValidator`` (#072),
-``ScriptVersioner`` (#073), ``AssetRegistry`` (#076) and ``ProvenanceRecorder``
-(#077) use rules only and need no provider.
+``ScriptVersioner`` (#073), ``AssetRegistry`` (#076), ``ProvenanceRecorder``
+(#077) and ``RightsRiskEngine`` (#078) use rules only and need no provider.
 """
 
 from ai_youtube_agent.content.asset_registry import AssetRegistry
@@ -32,6 +32,7 @@ from ai_youtube_agent.content.longform_script_generator import LongFormScriptGen
 from ai_youtube_agent.content.originality_checker import OriginalityChecker
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
+from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
 from ai_youtube_agent.content.script_validator import ScriptValidator
 from ai_youtube_agent.content.script_versioner import ScriptVersioner
 from ai_youtube_agent.content.shorts_script_generator import ShortsScriptGenerator
@@ -161,6 +162,10 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         ProvenanceRecorder,
         lambda c: ProvenanceRecorder(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        RightsRiskEngine,
+        lambda c: RightsRiskEngine(c.resolve(Database), c.resolve(AuditLog)),
     )
     return container
 

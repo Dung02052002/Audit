@@ -8,6 +8,7 @@ from ai_youtube_agent.core.config import (
     ENV_PREFIX,
     ENVIRONMENT_VARIABLE,
     Environment,
+    RightsBlockLevel,
     Settings,
     get_settings,
     load_settings,
@@ -146,3 +147,134 @@ def test_env_example_lists_only_known_settings() -> None:
     }
 
     assert keys <= known
+
+
+# Rights block levels (G-078)
+
+RIGHTS_VARIABLE = f"{ENV_PREFIX}RIGHTS_BLOCK_LEVELS"
+HIGH, MEDIUM = RightsBlockLevel.HIGH, RightsBlockLevel.MEDIUM
+
+
+def test_rights_block_levels_default_to_high(tmp_path: Path) -> None:
+    levels = load_settings(tmp_path).rights_block_levels
+
+    assert levels == frozenset({HIGH})
+    assert isinstance(levels, frozenset)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("high", {HIGH}),
+        ("medium,high", {MEDIUM, HIGH}),
+        ("high,medium", {MEDIUM, HIGH}),
+        (" medium , high ", {MEDIUM, HIGH}),
+        ("high,high", {HIGH}),
+        ('["high"]', {HIGH}),
+        ('["medium", "high"]', {MEDIUM, HIGH}),
+        ('  ["high","medium","high"] ', {MEDIUM, HIGH}),
+        ('[" medium ", " high "]', {MEDIUM, HIGH}),
+    ],
+)
+def test_rights_block_levels_read_a_comma_list_or_a_json_list_from_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str, expected: set
+) -> None:
+    monkeypatch.setenv(RIGHTS_VARIABLE, text)
+
+    assert load_settings(tmp_path).rights_block_levels == frozenset(expected)
+
+
+def test_rights_block_levels_read_an_env_file(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(f"{RIGHTS_VARIABLE}=medium,high\n")
+
+    assert load_settings(tmp_path).rights_block_levels == {MEDIUM, HIGH}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        ["medium", "high"],
+        ("high", "medium"),
+        {"high", "medium"},
+        frozenset({MEDIUM, HIGH}),
+        [MEDIUM, HIGH],
+        "medium,high",
+        '["medium","high"]',
+    ],
+)
+def test_rights_block_levels_accept_a_constructor_value(value) -> None:
+    assert Settings(rights_block_levels=value).rights_block_levels == {MEDIUM, HIGH}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "medium",
+        "",
+        "   ",
+        ",",
+        "[]",
+        '["medium"]',
+        [],
+        ["medium"],
+        frozenset(),
+    ],
+    ids=repr,
+)
+def test_rights_block_levels_must_contain_high(value) -> None:
+    with pytest.raises(ValidationError, match="rights_block_levels") as caught:
+        Settings(rights_block_levels=value)
+
+    assert "contain" in str(caught.value) or "valid" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "unknown,high",
+        "low,high",
+        "critical",
+        "high,",
+        "high medium",
+        "HIGH",
+        "high;medium",
+        '["low", "high"]',
+        '["unknown"]',
+        "[1, 2]",
+        "[not json",
+        '{"high": true}',
+        '"high"',
+        "[",
+        ["high", 3],
+        ["high", None],
+        None,
+        7,
+    ],
+)
+def test_rights_block_levels_refuse_unknown_low_and_garbage(value) -> None:
+    with pytest.raises(ValidationError, match="rights_block_levels"):
+        Settings(rights_block_levels=value)
+
+
+def test_an_invalid_rights_block_levels_variable_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(RIGHTS_VARIABLE, "medium")
+
+    with pytest.raises(ValidationError, match="rights_block_levels"):
+        load_settings(tmp_path)
+
+
+def test_the_block_level_enum_has_no_unknown_or_low() -> None:
+    assert [level.value for level in RightsBlockLevel] == ["medium", "high"]
+
+
+def test_env_example_documents_the_rights_block_levels(tmp_path: Path) -> None:
+    example = (REPO_ROOT / ".env.example").read_text()
+    assert f"# {RIGHTS_VARIABLE}=high" in example
+
+    # With the commented line switched on, the example file still parses.
+    (tmp_path / ".env").write_text(
+        example.replace(f"# {RIGHTS_VARIABLE}=high", f"{RIGHTS_VARIABLE}=high")
+    )
+    assert load_settings(tmp_path).rights_block_levels == {HIGH}

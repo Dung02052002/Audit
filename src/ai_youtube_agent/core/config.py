@@ -14,13 +14,15 @@ Secrets never live in source control. A secret field must be typed as
 ``SecretStr`` and must have no default value.
 """
 
+import json
 import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated, Any
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.log import Severity
@@ -50,6 +52,17 @@ class TextProviderKind(StrEnum):
     MOCK = "mock"
 
 
+class RightsBlockLevel(StrEnum):
+    """A rights risk level the rights gate may block on (#078).
+
+    ``high`` always blocks and ``unknown`` always blocks, so only the optional
+    ``medium`` is a choice. This enum has no import from ``content``.
+    """
+
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
@@ -67,6 +80,38 @@ class Settings(BaseSettings):
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
     research_provider: ResearchProviderKind = ResearchProviderKind.MOCK
     text_provider: TextProviderKind = TextProviderKind.MOCK
+    # Rights levels that block a publish (#078): a comma separated list
+    # ("medium,high") or a JSON list (["medium", "high"]). ``high`` is required.
+    rights_block_levels: Annotated[frozenset[RightsBlockLevel], NoDecode] = frozenset(
+        {RightsBlockLevel.HIGH}
+    )
+
+    @field_validator("rights_block_levels", mode="before")
+    @classmethod
+    def _parse_rights_block_levels(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                raise ValueError(
+                    "rights_block_levels is not a valid JSON list"
+                ) from None
+            if not isinstance(parsed, list):
+                raise ValueError("rights_block_levels must be a list")
+            return [item.strip() if isinstance(item, str) else item for item in parsed]
+        return [part.strip() for part in text.split(",")] if text else []
+
+    @field_validator("rights_block_levels", mode="after")
+    @classmethod
+    def _require_high_rights_block_level(
+        cls, value: frozenset[RightsBlockLevel]
+    ) -> frozenset[RightsBlockLevel]:
+        if RightsBlockLevel.HIGH not in value:
+            raise ValueError("rights_block_levels must contain high")
+        return value
 
     @model_validator(mode="after")
     def _forbid_debug_in_production(self) -> "Settings":

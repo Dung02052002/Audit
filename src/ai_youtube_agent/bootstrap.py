@@ -19,7 +19,8 @@ mock exists, and its ``check`` is the ``text_provider`` health check.
 ``ClaimExtractor`` (#068), ``EvidenceMatcher`` (#069), ``FactChecker``
 (#070), ``OriginalityChecker`` (#071), ``ScriptValidator`` (#072),
 ``ScriptVersioner`` (#073), ``AssetRegistry`` (#076), ``ProvenanceRecorder``
-(#077) and ``RightsRiskEngine`` (#078) use rules only and need no provider.
+(#077), ``RightsRiskEngine`` (#078) and ``DisclosureDecider`` (G-081) use rules
+only and need no provider.
 ``PublishGate`` (G-078b) builds the approval, daily limit, rights and
 idempotency gates over the database, with the rights levels of
 ``Settings.rights_block_levels``; the policy and kill switch gates join it later.
@@ -28,6 +29,7 @@ idempotency gates over the database, with the rights levels of
 from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
+from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
 from ai_youtube_agent.content.fact_checker import FactChecker
 from ai_youtube_agent.content.hook_generator import HookGenerator
@@ -170,6 +172,10 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         RightsRiskEngine,
         lambda c: RightsRiskEngine(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        DisclosureDecider,
+        lambda c: DisclosureDecider(c.resolve(Database), c.resolve(AuditLog)),
     )
     container.register(
         PublishGate, lambda c: PublishGate(c.resolve(Database), c.resolve(Settings))

@@ -24,6 +24,7 @@ from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.comment import CommentLabel, ReplyStatus
 from ai_youtube_agent.content.cost import CostCategory
+from ai_youtube_agent.content.disclosure import DisclosureDecision
 from ai_youtube_agent.content.experiment import ExperimentStatus, ExperimentType
 from ai_youtube_agent.content.fact_check import FactCheckStatus
 from ai_youtube_agent.content.originality import (
@@ -81,8 +82,9 @@ SHA = "a" * 64
 # 0018 evidence matches (F-069), 0019 fact checks (F-070),
 # 0020 originality checks (F-071), 0021 script validations (F-072),
 # 0022 script revisions (F-073), 0023 asset registry (G-076),
-# 0024 asset provenance (G-077), 0025 rights assessments (G-078)
-LATEST = 25
+# 0024 asset provenance (G-077), 0025 rights assessments (G-078),
+# 0026 disclosure decisions (G-081)
+LATEST = 26
 
 ENTITY_TABLES = {
     "channels",
@@ -142,6 +144,7 @@ ENTITY_TABLES = {
     "asset_usages",  # G-076
     "asset_provenance",  # G-077
     "rights_assessments",  # G-078
+    "disclosure_decisions",  # G-081
 }
 
 ENUM_COLUMNS = {
@@ -191,6 +194,8 @@ ENUM_COLUMNS = {
     ("asset_provenance", "recorded_by_kind"): ActorKind,  # G-077
     ("rights_assessments", "level"): RiskLevel,  # G-078
     ("rights_assessments", "assessed_by_kind"): ActorKind,  # G-078
+    ("disclosure_decisions", "decision"): DisclosureDecision,  # G-081
+    ("disclosure_decisions", "decided_by_kind"): ActorKind,  # G-081
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -294,6 +299,7 @@ def test_default_migrations_are_packaged() -> None:
         "asset_registry",
         "asset_provenance",
         "rights_assessments",
+        "disclosure_decisions",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -1231,6 +1237,204 @@ def test_the_assessment_migration_changes_no_other_table(conn) -> None:
     ]
     assert columns["asset_provenance"][:3] == ["id", "asset_id", "source_url"]
     assert len(columns["asset_provenance"]) == 14
+
+
+def disclosure_row(**overrides) -> dict:
+    row = {
+        "id": "dd1",
+        "content_item_id": "ci1",
+        "channel_id": "ch1",
+        "rule_set_id": "disclosure",
+        "rule_set_version": "disclosure-rules-v1",
+        "decision": "required",
+        "rationale_json": '[{"code": "disclosure.realistic_person.required"}]',
+        "sources_json": '{"asset_ids": [], "facts": ["realistic_person"]}',
+        "decided_by_kind": "system",
+        "decided_by_id": "pipeline",
+        "created_at": TS,
+    }
+    return row | overrides
+
+
+def insert_disclosure(connection: sqlite3.Connection, **overrides) -> None:
+    row = disclosure_row(**overrides)
+    connection.execute(
+        f"INSERT INTO disclosure_decisions ({', '.join(row)}) "
+        f"VALUES ({', '.join('?' * len(row))})",
+        tuple(row.values()),
+    )
+
+
+def count_disclosures(connection: sqlite3.Connection) -> int:
+    return connection.execute("SELECT count(*) FROM disclosure_decisions").fetchone()[0]
+
+
+def test_a_valid_disclosure_row_is_accepted(conn) -> None:
+    seed_item(conn)
+    insert_disclosure(conn)
+
+    assert count_disclosures(conn) == 1
+
+
+@pytest.mark.parametrize("decision", ["required", "not_required"])
+@pytest.mark.parametrize("kind", ["user", "system", "ai"])
+def test_disclosure_decisions_and_actor_kinds_are_accepted(
+    conn, decision, kind
+) -> None:
+    seed_item(conn)
+    insert_disclosure(conn, decision=decision, decided_by_kind=kind)
+
+    assert count_disclosures(conn) == 1
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"decision": "maybe"},
+        {"decision": "REQUIRED"},
+        {"decision": None},
+        {"rule_set_id": ""},
+        {"rule_set_id": "   "},
+        # no id-length case: the prefix rule caps the id at 41 characters
+        {"rule_set_id": None},
+        {"rule_set_version": ""},
+        {"rule_set_version": "   "},
+        {"rule_set_version": "disclosure-rules-v" + "1" * 40},
+        {"rule_set_version": None},
+        {"rule_set_version": "disclosure-v1"},
+        {"rule_set_version": "other-rules-v1"},
+        {"rule_set_version": "disclosure-rules-vX"},
+        {"rule_set_version": "disclosure-rules-v0"},
+        {"rule_set_version": "disclosure-rules-v"},
+        {"rule_set_version": "disclosure-rules-v1a"},
+        {"rule_set_version": "disclosure-rules-v01"},
+        {"rule_set_id": "other"},
+        {"rationale_json": "[]"},
+        {"rationale_json": "{}"},
+        {"rationale_json": '"x"'},
+        {"rationale_json": "not json"},
+        {"rationale_json": None},
+        {"sources_json": "[]"},
+        {"sources_json": '"x"'},
+        {"sources_json": "not json"},
+        {"sources_json": None},
+        {"decided_by_kind": "robot"},
+        {"decided_by_kind": None},
+        {"decided_by_id": None},
+        {"decided_by_id": " "},
+        {"created_at": "2026-09-30T08:00:00Z"},
+        {"created_at": None},
+        {"content_item_id": "nope"},
+        {"content_item_id": None},
+        {"channel_id": "nope"},
+        {"channel_id": None},
+    ],
+)
+def test_disclosure_rules_are_enforced_in_sql(conn, overrides) -> None:
+    seed_item(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_disclosure(conn, **overrides)
+
+    assert count_disclosures(conn) == 0
+
+
+def test_disclosure_boundaries_are_accepted_in_sql(conn) -> None:
+    seed_item(conn)
+    long_id = "r" * 38  # the version is 49 characters, below the limit of 50
+    insert_disclosure(
+        conn, rule_set_id=long_id, rule_set_version=f"{long_id}-rules-v123"
+    )
+    insert_disclosure(
+        conn,
+        id="dd2",
+        rule_set_version="disclosure-rules-v12",
+        rationale_json='[{"a": 1}, {"b": 2}]',
+        sources_json="{}",
+        decided_by_kind="ai",
+    )
+
+    assert count_disclosures(conn) == 2
+
+
+def test_an_item_may_have_many_equal_disclosure_rows(conn) -> None:
+    seed_item(conn)
+    insert_disclosure(conn)
+    insert_disclosure(conn, id="dd2")  # the same content again: no UNIQUE key
+    insert_disclosure(conn, id="dd3", decision="not_required")
+
+    assert conn.execute(
+        "SELECT count(*) FROM disclosure_decisions WHERE content_item_id = 'ci1'"
+    ).fetchone() == (3,)
+
+
+def test_disclosure_rows_are_indexed_by_item_and_time(conn) -> None:
+    indexes = {
+        name: [row[2] for row in conn.execute(f"PRAGMA index_info({name})")]
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'disclosure_decisions' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    unique = {
+        row[3]
+        for row in conn.execute("PRAGMA index_list(disclosure_decisions)")
+        if row[2]
+    }
+
+    assert indexes == {
+        "disclosure_decisions_by_item": ["content_item_id", "created_at"]
+    }
+    assert unique == {"pk"}  # only the primary key is unique: no UNIQUE key
+
+
+def test_the_disclosure_table_is_strict_and_has_the_expected_columns(conn) -> None:
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'disclosure_decisions'"
+    ).fetchone()[0]
+
+    assert sql.rstrip().endswith("STRICT")
+    columns = [
+        row[1] for row in conn.execute("PRAGMA table_info(disclosure_decisions)")
+    ]
+    assert columns == [
+        "id",
+        "content_item_id",
+        "channel_id",
+        "rule_set_id",
+        "rule_set_version",
+        "decision",
+        "rationale_json",
+        "sources_json",
+        "decided_by_kind",
+        "decided_by_id",
+        "created_at",
+    ]
+
+
+def test_the_disclosure_migration_changes_no_other_table(conn) -> None:
+    columns = {
+        table: [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+        for table in ("content_items", "rights_assessments")
+    }
+
+    assert columns["content_items"] == [
+        "id",
+        "channel_id",
+        "strategy_profile_id",
+        "strategy_version",
+        "content_type",
+        "title",
+        "status",
+        "created_at",
+        "updated_at",
+    ]
+    assert columns["rights_assessments"][:3] == [
+        "id",
+        "rights_record_id",
+        "content_item_id",
+    ]
+    assert len(columns["rights_assessments"]) == 11
 
 
 def test_foreign_keys_are_enforced(conn) -> None:

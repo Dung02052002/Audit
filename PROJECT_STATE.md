@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-04 (G-082 Rights Report, after G-081 AI Disclosure Rule)
+Last updated: 2026-10-04 (G-083 Policy Report, after G-082 Rights Report)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,52 +9,29 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 5f234a3
+CURRENT_CHECKPOINT = 4aaa5c2
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS
 LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = G-083 Policy Report
+NEXT_TASK          = G-084 Publishing Blocker
 ```
 
 ## Next task
 
-**G-083 Policy Report** (Prompt Pack v8, Phase G Rights, Policy & AI Disclosure, prompt 83). It depends on G-082 (Rights Report), which has PASSED.
+**G-084 Publishing Blocker** (Prompt Pack v8, Phase G Rights, Policy & AI Disclosure, prompt 84). It depends on G-083 (Policy Report), which has PASSED.
 
-> Generate policy report with blocking findings.
+> Wire rights/policy failures into the shared publish gate.
 
-Note: the pack line is one sentence, so the scope must be confirmed with the user before implementing, offering 3-4 alternatives per question (scope, content, format, stored or on demand, HTTP route); G-082 is the closest precedent.
+Note: G-078b already added `PublishGate` (`core/publish_gate.py`, bootstrap, not called yet) with the rights half; `PolicyGate` and `DEFERRED_GATES` are untouched. Confirm the scope with the user (3-4 options per question) before implementing: how policy results reach the gate (G-080 checker, G-083 reporter or a stored check), the rule set version, whether the gate is called from the publish transition now, disclosure handling, and the full-suite justification (shared gate code).
+
+G-083 Policy Report has PASSED (pack #083 with a spec the user pasted on 2026-10-04). User decisions: input = the item title plus the channel strategy brand's banned phrases from the DB, with an optional caller description and tags, all through `PolicyInput`; `rule_set` a required keyword (no default, no fallback; an unknown id or version raises `PolicyRuleSetNotFoundError` 404 before any DB or clock read); registered in the bootstrap with the full suite once; the report holds every outcome (PASS included) plus findings and blocking findings; after review, a channel without a strategy profile fails closed with `StrategyNotFoundError` (an item may reference another channel's profile, the schema does not tie them). New `content/policy_report.py`: `REPORT_SCHEMA_VERSION = "policy-report-v1"`, frozen `RuleOutcomeReport` (rule_id, version, status, code, message, field, blocking), `FindingReport` (from `PolicyFinding`), `PolicyReport` (schema_version, content_item_id, channel_id, generated_at, rule_set {id, version, stored_version}, status, blocks, outcomes, findings, blocking_findings) whose constructor refuses a status other than the worst outcome, a wrong `blocks`, an outcome blocking flag other than status BLOCK, findings other than those derived from the non-PASS outcomes and blocking findings other than the blocking findings (no values in errors); `PolicyReporter(database, *, clock=None, catalog=None)` with `report(content_item_id, *, rule_set, description=None, tags=())`: type checks (tags elements included), `rules_for` first, then one read transaction (aware-UTC clock, item 404, strategy profile, `PolicyInput`, the G-080 `PolicyChecker`); no rule logic, persistence, route or audit; raw title, description, tags and phrases are never in the report. Routing: NORMAL (score 8), planner and coder sonnet/medium, reviewer sonnet/high on the user's request: PASS, 0 blocking, 1 should-fix (fail-open on a missing profile), 4 minor; one sonnet/medium fix round fixed the should-fix and three minors (tag elements checked first, findings tied to outcomes, a source-grep test removed); accepted: two tests depend on the mock rules' current behaviour. Tests (TOOL-003 ledger): new `tests/test_policy_report.py` 73 then 77 after the fix round; affected `tests/test_bootstrap.py` 6 passed; `test_policy_check`, `test_policy_rule` and `test_rights_report` NOT RUN (unchanged code); migration chain NOT RUN (no migration); one full suite at the checkpoint, 5721 passed, justified by the bootstrap registration; ruff and `uv build` pass. Agent cost: about 270k tokens over 4 runs.
 
 G-082 Rights Report has PASSED (pack #082; scope confirmed with the user on 2026-10-04). User decisions: one report per content item (any status, 404 for an unknown item); content = rights records with the latest assessment, provenance per attached asset, the latest AI disclosure decision and the gate verdict with blockers; JSON computed on demand, nothing stored (no migration, no table, no audit); no HTTP route; `worst_level` over unresolved record levels with low < medium < high < unknown (null when none); record level = `record.risk_level` with the latest assessment beside it; free text (record licence/source, URLs, owner, proof, sha256, titles) never emitted, flags only; the gate verdict has full publish semantics. New `content/rights_report.py`: `REPORT_SCHEMA_VERSION = "rights-report-v1"`, frozen `RightsReport`, `RecordReport`, `AssessmentSummary`, `AssetReport`, `DisclosureSummary`, `GateSummary`, `BlockingRecord`, each with `to_dict()` (fixed key order, records and assets ordered by (created_at, id), isoformat datetimes); `RightsReporter(database, settings, *, clock=None)` in the bootstrap, `report(content_item_id)` reads everything (clock, item, records, latest assessments, assets, latest provenance, latest disclosure, gate) in one transaction. The verdict runs the existing `RightsGate` with `RepositoryFreshness` (configured `rights_block_levels`) for a move to PUBLISHING with the item status replaced by APPROVED so any status can be reported (actor `system:rights-report`); per-record `blocks`/`gate_code` come from the same gate over a one-record source, so the level mapping is not duplicated (stale and outdated assessments give `rights.assessment_stale`/`rights.rules_outdated`); `blocking_records` hold record id, asset ref and code, no messages. Asset flags: has_source_url, has_license (name or ref), has_license_url, has_proof, has_owner, has_file_sha256, has_attribution and a sorted `missing`. Disclosure rule codes list only triggered rationale entries. No gate, repository, migration or rules change. Routing: NORMAL (score 8), planner and coder sonnet/medium, reviewer off. Tests: 60 new in `tests/test_rights_report.py` (incl. parity with `PublishGate`, no-leak of planted secrets, read-only, determinism); 5644 collected and passed in one full suite, justified by the bootstrap registration; ruff and `uv build` pass.
 
-G-081 AI Disclosure Rule has PASSED (pack #081 with a spec the user pasted on 2026-10-04). User decisions:
-- inputs: the item's attached assets plus facts the caller declares;
-- `RuleSet("disclosure", 1)` with a REQUIRED/NOT_REQUIRED decision;
-- an append-only table; record only, no gate;
-- a new `realistic_visual` fact;
-- rules built per call and run through the existing checker;
-- facts are required bools;
-- sources list only generated visual ids and the names of true facts.
-
-`content/disclosure_rule.py`: `DISCLOSURE_RULES = RuleSet("disclosure", 1)` (stored "disclosure-rules-v1"), `DisclosureRuleSetNotFoundError` (404, `domain.disclosure_rule_set_not_found`, static message), frozen `DisclosureFacts(realistic_person, realistic_event, synthetic_voice_of_real_person, realistic_visual)` (required strict bools, errors name the field only), `DisclosureObservation`, four rule classes in fixed order (`disclosure.realistic_person`, `.realistic_event`, `.synthetic_voice_of_real_person`, `.generated_realistic_visual` = `realistic_visual` AND an attached GENERATED IMAGE or VIDEO_CLIP asset; a generated asset alone never triggers), each giving a non-blocking failed `RuleResult` (`<id>.required`) when triggered and `<id>.ok` otherwise, `DisclosureRuleCatalog` (exact lookup, pinned ids and versions) and `evaluate_disclosure`, which runs the rules only through the G-080 `PolicyChecker` over a fresh `PolicyRuleSetCatalog` (WARN = REQUIRED, PASS = NOT_REQUIRED, BLOCK refused with `PolicyRuleError`). `content/disclosure.py`: `DisclosureDecision`, `FACT_NAMES`, `RationaleEntry(rule_id, version, code, message, triggered)`, `DisclosureSources(facts, asset_ids)` (fact names in canonical order, asset ids matching a safe-ref pattern), `DisclosureEvaluation`, `DisclosureRecord` with `content_key()` = (stored version, decision, rationale, sources). `content/disclosure_decider.py`: `DisclosureDecider(database, audit, *, clock=None, catalog=None)` in the bootstrap. `decide(content_item_id, facts, *, rule_set, actor)` checks the rule set first (404 before any DB or clock), then in one `BEGIN IMMEDIATE` transaction does the following:
-- reads the clock (naive or non-UTC: plain `ValueError`);
-- reads the item (404 `ContentItemNotFoundError`) and the attached assets;
-- evaluates;
-- reads the latest row and refuses a clock earlier than it with a plain `ValueError` naming only the item id (an equal time is allowed);
-- returns the latest row with no write and no audit when the content key is equal, else appends a row.
-
-After the commit the audit records `disclosure.decided` with scalar ids, the decision, the four facts and a visual count. `latest`/`history` are read-only and never consult the catalog, so v1 rows stay readable and are never re-evaluated. Migration 0026 (`0026_disclosure_decisions.sql`, forward-only, STRICT): `disclosure_decisions` with FKs to the item and channel, a version CHECK `<id>-rules-v<positive integer>`, JSON array/object CHECKs, no UNIQUE, an index on `(content_item_id, created_at)`; `core/db/repositories/disclosure.py` (`add`, `latest`, `list_by_content_item` only). No gate, `PublishGate`, `DEFERRED_GATES`, `PolicyGate`, rights, G-079/G-080 or asset/provenance change. Review (opus/high): PASS, 0 blocking, 0 should-fix, 6 minor. One sonnet/high fix round fixed them before the migration was committed:
-- a stricter SQL version CHECK;
-- history tests across a v2 catalog;
-- a lock probe for the latest-read;
-- an isolated migration case;
-- an asset-id comment and a docs paragraph.
-
-The reviewer noted the coder's affected and regression sets were broader than needed. Tests: 5584 collected and passed in one full suite at the checkpoint, justified by the new migration (the shared template) and the bootstrap registration (5307 before, 277 new: 69 in `tests/test_disclosure.py`, 114 in `tests/test_disclosure_rule.py`, 45 in `tests/test_disclosure_decider.py`, 49 in `tests/test_migrations.py`, which now expects 26 migrations).
-
-Earlier task summaries (G-080 back to A-001, and the Phase A start note) were moved verbatim to `CHANGELOG.md`, section "Task summaries (moved from PROJECT_STATE.md)".
+Earlier task summaries (G-081 back to A-001, and the Phase A start note) were moved verbatim to `CHANGELOG.md`, section "Task summaries (moved from PROJECT_STATE.md)".
 
 ## Known failures
 

@@ -160,6 +160,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | G-082 | Rights Report | G-7 | PASS. User-confirmed scope (2026-10-04): `RightsReporter` in `content/rights_report.py` (bootstrap, no route, nothing stored, no audit) builds a per-item `rights-report-v1` JSON on demand in one read transaction: records with level, latest assessment and per-record gate code; worst unresolved level (unknown worst); provenance flags per attached asset; latest disclosure decision; full `RightsGate` verdict with freshness and blocking records; flags only, no free text or secrets. 60 tests in `tests/test_rights_report.py`. |
 | G-083 | Policy Report | G-8 | PASS. User spec and decisions (2026-10-04): `PolicyReporter` in `content/policy_report.py` (bootstrap, no route, nothing stored, no audit) runs the G-080 `PolicyChecker` for a required rule set (404 before any read, no fallback) over the item title, the channel strategy's banned phrases (missing strategy fails closed) and optional caller description/tags, and returns a `policy-report-v1` with every outcome, findings and blocking findings; invariants refuse a downgraded status or hidden blocking finding; no raw text. 77 tests in `tests/test_policy_report.py`. |
 | G-084 | Publishing Blocker | G-9 | PASS. User spec and decisions (2026-10-04): `PublishGate` runs approval, daily_limit, rights, policy, idempotency; policy via the unchanged C-039 `PolicyGate` over `CheckedPolicySource` (G-080 `PolicyChecker` on the snapshot: item title + channel banned phrases; missing strategy fails closed); `Settings.policy_rule_set_version` (default 1) checked at construction, no fallback; `DEFERRED_GATES = (KILL_SWITCH,)`; no reporter, AI, write or rule duplication. 30 tests in `tests/test_publishing_blocker.py`, 16 in `tests/test_config.py`. |
+| G-085 | Rights Tests | G-10 | PASS. User spec (2026-10-04), test-only: 104 tests in `tests/test_rights_scenarios.py` over the real asset, provenance, risk engine, rights gate and publish gate services: safe/uncertain/blocked scenarios with literal levels and codes, `{high}` vs `{high, medium}`, stale/outdated/never-assessed/reassessment, read-only snapshots, rights + policy blocks, `ensure_can_publish`, planted secrets. No production change, no bug found. Phase G complete. |
 
 ## Current
 
@@ -251,4 +252,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - G-082 Rights Report has PASSED.
 - G-083 Policy Report has PASSED.
 - G-084 Publishing Blocker has PASSED.
-- Next task: **G-085 Rights Tests**. It is NOT_STARTED.
+- G-085 Rights Tests has PASSED. Phase G is complete.
+- Next task: **H-086 Voice Provider**. It is NOT_STARTED.

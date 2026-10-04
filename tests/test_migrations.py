@@ -11,9 +11,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ai_youtube_agent.bootstrap import build_container
-from ai_youtube_agent.content import script_revision, script_validation
+from ai_youtube_agent.content import (
+    asset,
+    asset_usage,
+    script_revision,
+    script_validation,
+)
 from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.content.approval import ApprovalStatus
+from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.comment import CommentLabel, ReplyStatus
 from ai_youtube_agent.content.cost import CostCategory
@@ -73,8 +79,8 @@ SHA = "a" * 64
 # 0016 hook generations (F-065), 0017 claim extractions (F-068),
 # 0018 evidence matches (F-069), 0019 fact checks (F-070),
 # 0020 originality checks (F-071), 0021 script validations (F-072),
-# 0022 script revisions (F-073)
-LATEST = 22
+# 0022 script revisions (F-073), 0023 asset registry (G-076)
+LATEST = 23
 
 ENTITY_TABLES = {
     "channels",
@@ -130,6 +136,8 @@ ENTITY_TABLES = {
     "script_validation_findings",  # F-072
     "script_revisions",  # F-073
     "script_revision_sections",  # F-073
+    "assets",  # G-076
+    "asset_usages",  # G-076
 }
 
 ENUM_COLUMNS = {
@@ -173,6 +181,9 @@ ENUM_COLUMNS = {
     ("script_validation_findings", "status"): ValidationStatus,  # F-072
     ("script_revisions", "requested_by_kind"): ActorKind,  # F-073
     ("script_revision_sections", "kind"): SectionKind,  # F-073
+    ("assets", "kind"): AssetKind,  # G-076
+    ("assets", "category"): AssetCategory,  # G-076
+    ("asset_usages", "attached_by_kind"): ActorKind,  # G-076
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -273,6 +284,7 @@ def test_default_migrations_are_packaged() -> None:
         "originality_checks",
         "script_validations",
         "script_revisions",
+        "asset_registry",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -518,6 +530,236 @@ def test_script_revision_limits_match_the_python_constants(conn) -> None:
     # A change is open text in SQL, closed in Python: every Python value fits.
     for kind in script_revision.ChangeKind:
         assert 1 <= len(kind.value) <= 100
+
+
+def test_asset_limits_match_the_python_constants(conn) -> None:
+    # The SQL bounds repeat the Python constants; this catches a drift (G-076).
+    sql = {
+        name: conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (name,),
+        ).fetchone()[0]
+        for name in ("assets", "asset_usages")
+    }
+    expected = {
+        ("assets", "title"): asset.MAX_TITLE,
+        ("assets", "source"): asset.MAX_SOURCE,
+        ("assets", "license_ref"): asset.MAX_LICENSE_REF,
+        ("assets", "attribution"): asset.MAX_ATTRIBUTION,
+        ("assets", "owner"): asset.MAX_OWNER,
+        ("asset_usages", "purpose"): asset_usage.MAX_PURPOSE,
+    }
+    for (table, column), limit in expected.items():
+        found = re.search(
+            rf"length\(trim\({column}\)\) BETWEEN 1 AND (\d+)", sql[table]
+        )
+        assert found is not None, (table, column)
+        assert int(found.group(1)) == limit, (table, column)
+    assert asset.USER_SOURCE == "user"
+    assert "lower(trim(source)) <> 'user'" in sql["assets"]
+
+
+def asset_row(**overrides) -> dict:
+    row = {
+        "id": "as1",
+        "channel_id": "ch1",
+        "kind": "image",
+        "category": "unknown",
+        "title": "Logo",
+        "source": "stock.example",
+        "source_key": "stock.example",
+        "title_key": "logo",
+        "artifact_id": None,
+        "license_ref": None,
+        "attribution": None,
+        "owner": None,
+        "created_at": TS,
+    }
+    return row | overrides
+
+
+def insert_asset(connection: sqlite3.Connection, **overrides) -> None:
+    row = asset_row(**overrides)
+    connection.execute(
+        f"INSERT INTO assets ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+        tuple(row.values()),
+    )
+
+
+def seed_artifact(connection: sqlite3.Connection) -> None:
+    seed_item(connection)
+    connection.execute(
+        "INSERT INTO artifacts VALUES ('a1', 'ci1', 'video', 1, 'u1', ?, 1, "
+        "'video/mp4', ?)",
+        (SHA, TS),
+    )
+
+
+def test_a_valid_asset_of_every_category_is_accepted(conn) -> None:
+    seed_artifact(conn)
+    insert_asset(conn, id="a", title_key="a")
+    insert_asset(
+        conn, id="b", title_key="b", category="licensed", license_ref="CC-BY-4.0"
+    )
+    insert_asset(conn, id="c", title_key="c", category="public_domain")
+    insert_asset(conn, id="d", title_key="d", category="user_owned", owner="Lan")
+    insert_asset(conn, id="e", title_key="e", category="generated", artifact_id="a1")
+
+    assert conn.execute("SELECT count(*) FROM assets").fetchone() == (5,)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"category": "licensed"},
+        {"category": "licensed", "license_ref": "   "},
+        {"category": "user_owned"},
+        {"category": "user_owned", "owner": ""},
+        {"category": "unknown", "artifact_id": "a1"},
+        {"category": "licensed", "license_ref": "CC", "artifact_id": "a1"},
+        {"category": "generated", "source": "user"},
+        {"category": "generated", "source": " User "},
+        {"category": "bogus"},
+        {"kind": "bogus"},
+        {"title": "   "},
+        {"title": "x" * 201},
+        {"source": ""},
+        {"source": "x" * 501},
+        {"source_key": ""},
+        {"title_key": ""},
+        {"license_ref": "x" * 501},
+        {"attribution": "x" * 501},
+        {"attribution": " "},
+        {"owner": "x" * 201},
+        {"created_at": "2026-09-30T08:00:00Z"},
+        {"channel_id": "nope"},
+        {"category": "generated", "artifact_id": "nope"},
+    ],
+)
+def test_asset_rules_are_enforced_in_sql(conn, overrides) -> None:
+    seed_artifact(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_asset(conn, **overrides)
+
+
+def test_asset_boundaries_are_accepted_in_sql(conn) -> None:
+    seed_artifact(conn)
+    insert_asset(
+        conn,
+        title="t" * 200,
+        source="s" * 500,
+        category="licensed",
+        license_ref="l" * 500,
+        attribution="a" * 500,
+        owner="o" * 200,
+    )
+
+    assert conn.execute("SELECT count(*) FROM assets").fetchone() == (1,)
+
+
+def test_an_asset_is_unique_per_channel_source_and_title_key(conn) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_asset(conn, id="as2")
+    insert_asset(conn, id="as3", title_key="other")
+    insert_asset(conn, id="as4", source_key="other.example")
+
+    conn.execute(
+        "INSERT INTO channels VALUES ('ch2', 'Other', 'UCyyyyyyyyyyyyyyyyyyyyyy', "
+        "NULL, 'active', ?, ?)",
+        (TS, TS),
+    )
+    insert_asset(conn, id="as5", channel_id="ch2")
+
+
+def test_an_artifact_belongs_to_at_most_one_asset(conn) -> None:
+    seed_artifact(conn)
+    insert_asset(conn, category="generated", artifact_id="a1")
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_asset(
+            conn, id="as2", title_key="x", category="generated", artifact_id="a1"
+        )
+    # Many assets without an artifact are fine: the unique index is partial.
+    insert_asset(conn, id="as3", title_key="y")
+    insert_asset(conn, id="as4", title_key="z")
+
+
+def insert_usage(connection: sqlite3.Connection, **overrides) -> None:
+    row = {
+        "id": "u1",
+        "asset_id": "as1",
+        "content_item_id": "ci1",
+        "purpose": None,
+        "attached_by_kind": "user",
+        "attached_by_id": "owner",
+        "created_at": TS,
+    } | overrides
+    connection.execute(
+        f"INSERT INTO asset_usages ({', '.join(row)}) "
+        f"VALUES ({', '.join('?' * len(row))})",
+        tuple(row.values()),
+    )
+
+
+def test_an_asset_usage_is_unique_per_pair(conn) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    insert_usage(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_usage(conn, id="u2", purpose="again")
+    insert_asset(conn, id="as2", title_key="two")
+    insert_usage(
+        conn, id="u3", asset_id="as2", purpose="p" * 200, attached_by_kind="ai"
+    )
+
+    assert conn.execute("SELECT count(*) FROM asset_usages").fetchone() == (2,)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"purpose": "p" * 201},
+        {"purpose": " "},
+        {"attached_by_kind": "robot"},
+        {"attached_by_id": None},
+        {"created_at": "2026-09-30"},
+        {"content_item_id": "nope"},
+        {"asset_id": "nope"},
+    ],
+)
+def test_asset_usage_rules_are_enforced_in_sql(conn, overrides) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_usage(conn, **overrides)
+
+
+def test_the_asset_registry_migration_changes_no_rights_table(conn) -> None:
+    indexes = {
+        name
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'rights_records' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(rights_records)")]
+
+    assert indexes == set()
+    assert columns == [
+        "id",
+        "content_item_id",
+        "asset_ref",
+        "source",
+        "license",
+        "risk_level",
+        "resolution",
+        "resolved_by_kind",
+        "resolved_by_id",
+        "resolved_at",
+        "created_at",
+        "updated_at",
+    ]
 
 
 def test_foreign_keys_are_enforced(conn) -> None:

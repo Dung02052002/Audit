@@ -150,6 +150,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | Task | Name | Dependency | Status |
 |---|---|---|---|
 | G-075 | Asset Model | F-11 | PASS. User-approved scope (2026-10-04): entity and enums only in `content/asset.py`, no migration, repository, bootstrap or API (#076 stores and registers assets, #077 records provenance, #078 scores risk; no risk level here). Frozen `Asset` (id, channel_id, kind, category, title 1-200 collapsed, source 1-500, optional artifact_id, license_ref, attribution, owner, created_at UTC) with `AssetCategory` (generated, licensed, public_domain, user_owned, unknown; declared, never derived) and `AssetKind` (image, video_clip, audio, music, voice, font, subtitle, template, other). Rules: licensed needs license_ref; user_owned needs owner; generated needs a source other than `user`; only generated may have artifact_id. No NFC (like `Source`). `RightsRecord.asset_ref` will point at `Asset.id` via #076. 34 tests in `tests/test_asset.py`. |
+| G-076 | Asset Registry | G-1 | PASS. User-approved scope (2026-10-04): a service over `Asset` with migration 0023 and repositories, registered in the bootstrap, no HTTP route. `AssetRegistry` in `content/asset_registry.py`: `register` (any actor; entity rule failures 422 `domain.asset_input`; the channel must exist; an artifact must belong to the channel; duplicates in a channel by NFC/casefold source and title keys or by artifact: equal returns the stored asset with no write or audit, different is 409 `domain.asset_conflict`), `attach` (asset to a content item of the same channel, many to many, one usage per pair, idempotent; creates in the same transaction an unresolved unknown `RightsRecord` with `asset_ref` = `Asset.id` unless the item already has one, which stays untouched), reads that write nothing. New `content/asset_usage.py`, `core/db/repositories/asset.py`, `core/db/migrations/0023_asset_registry.sql` (`assets`, `asset_usages`). Audit `asset.registered` and `asset.attached`, ids and counts only. 92 tests in `tests/test_asset_registry.py` and 37 in `tests/test_migrations.py`. |
 
 ## Current
 
@@ -231,4 +232,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - F-073 Script Versioning has PASSED.
 - F-074 Script Tests has PASSED. Phase F is complete.
 - G-075 Asset Model has PASSED.
-- Next task: **G-076 Asset Registry**. It is NOT_STARTED.
+- G-076 Asset Registry has PASSED.
+- Next task: **G-077 Provenance Record**. It is NOT_STARTED.

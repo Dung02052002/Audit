@@ -14,6 +14,7 @@ from ai_youtube_agent.bootstrap import build_container
 from ai_youtube_agent.content import (
     asset,
     asset_usage,
+    provenance,
     script_revision,
     script_validation,
 )
@@ -79,8 +80,9 @@ SHA = "a" * 64
 # 0016 hook generations (F-065), 0017 claim extractions (F-068),
 # 0018 evidence matches (F-069), 0019 fact checks (F-070),
 # 0020 originality checks (F-071), 0021 script validations (F-072),
-# 0022 script revisions (F-073), 0023 asset registry (G-076)
-LATEST = 23
+# 0022 script revisions (F-073), 0023 asset registry (G-076),
+# 0024 asset provenance (G-077)
+LATEST = 24
 
 ENTITY_TABLES = {
     "channels",
@@ -138,6 +140,7 @@ ENTITY_TABLES = {
     "script_revision_sections",  # F-073
     "assets",  # G-076
     "asset_usages",  # G-076
+    "asset_provenance",  # G-077
 }
 
 ENUM_COLUMNS = {
@@ -184,6 +187,7 @@ ENUM_COLUMNS = {
     ("assets", "kind"): AssetKind,  # G-076
     ("assets", "category"): AssetCategory,  # G-076
     ("asset_usages", "attached_by_kind"): ActorKind,  # G-076
+    ("asset_provenance", "recorded_by_kind"): ActorKind,  # G-077
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -285,6 +289,7 @@ def test_default_migrations_are_packaged() -> None:
         "script_validations",
         "script_revisions",
         "asset_registry",
+        "asset_provenance",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -747,6 +752,256 @@ def test_the_asset_registry_migration_changes_no_rights_table(conn) -> None:
 
     assert indexes == set()
     assert columns == [
+        "id",
+        "content_item_id",
+        "asset_ref",
+        "source",
+        "license",
+        "risk_level",
+        "resolution",
+        "resolved_by_kind",
+        "resolved_by_id",
+        "resolved_at",
+        "created_at",
+        "updated_at",
+    ]
+
+
+def test_provenance_limits_match_the_python_constants(conn) -> None:
+    # The SQL bounds repeat the Python constants; this catches a drift (G-077).
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        ("asset_provenance",),
+    ).fetchone()[0]
+    expected = {
+        "license_name": provenance.MAX_LICENSE_NAME,
+        "license_ref": provenance.MAX_LICENSE_REF,
+        "attribution": provenance.MAX_ATTRIBUTION,
+        "owner": provenance.MAX_OWNER,
+        "proof": provenance.MAX_PROOF,
+    }
+    for column, limit in expected.items():
+        found = re.search(rf"length\(trim\({column}\)\) BETWEEN 1 AND (\d+)", sql)
+        assert found is not None, column
+        assert int(found.group(1)) == limit, column
+    for column in ("source_url", "license_url"):
+        found = re.search(rf"length\({column}\) BETWEEN 1 AND (\d+)", sql)
+        assert found is not None, column
+        assert int(found.group(1)) == provenance.MAX_URL_LENGTH, column
+    assert "length(file_sha256) = 64" in sql
+    assert provenance.SHA256_PATTERN.pattern == "[0-9a-f]{64}"
+
+
+def provenance_row(**overrides) -> dict:
+    row = {
+        "id": "pv1",
+        "asset_id": "as1",
+        "source_url": "https://stock.example/logo",
+        "retrieved_at": TS,
+        "license_name": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "license_ref": "CC-BY-4.0",
+        "attribution": "Photo by Lan",
+        "owner": "Lan",
+        "file_sha256": SHA,
+        "proof": "invoice 7",
+        "recorded_by_kind": "user",
+        "recorded_by_id": "owner",
+        "created_at": TS,
+    }
+    return row | overrides
+
+
+def insert_provenance(connection: sqlite3.Connection, **overrides) -> None:
+    row = provenance_row(**overrides)
+    connection.execute(
+        f"INSERT INTO asset_provenance ({', '.join(row)}) "
+        f"VALUES ({', '.join('?' * len(row))})",
+        tuple(row.values()),
+    )
+
+
+def only(**details) -> dict:
+    """A row whose only detail is the given one."""
+    row = dict.fromkeys(
+        (
+            "source_url",
+            "retrieved_at",
+            "license_name",
+            "license_url",
+            "license_ref",
+            "attribution",
+            "owner",
+            "file_sha256",
+            "proof",
+        )
+    )
+    return row | details
+
+
+def test_a_valid_provenance_row_is_accepted(conn) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    insert_provenance(conn)
+
+    assert conn.execute("SELECT count(*) FROM asset_provenance").fetchone() == (1,)
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        {"source_url": "http://a.example/x"},
+        {"retrieved_at": TS},
+        {"license_name": "MIT"},
+        {"license_url": "https://a.example/license"},
+        {"license_ref": "ref"},
+        {"attribution": "credit"},
+        {"owner": "Lan"},
+        {"file_sha256": "0123456789abcdef" * 4},
+        {"proof": "note"},
+    ],
+)
+def test_a_provenance_row_with_one_detail_is_accepted(conn, details) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    insert_provenance(conn, **only(**details))
+
+    assert conn.execute("SELECT count(*) FROM asset_provenance").fetchone() == (1,)
+
+
+def test_a_provenance_row_with_no_detail_is_refused(conn) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_provenance(conn, **only())
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"source_url": "ftp://a.example/x"},
+        {"source_url": "a.example/x"},
+        {"source_url": ""},
+        {"source_url": "https://a.example/" + "a" * 2031},
+        {"license_url": "mailto:a@b.example"},
+        {"license_url": "https://a.example/" + "a" * 2031},
+        {"retrieved_at": "2026-09-30T08:00:00Z"},
+        {"retrieved_at": "2026-09-30"},
+        {"license_name": "   "},
+        {"license_name": "x" * 201},
+        {"license_ref": ""},
+        {"license_ref": "x" * 501},
+        {"attribution": " "},
+        {"attribution": "x" * 501},
+        {"owner": "x" * 201},
+        {"owner": "  "},
+        {"proof": "x" * 1001},
+        {"proof": ""},
+        {"file_sha256": "a" * 63},
+        {"file_sha256": "a" * 65},
+        {"file_sha256": "A" * 64},
+        {"file_sha256": "g" * 64},
+        {"file_sha256": "a" * 63 + " "},
+        {"file_sha256": ""},
+        {"recorded_by_kind": "robot"},
+        {"recorded_by_kind": None},
+        {"recorded_by_id": None},
+        {"created_at": "2026-09-30T08:00:00Z"},
+        {"created_at": None},
+        {"asset_id": "nope"},
+        {"asset_id": None},
+    ],
+)
+def test_provenance_rules_are_enforced_in_sql(conn, overrides) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_provenance(conn, **overrides)
+
+
+def test_provenance_boundaries_are_accepted_in_sql(conn) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    insert_provenance(
+        conn,
+        source_url="https://a.example/" + "a" * (provenance.MAX_URL_LENGTH - 18),
+        license_url="http://a.example/" + "a" * (provenance.MAX_URL_LENGTH - 17),
+        license_name="n" * provenance.MAX_LICENSE_NAME,
+        license_ref="r" * provenance.MAX_LICENSE_REF,
+        attribution="a" * provenance.MAX_ATTRIBUTION,
+        owner="o" * provenance.MAX_OWNER,
+        proof="p" * provenance.MAX_PROOF,
+        file_sha256="0123456789abcdef" * 4,
+        recorded_by_kind="ai",
+    )
+
+    assert conn.execute("SELECT count(*) FROM asset_provenance").fetchone() == (1,)
+
+
+def test_an_asset_may_have_many_provenance_rows(conn) -> None:
+    seed_item(conn)
+    insert_asset(conn)
+    insert_provenance(conn)
+    insert_provenance(conn, id="pv2")  # the same statement again
+    insert_provenance(conn, id="pv3", owner="Minh")
+    insert_asset(conn, id="as2", title_key="two")
+    insert_provenance(conn, id="pv4", asset_id="as2")
+
+    assert conn.execute("SELECT count(*) FROM asset_provenance").fetchone() == (4,)
+    assert conn.execute(
+        "SELECT count(*) FROM asset_provenance WHERE asset_id = 'as1'"
+    ).fetchone() == (3,)
+
+
+def test_provenance_rows_are_indexed_by_asset_and_time(conn) -> None:
+    indexes = {
+        name: [row[2] for row in conn.execute(f"PRAGMA index_info({name})")]
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'asset_provenance' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    # PRAGMA index_list columns: seq, name, unique, origin, partial. The origin
+    # is 'pk' for the primary key, 'u' for a UNIQUE constraint, 'c' for an index.
+    unique = {
+        row[3] for row in conn.execute("PRAGMA index_list(asset_provenance)") if row[2]
+    }
+
+    assert indexes == {"asset_provenance_by_asset": ["asset_id", "created_at"]}
+    assert unique == {"pk"}  # only the primary key is unique: no UNIQUE key
+
+
+def test_the_provenance_migration_changes_no_other_table(conn) -> None:
+    columns = {
+        table: [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+        for table in ("assets", "asset_usages", "rights_records")
+    }
+
+    assert columns["assets"] == [
+        "id",
+        "channel_id",
+        "kind",
+        "category",
+        "title",
+        "source",
+        "source_key",
+        "title_key",
+        "artifact_id",
+        "license_ref",
+        "attribution",
+        "owner",
+        "created_at",
+    ]
+    assert columns["asset_usages"] == [
+        "id",
+        "asset_id",
+        "content_item_id",
+        "purpose",
+        "attached_by_kind",
+        "attached_by_id",
+        "created_at",
+    ]
+    assert columns["rights_records"] == [
         "id",
         "content_item_id",
         "asset_ref",

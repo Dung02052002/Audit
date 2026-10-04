@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-04 (G-081 AI Disclosure Rule, after G-080 Policy Check)
+Last updated: 2026-10-04 (G-082 Rights Report, after G-081 AI Disclosure Rule)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,23 +9,25 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 3dc5828
+CURRENT_CHECKPOINT = 5f234a3
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS
 LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = G-082 Rights Report
+NEXT_TASK          = G-083 Policy Report
 ```
 
 ## Next task
 
-**G-082 Rights Report** (Prompt Pack v8, Phase G Rights, Policy & AI Disclosure, prompt 82). It depends on G-081 (AI Disclosure Rule), which has PASSED.
+**G-083 Policy Report** (Prompt Pack v8, Phase G Rights, Policy & AI Disclosure, prompt 83). It depends on G-082 (Rights Report), which has PASSED.
 
-> Generate machine-readable and dashboard-friendly rights report.
+> Generate policy report with blocking findings.
 
-Note: the pack line is one sentence, so the scope must be confirmed with the user before implementing, offering 3-4 alternatives per question: the scope (per content item or per channel), the content (rights records, latest assessments with codes and levels, provenance flags, stale and outdated state, the latest disclosure decision), the format (a JSON schema version, a Markdown or dashboard view), whether it is stored or computed on demand, and whether an HTTP route is added.
+Note: the pack line is one sentence, so the scope must be confirmed with the user before implementing, offering 3-4 alternatives per question (scope, content, format, stored or on demand, HTTP route); G-082 is the closest precedent.
+
+G-082 Rights Report has PASSED (pack #082; scope confirmed with the user on 2026-10-04). User decisions: one report per content item (any status, 404 for an unknown item); content = rights records with the latest assessment, provenance per attached asset, the latest AI disclosure decision and the gate verdict with blockers; JSON computed on demand, nothing stored (no migration, no table, no audit); no HTTP route; `worst_level` over unresolved record levels with low < medium < high < unknown (null when none); record level = `record.risk_level` with the latest assessment beside it; free text (record licence/source, URLs, owner, proof, sha256, titles) never emitted, flags only; the gate verdict has full publish semantics. New `content/rights_report.py`: `REPORT_SCHEMA_VERSION = "rights-report-v1"`, frozen `RightsReport`, `RecordReport`, `AssessmentSummary`, `AssetReport`, `DisclosureSummary`, `GateSummary`, `BlockingRecord`, each with `to_dict()` (fixed key order, records and assets ordered by (created_at, id), isoformat datetimes); `RightsReporter(database, settings, *, clock=None)` in the bootstrap, `report(content_item_id)` reads everything (clock, item, records, latest assessments, assets, latest provenance, latest disclosure, gate) in one transaction. The verdict runs the existing `RightsGate` with `RepositoryFreshness` (configured `rights_block_levels`) for a move to PUBLISHING with the item status replaced by APPROVED so any status can be reported (actor `system:rights-report`); per-record `blocks`/`gate_code` come from the same gate over a one-record source, so the level mapping is not duplicated (stale and outdated assessments give `rights.assessment_stale`/`rights.rules_outdated`); `blocking_records` hold record id, asset ref and code, no messages. Asset flags: has_source_url, has_license (name or ref), has_license_url, has_proof, has_owner, has_file_sha256, has_attribution and a sorted `missing`. Disclosure rule codes list only triggered rationale entries. No gate, repository, migration or rules change. Routing: NORMAL (score 8), planner and coder sonnet/medium, reviewer off. Tests: 60 new in `tests/test_rights_report.py` (incl. parity with `PublishGate`, no-leak of planted secrets, read-only, determinism); 5644 collected and passed in one full suite, justified by the bootstrap registration; ruff and `uv build` pass.
 
 G-081 AI Disclosure Rule has PASSED (pack #081 with a spec the user pasted on 2026-10-04). User decisions:
 - inputs: the item's attached assets plus facts the caller declares;
@@ -52,9 +54,7 @@ After the commit the audit records `disclosure.decided` with scalar ids, the dec
 
 The reviewer noted the coder's affected and regression sets were broader than needed. Tests: 5584 collected and passed in one full suite at the checkpoint, justified by the new migration (the shared template) and the bootstrap registration (5307 before, 277 new: 69 in `tests/test_disclosure.py`, 114 in `tests/test_disclosure_rule.py`, 45 in `tests/test_disclosure_decider.py`, 49 in `tests/test_migrations.py`, which now expects 26 migrations).
 
-G-080 Policy Check has PASSED (pack #080 with a spec the user pasted on 2026-10-04). Decisions the user approved: a pure check over input the caller supplies, an in-code rule set catalog, a `field` on results, normalisation with NFC, strip and whitespace collapse, ids with NFC and strip only, `field` on a pass only where the rule judges one field, and the catalog injected through the constructor. New `content/policy_check.py`: `PolicyStatus` PASS/WARN/BLOCK with `worst` (BLOCK > WARN > PASS); `PolicyRuleSetNotFoundError` (404, `domain.policy_rule_set_not_found`, a static message); frozen `PolicyInput(content_item_id, channel_id, title, description, tags, banned_phrases)`, the only place that normalises (text: None to "", NFC, `" ".join(v.split())`, no casefold; items the same with empties dropped and order kept; ids NFC and strip; errors name the field, never the value) with `to_context()` building the G-079 `PolicyContext`; frozen `RuleOutcome` (rule_id, version, status, code, message, field) with `to_finding()`; frozen `PolicyCheckResult(rule_set, status, outcomes)` that refuses a status other than the worst outcome, with `to_findings()` (failures only, blocking iff BLOCK) and `to_policy_check(content_item_id, clock=...)` (the id normalised like `PolicyInput`; builds the C-039 `PolicyCheck`, nothing is stored); `PolicyRuleSetCatalog` (exact (id, version) lookup with no fallback, versions and ids pinned at registration and re-checked) with `POLICY_RULES = RuleSet("policy", 1)` mapped to the `mock_registry()` rules by `default_catalog()`; `PolicyChecker(catalog=None).check(policy_input, *, rule_set)` (rule_set required) runs every rule only through `evaluate_rule`, maps passed to PASS, a failed non-blocking result to WARN and a failed blocking one to BLOCK, keeps outcomes (passes included) in catalog order, and has no DB, audit, logging or AI. `content/policy_rule.py`: `RuleResult` gains an optional last `field`; title_length always reports "title", banned_phrase reports the first matching field (title before description) and None on a pass; codes, messages, blocking and matching are unchanged. `PolicyGate`, the publish gate set (`DEFERRED_GATES`), the rights code and migrations are unchanged. Review (sonnet/high, on the user's request): PASS, 0 blocking, 1 should-fix (the id of `to_policy_check` was not normalised), fixed with the nits in one sonnet/medium round (no exception context in `rules_for`, tests for NFC ids and tags, a non-`RuleResult` return, a rule id changed after registration and exception chains without input). Open nits: no length cap on input text; `rules_for` called directly with an unhashable argument raises TypeError (the checker type-checks first); the tag reordering test adds little. Tests: 5307 collected (5153 before, 154 new: 143 in `tests/test_policy_check.py`, 11 in `tests/test_policy_rule.py`); the full suite was not run, as the user's TOOL-003 rule allows (a pure leaf module and one additive field, no DB, bootstrap or publish/rights change); the new, affected and regression files ran (`tests/test_policy_check.py`, `tests/test_policy_rule.py`, `tests/test_rights_assessment.py`, `tests/test_rights_gate.py`, `tests/test_policy_gate.py`).
-
-Earlier task summaries (G-079 back to A-001, and the Phase A start note) were moved verbatim to `CHANGELOG.md`, section "Task summaries (moved from PROJECT_STATE.md)".
+Earlier task summaries (G-080 back to A-001, and the Phase A start note) were moved verbatim to `CHANGELOG.md`, section "Task summaries (moved from PROJECT_STATE.md)".
 
 ## Known failures
 

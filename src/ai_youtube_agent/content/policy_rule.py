@@ -10,7 +10,9 @@ rules. The design was approved by the user on 2026-10-04:
   ``evaluate(context) -> RuleResult``. ``evaluate_rule`` runs a rule and refuses
   a result that is not a ``RuleResult`` or that names another rule or version.
 - ``RuleResult``: the verdict of one rule, with a stable ``code`` and a safe
-  ``message``. ``to_finding`` turns a failed result into a ``PolicyFinding``.
+  ``message``, and an optional ``field`` naming the part of the content it judged
+  (``"title"`` or ``"description"``, never the text). ``to_finding`` turns a
+  failed result into a ``PolicyFinding``.
 - ``RuleSet``: the id and version of a family of rules. ``stored_version`` is the
   one place that builds the string stored with a result, for example
   ``rights-rules-v1``.
@@ -57,11 +59,17 @@ class RuleResult:
     blocking: bool
     code: str
     message: str
+    field: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self, "rule_id", "code", "message")
         if self.code != self.code.strip():
             raise ValueError("code must not have outer whitespace")
+        if self.field is not None:
+            if not isinstance(self.field, str):
+                raise TypeError("field must be text")
+            if not self.field or self.field != self.field.strip():
+                raise ValueError("field must be text without outer whitespace")
         if not _is_version(self.version):
             raise ValueError("version must be an integer >= 1")
         for name in ("passed", "blocking"):
@@ -173,9 +181,16 @@ class PolicyRuleRegistry:
 
 
 def _result(
-    rule: PolicyRule, passed: bool, blocking: bool, code: str, message: str
+    rule: PolicyRule,
+    passed: bool,
+    blocking: bool,
+    code: str,
+    message: str,
+    field: str | None = None,
 ) -> RuleResult:
-    return RuleResult(rule.rule_id, rule.version, passed, blocking, code, message)
+    return RuleResult(
+        rule.rule_id, rule.version, passed, blocking, code, message, field
+    )
 
 
 class MockTitleLengthRule:
@@ -186,13 +201,16 @@ class MockTitleLengthRule:
         # The length is measured after strip(), so outer whitespace does not count.
         length = len(context.title.strip())
         if 0 < length <= MAX_TITLE_LENGTH:
-            return _result(self, True, False, "mock.title_length.ok", PASSED_MESSAGE)
+            return _result(
+                self, True, False, "mock.title_length.ok", PASSED_MESSAGE, "title"
+            )
         return _result(
             self,
             False,
             True,
             "mock.title_length.out_of_range",
             "Title length is outside the allowed range.",
+            "title",
         )
 
 
@@ -208,19 +226,20 @@ class MockBannedPhraseRule:
     def evaluate(self, context: PolicyContext) -> RuleResult:
         # Title and description (not tags), each checked on its own so a phrase
         # cannot span the boundary between them.
-        fields = (context.title.casefold(), context.description.casefold())
-        if any(
-            p.strip() and p.casefold() in field
-            for p in context.banned_phrases
-            for field in fields
-        ):
-            return _result(
-                self,
-                False,
-                self._blocking,
-                "mock.banned_phrase.found",
-                "Content contains a banned phrase.",
-            )
+        fields = (
+            ("title", context.title.casefold()),
+            ("description", context.description.casefold()),
+        )
+        for name, text in fields:
+            if any(p.strip() and p.casefold() in text for p in context.banned_phrases):
+                return _result(
+                    self,
+                    False,
+                    self._blocking,
+                    "mock.banned_phrase.found",
+                    "Content contains a banned phrase.",
+                    name,
+                )
         return _result(self, True, False, "mock.banned_phrase.ok", PASSED_MESSAGE)
 
 

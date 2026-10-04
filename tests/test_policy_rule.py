@@ -375,3 +375,38 @@ def test_hostile_input_never_appears_in_a_code_or_a_message() -> None:
             assert "http" not in text
             assert "s3cr3t" not in text
             assert "evil.example" not in text
+
+
+# RuleResult.field and the mock fields (G-080)
+
+
+def test_a_result_field_defaults_to_none_and_accepts_text() -> None:
+    assert make_result().field is None
+    assert make_result(field="title").field == "title"
+    assert make_result(field="title").to_finding() == make_result().to_finding()
+
+
+@pytest.mark.parametrize("value", ["", "   ", " title", "title ", "\ttitle"])
+def test_a_result_field_must_be_clean_text(value: str) -> None:
+    with pytest.raises(ValueError):
+        make_result(field=value)
+
+
+@pytest.mark.parametrize("value", [1, True, b"title", ["title"]])
+def test_a_result_field_must_be_text(value) -> None:
+    with pytest.raises(TypeError):
+        make_result(field=value)
+
+
+def test_the_mock_rules_name_the_field() -> None:
+    title_rule, banned_rule = MockTitleLengthRule(), MockBannedPhraseRule()
+    assert title_rule.evaluate(make_context()).field == "title"
+    assert title_rule.evaluate(make_context(title="x" * 101)).field == "title"
+    in_title = make_context(title="bad word", banned_phrases=("bad",))
+    assert banned_rule.evaluate(in_title).field == "title"
+    in_description = make_context(description="bad word", banned_phrases=("bad",))
+    assert banned_rule.evaluate(in_description).field == "description"
+    in_both = make_context(title="bad", description="bad word", banned_phrases=("bad",))
+    assert banned_rule.evaluate(in_both).field == "title"
+    assert banned_rule.evaluate(make_context()).field is None
+    assert MockAlwaysPassRule().evaluate(make_context()).field is None

@@ -40,6 +40,13 @@ and its current ``Provenance``. The rules were approved by the user on
 - ``changed`` is the number of new assessment rows. The time of assessment is
   read from the clock inside the transaction; a clock that returns a naive or
   non-UTC time is a fault of the application (a plain ``ValueError``).
+- The clock must not go backwards (G-078b). In the same transaction, pass 1 reads
+  every unresolved record and its newest assessment, and raises a plain
+  ``ValueError`` naming only the record id if the time is earlier than the
+  ``updated_at`` of the record or the ``created_at`` of its newest assessment.
+  Nothing is written or audited then. Pass 2 is the logic above, on the reads of
+  pass 1. An equal time is allowed (a same-time re-run is idempotent), and a
+  record a user resolved is not read.
 - ``rights.assessed`` is audited after commit, only when ``changed`` is more
   than zero, with counts only (assessed, changed, skipped_resolved and the
   number of records per level), never a URL, a licence or a text. An error
@@ -54,8 +61,12 @@ from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 
 from ai_youtube_agent.content.hook_generator import ContentItemNotFoundError
-from ai_youtube_agent.content.rights import RiskLevel
-from ai_youtube_agent.content.rights_assessment import RightsAssessment, classify
+from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
+from ai_youtube_agent.content.rights_assessment import (
+    RightsAssessment,
+    classify,
+    current_facts,
+)
 from ai_youtube_agent.core.audit import Actor, AuditLog, AuditResult, EntityRef
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.asset import AssetRepository
@@ -126,16 +137,29 @@ class RightsRiskEngine:
             history = RightsAssessmentRepository(connection)
             assessments: list[RightsAssessment] = []
             skipped: list[str] = []
-            changed = 0
+            pending: list[tuple[RightsRecord, RightsAssessment | None]] = []
+            # Pass 1: read every unresolved record and refuse a clock that is
+            # earlier than a stored time, before anything is written.
             for record in rights.list_by_content_item(content_item_id):
                 if record.is_resolved:
                     skipped.append(record.id)
                     continue
-                asset = assets.get(record.asset_ref)
-                in_channel = asset is not None and asset.channel_id == item.channel_id
-                provenance = provenances.latest(asset.id) if in_channel else None
-                outcome = classify(asset, item.channel_id, provenance)
                 newest = history.latest(record.id)
+                if now < record.updated_at or (
+                    newest is not None and now < newest.created_at
+                ):
+                    raise ValueError(
+                        f"the clock is earlier than a stored time of rights "
+                        f"record {record.id}"
+                    )
+                pending.append((record, newest))
+            # Pass 2: assess and write.
+            changed = 0
+            for record, newest in pending:
+                asset, provenance = current_facts(
+                    assets, provenances, record.asset_ref, item.channel_id
+                )
+                outcome = classify(asset, item.channel_id, provenance)
                 assessment = RightsAssessment.create(
                     record.id,
                     content_item_id,

@@ -12,6 +12,12 @@ Rules the user approved on 2026-10-01:
 
 G-078 (2026-10-04) makes the blocking levels configurable: ``high`` and
 ``unknown`` always block and ``medium`` may be added.
+
+G-078b (2026-10-04) adds the freshness check: with a ``FreshnessSource`` an
+unresolved record that its level does not block still blocks with
+``rights.assessment_stale`` when it was never assessed or the basis of its newest
+assessment is not the current basis. The level reason has priority, a resolved
+record is never checked, and without a source nothing changes.
 """
 
 import dataclasses
@@ -39,6 +45,7 @@ from ai_youtube_agent.core.gates import (
 )
 from ai_youtube_agent.core.rights_gate import (
     BLOCKING_LEVELS,
+    AssessmentBasis,
     RightsGate,
     blocking_levels_for,
 )
@@ -429,3 +436,247 @@ def test_blocking_levels_for_builds_a_valid_gate(records: Records) -> None:
         {RightsBlockLevel.MEDIUM, RightsBlockLevel.HIGH},
     ):
         RightsGate(records, blocking_levels=blocking_levels_for(configured))
+
+
+# Freshness (G-078b)
+
+BASIS = AssessmentBasis("asset-1", "prov-1")
+
+
+class Freshness:
+    """A fake ``FreshnessSource``: bases by record id and by asset ref."""
+
+    def __init__(self) -> None:
+        self.assessed: dict[str, AssessmentBasis] = {}
+        self.current: dict[str, AssessmentBasis] = {}
+        self.assessed_asked: list[str] = []
+        self.current_asked: list[tuple[str, str]] = []
+
+    def assessed_basis(self, rights_record_id: str) -> AssessmentBasis | None:
+        self.assessed_asked.append(rights_record_id)
+        return self.assessed.get(rights_record_id)
+
+    def current_basis(self, asset_ref: str, channel_id: str) -> AssessmentBasis:
+        self.current_asked.append((asset_ref, channel_id))
+        return self.current[asset_ref]
+
+    def set(
+        self,
+        rights_record: RightsRecord,
+        assessed: AssessmentBasis | None,
+        current: AssessmentBasis,
+    ) -> None:
+        if assessed is not None:
+            self.assessed[rights_record.id] = assessed
+        self.current[rights_record.asset_ref] = current
+
+
+@pytest.fixture
+def freshness() -> Freshness:
+    return Freshness()
+
+
+def test_without_a_freshness_source_an_unassessed_low_record_passes(
+    records: Records,
+) -> None:
+    item = new_item()
+    records.records.append(record(item, "photo-3", RiskLevel.LOW))
+
+    assert RightsGate(records, freshness=None).evaluate(context(item)).is_passed
+    assert RightsGate(records).evaluate(context(item)).is_passed
+
+
+def test_a_record_that_was_never_assessed_is_stale(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(low, None, BASIS)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert result.outcome is GateOutcome.BLOCK
+    assert codes(result) == ["rights.assessment_stale"]
+    assert result.reasons[0].message == (
+        "Asset photo-3 has no current rights assessment."
+    )
+
+
+def test_an_equal_basis_passes(records: Records, freshness: Freshness) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(low, BASIS, BASIS)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert result.is_passed
+    assert freshness.current_asked == [("photo-3", item.channel_id)]
+
+
+@pytest.mark.parametrize(
+    "current",
+    [AssessmentBasis("asset-1", "prov-2"), AssessmentBasis("asset-2", "prov-1")],
+    ids=["other-provenance", "other-asset"],
+)
+def test_a_different_basis_is_stale(
+    records: Records, freshness: Freshness, current: AssessmentBasis
+) -> None:
+    item = new_item()
+    medium = record(item, "photo-3", RiskLevel.MEDIUM)
+    records.records.append(medium)
+    freshness.set(medium, BASIS, current)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == ["rights.assessment_stale"]
+
+
+def test_a_provenance_that_appeared_after_the_assessment_is_stale(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(low, AssessmentBasis("asset-1", None), BASIS)
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == ["rights.assessment_stale"]
+
+
+def test_no_asset_and_no_provenance_on_both_sides_passes(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "ghost", RiskLevel.LOW)
+    records.records.append(low)
+    nothing = AssessmentBasis(None, None)
+    freshness.set(low, nothing, nothing)
+
+    assert RightsGate(records, freshness=freshness).evaluate(context(item)).is_passed
+
+
+@pytest.mark.parametrize("level", list(RiskLevel))
+def test_a_resolved_record_is_never_checked_for_freshness(
+    records: Records, freshness: Freshness, level: RiskLevel
+) -> None:
+    item = new_item()
+    records.records.append(record(item, "photo-3", level, resolved=True))
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert result.is_passed
+    assert freshness.assessed_asked == []
+    assert freshness.current_asked == []
+
+
+@pytest.mark.parametrize(
+    ("level", "code"),
+    [
+        (RiskLevel.HIGH, "rights.unresolved_high"),
+        (RiskLevel.UNKNOWN, "rights.unresolved_unknown"),
+    ],
+)
+def test_a_blocking_and_stale_record_gives_only_the_level_reason(
+    records: Records, freshness: Freshness, level: RiskLevel, code: str
+) -> None:
+    item = new_item()
+    records.records.append(record(item, "photo-3", level))
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == [code]
+    assert freshness.assessed_asked == []
+
+
+def test_a_configured_medium_stale_record_gives_only_the_level_reason(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    records.records.append(record(item, "photo-3", RiskLevel.MEDIUM))
+
+    gate = RightsGate(records, blocking_levels=CONFIGURED, freshness=freshness)
+
+    assert codes(gate.evaluate(context(item))) == ["rights.unresolved_medium"]
+
+
+def test_mixed_reasons_follow_the_record_order(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    stale = record(item, "a-stale", RiskLevel.LOW, minutes=0)
+    fresh = record(item, "b-fresh", RiskLevel.LOW, minutes=1)
+    high = record(item, "c-high", RiskLevel.HIGH, minutes=2)
+    done = record(item, "d-done", RiskLevel.HIGH, resolved=True, minutes=3)
+    medium_stale = record(item, "e-medium", RiskLevel.MEDIUM, minutes=4)
+    records.records += [medium_stale, done, high, fresh, stale]
+    freshness.set(stale, None, BASIS)
+    freshness.set(fresh, BASIS, BASIS)
+    freshness.set(medium_stale, BASIS, AssessmentBasis("asset-1", "prov-9"))
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    assert codes(result) == [
+        "rights.assessment_stale",
+        "rights.unresolved_high",
+        "rights.assessment_stale",
+    ]
+    assert "a-stale" in result.reasons[0].message
+    assert "c-high" in result.reasons[1].message
+    assert "e-medium" in result.reasons[2].message
+
+
+def test_a_stale_message_holds_the_asset_ref_and_no_url_or_id(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item()
+    low = record(item, "photo-3", RiskLevel.LOW)
+    records.records.append(low)
+    freshness.set(
+        low,
+        AssessmentBasis("asset-https://x.example/a", "prov-https://x.example/p"),
+        BASIS,
+    )
+
+    result = RightsGate(records, freshness=freshness).evaluate(context(item))
+
+    (reason,) = result.reasons
+    assert "http" not in reason.message
+    assert "x.example" not in reason.message
+    assert "asset-1" not in reason.message and "prov-1" not in reason.message
+    assert low.id not in reason.message
+
+
+def test_freshness_only_applies_to_the_move_to_publishing(
+    records: Records, freshness: Freshness
+) -> None:
+    item = new_item(ContentStatus.PREVIEW_READY)
+    records.records.append(record(item, "photo-3", RiskLevel.LOW))
+
+    result = RightsGate(records, freshness=freshness).evaluate(
+        context(item, ContentStatus.AWAITING_APPROVAL)
+    )
+
+    assert result.is_passed
+    assert freshness.assessed_asked == []
+
+
+def test_a_failing_freshness_source_blocks_through_evaluate_gates(
+    records: Records,
+) -> None:
+    class Broken:
+        def assessed_basis(self, rights_record_id: str):
+            raise RuntimeError("database is locked")
+
+        def current_basis(self, asset_ref: str, channel_id: str):
+            raise RuntimeError("database is locked")
+
+    item = new_item()
+    records.records.append(record(item, "photo-3", RiskLevel.LOW))
+
+    report = evaluate_gates([RightsGate(records, freshness=Broken())], context(item))
+
+    assert report.outcome is GateOutcome.BLOCK
+    assert [r.code for r in report.reasons] == ["gate.error"]

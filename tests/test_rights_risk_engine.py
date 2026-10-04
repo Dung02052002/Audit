@@ -59,6 +59,7 @@ from ai_youtube_agent.core.db.repositories.review import RightsRecordRepository
 from ai_youtube_agent.core.db.repositories.rights_assessment import (
     RightsAssessmentRepository,
 )
+from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.core.gates import GateContext, GateName
 from ai_youtube_agent.core.rights_gate import RightsGate, blocking_levels_for
 from factories import (
@@ -663,6 +664,129 @@ def test_the_time_is_read_inside_the_transaction(world: World) -> None:
     assert len(calls) == 1  # one time for the whole run
     assert len({a.created_at for a in run.assessments}) == 1
     assert {r.updated_at for r in world.records()} == {run.assessments[0].created_at}
+
+
+# the clock must not go backwards (G-078b)
+
+
+def engine_at(world: World, moment: datetime) -> RightsRiskEngine:
+    return RightsRiskEngine(world.database, AuditLog(world.sink), clock=lambda: moment)
+
+
+def test_a_clock_before_the_newest_assessment_is_a_plain_value_error(
+    world: World,
+) -> None:
+    asset = world.used(PUBLIC_DOMAIN)
+    first = world.assess().assessments[0]
+    world.provenance(asset, source_url="https://archive.example/a")
+    world.assess()  # same level: the record keeps the time of the first run
+    record = world.record_of(asset.id)
+    assert record.updated_at == first.created_at
+    rows = world.rows("rights_records", "rights_assessments")
+    events = len(world.sink.events())
+
+    with pytest.raises(ValueError, match="earlier") as caught:
+        engine_at(world, first.created_at).assess(world.item.id, actor=USER)
+
+    assert caught.value.__class__ is ValueError
+    assert not isinstance(caught.value, DomainError)
+    assert record.id in str(caught.value)
+    assert asset.id not in str(caught.value)
+    assert world.rows("rights_records", "rights_assessments") == rows
+    assert world.record_of(asset.id).updated_at == record.updated_at
+    assert len(world.sink.events()) == events
+
+
+def test_a_clock_before_a_record_update_is_a_plain_value_error(
+    world: World,
+) -> None:
+    asset = world.used(UNKNOWN)
+    record = world.record_of(asset.id)
+    world.update_record(record.with_risk_level(LOW, clock=world.clock))
+    updated_at = world.record_of(asset.id).updated_at
+    rows = world.rows("rights_records", "rights_assessments")
+    events = len(world.sink.events())
+
+    with pytest.raises(ValueError, match="earlier") as caught:
+        engine_at(world, T0).assess(world.item.id, actor=USER)
+
+    assert caught.value.__class__ is ValueError
+    assert not isinstance(caught.value, DomainError)
+    assert record.id in str(caught.value)
+    assert world.rows("rights_records", "rights_assessments") == rows
+    assert world.record_of(asset.id).updated_at == updated_at
+    assert world.count("rights_assessments") == 0
+    assert len(world.sink.events()) == events
+
+
+def test_a_bad_record_after_a_good_one_writes_nothing_for_either(
+    world: World,
+) -> None:
+    good = world.used(UNKNOWN)
+    late = world.used(PUBLIC_DOMAIN)
+    late_record = world.record_of(late.id)
+    world.update_record(late_record.with_risk_level(LOW, clock=lambda: FIXED))
+    rows = world.rows("rights_records", "rights_assessments")
+    events = len(world.sink.events())
+    before_clock = FIXED - timedelta(minutes=30)
+
+    with pytest.raises(ValueError, match="earlier") as caught:
+        engine_at(world, before_clock).assess(world.item.id, actor=USER)
+
+    assert late_record.id in str(caught.value)
+    assert world.record_of(good.id).id not in str(caught.value)
+    assert world.rows("rights_records", "rights_assessments") == rows
+    assert world.count("rights_assessments") == 0
+    assert world.record_of(good.id).risk_level is RiskLevel.UNKNOWN
+    assert len(world.sink.events()) == events
+
+
+def test_a_clock_equal_to_the_newest_time_is_allowed_and_idempotent(
+    world: World,
+) -> None:
+    asset = world.used(PUBLIC_DOMAIN)
+    engine = engine_at(world, FIXED)
+    first = engine.assess(world.item.id, actor=USER)
+    rows = world.rows("rights_records", "rights_assessments")
+    events = len(world.sink.events())
+    record = world.record_of(asset.id)
+    assert record.updated_at == FIXED
+    assert first.assessments[0].created_at == FIXED
+
+    second = engine.assess(world.item.id, actor=USER)
+
+    assert (first.changed, second.changed) == (1, 0)
+    assert second.assessments == first.assessments
+    assert world.rows("rights_records", "rights_assessments") == rows
+    assert len(world.sink.events()) == events
+
+
+def test_a_resolved_record_does_not_hold_the_clock_back(world: World) -> None:
+    asset = world.used(UNKNOWN)
+    resolved = world.record_of(asset.id).resolve(actor=USER, clock=lambda: FIXED)
+    world.update_record(resolved)
+    kept = world.used(GENERATED)
+
+    run = engine_at(world, FIXED - timedelta(minutes=30)).assess(
+        world.item.id, actor=USER
+    )
+
+    assert run.skipped_resolved == (resolved.id,)
+    assert [a.asset_id for a in run.assessments] == [kept.id]
+
+
+def test_a_naive_clock_is_still_a_value_error_with_an_assessed_record(
+    world: World,
+) -> None:
+    world.used(UNKNOWN)
+    world.assess()
+    rows = world.rows("rights_records", "rights_assessments")
+
+    with pytest.raises(ValueError, match="UTC") as caught:
+        engine_at(world, datetime(2026, 10, 4, 13, 0)).assess(world.item.id, actor=USER)
+
+    assert caught.value.__class__ is ValueError
+    assert world.rows("rights_records", "rights_assessments") == rows
 
 
 def test_a_failing_update_rolls_back_every_row(

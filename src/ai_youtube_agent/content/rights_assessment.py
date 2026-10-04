@@ -43,7 +43,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory
 from ai_youtube_agent.content.provenance import Provenance
@@ -161,6 +161,27 @@ class RightsAssessment:
             },
             "created_at": self.created_at.isoformat(),
         }
+
+
+class _Assets(Protocol):
+    def get(self, asset_id: str) -> Asset | None: ...
+
+
+class _Provenances(Protocol):
+    def latest(self, asset_id: str) -> Provenance | None: ...
+
+
+def current_facts(
+    assets: _Assets, provenances: _Provenances, asset_ref: str, channel_id: str
+) -> tuple[Asset | None, Provenance | None]:
+    """The facts a record is judged on: the asset of the ``asset_ref``, only when it
+    exists and is registered in the channel, and its latest provenance. The risk
+    engine and the publish gate's freshness check both read through this function,
+    so that they never disagree about what is current."""
+    asset = assets.get(asset_ref)
+    if asset is None or asset.channel_id != channel_id:
+        return None, None
+    return asset, provenances.latest(asset.id)
 
 
 def classify(

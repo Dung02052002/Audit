@@ -20,6 +20,9 @@ mock exists, and its ``check`` is the ``text_provider`` health check.
 (#070), ``OriginalityChecker`` (#071), ``ScriptValidator`` (#072),
 ``ScriptVersioner`` (#073), ``AssetRegistry`` (#076), ``ProvenanceRecorder``
 (#077) and ``RightsRiskEngine`` (#078) use rules only and need no provider.
+``PublishGate`` (G-078b) builds the approval, daily limit, rights and
+idempotency gates over the database, with the rights levels of
+``Settings.rights_block_levels``; the policy and kill switch gates join it later.
 """
 
 from ai_youtube_agent.content.asset_registry import AssetRegistry
@@ -56,6 +59,7 @@ from ai_youtube_agent.core.di import Container
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
+from ai_youtube_agent.core.publish_gate import PublishGate
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
 from ai_youtube_agent.providers.research import ResearchProvider
@@ -166,6 +170,9 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         RightsRiskEngine,
         lambda c: RightsRiskEngine(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        PublishGate, lambda c: PublishGate(c.resolve(Database), c.resolve(Settings))
     )
     return container
 

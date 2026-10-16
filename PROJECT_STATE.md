@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-05 (H-087 Voice Profile, after H-086 Voice Provider)
+Last updated: 2026-10-16 (H-088 TTS Job, after H-087 Voice Profile)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,23 +9,25 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 58cf011
+CURRENT_CHECKPOINT = 8b41c0b
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS
 LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = H-088 TTS Job
+NEXT_TASK          = H-089 Audio Artifact
 ```
 
 ## Next task
 
-**H-088 TTS Job** (Prompt Pack v8, Phase H Voice & Audio, prompt 88). It depends on H-087 (Voice Profile), which has PASSED.
+**H-089 Audio Artifact** (Prompt Pack v8, Phase H Voice & Audio, prompt 89). It depends on H-088 (TTS Job), which has PASSED.
 
-> Create resumable audio generation job.
+> Persist generated audio metadata, duration, provider and cost.
 
-Note: confirm the scope with the user (3-4 options per question) before implementing. Contracts available: `VoiceProfile.speech_request(text)` builds a `SpeechRequest` (every valid profile gives a valid request); the consumer must check `VoiceProfile.provider` against `SpeechSynthesizer.name`; `SpeechRequest.text` is at most 5000 characters, so long scripts need chunking; storage is #089, retry #091, cost #092. Pronunciation was deferred by H-087 (no field, no column).
+Note: confirm the scope with the user (3-4 options per question) before implementing. Contracts available: `TtsJobRunner.run(script, voice)` returns a `TtsResult` (merged WAV bytes, `audio/wav`, duration_ms, characters, format, attempts); chunk audio lives in a `ChunkStore` (only `InMemoryChunkStore` exists, so a durable store is #089's call); `AudioMetadata.create(artifact, script, voice, duration_ms=)` and `ArtifactKind.AUDIO` exist; cost is #092. Open from H-088: a job whose provider changes WAV format between attempts stays failed (store clear or voice version bump needed); take-over has no fence on the chunk store (a late put from a stale worker can spoil a later rebuild; key chunks by attempt in #089); two concurrent first runs give a raw `sqlite3.IntegrityError`.
+
+H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 
 H-087 Voice Profile has PASSED (pack #087 with a spec the user pasted on 2026-10-05; scope confirmed after a read-only survey). User decisions: pronunciation is deferred as a scope deviation (no evidence of its shape, no column in `voice_profiles`, persistence and migration out of scope); Unicode category Cc characters are rejected in `voice_id` and `speaking_style`; a `speech_request(text)` bridge is added; `provider` uses `fullmatch` too. `content/voice.py` only: `voice_id` non-empty, no whitespace, at most `MAX_VOICE_ID` (200, imported from `providers/speech_synthesis.py`, no duplicated constant) and no Cc; `language` `LANGUAGE_TAG_PATTERN.fullmatch` (same set, a trailing newline rejected); `speaking_style` None or non-blank, at most `MAX_STYLE` (200) after the existing strip, no Cc; `_require_provider` (shared with `AudioMetadata`) uses `fullmatch`; error messages name the field and no longer echo the value; `VoiceProfile.speech_request(text) -> SpeechRequest` passes voice id, language and style unchanged, calls no provider; stored rows breaking the tighter rules now fail to load (no real data exists). H-086 contracts, providers, bootstrap, config, repositories and migrations unchanged. Routing: NORMAL (score 6), planner and coder sonnet/medium, reviewer off by policy; the main session self-reviewed with the spec's checklist: no blocking or should-fix; minor: the length and whitespace checks exist in both `VoiceProfile` and `SpeechRequest` (constants shared, the profile is stricter, so a valid profile always gives a valid request); `AudioMetadata.provider` is tightened as well (intended); old rows that break the rules fail on load. Tests: `tests/test_voice.py` 97 (42 new); affected `tests/test_speech_synthesis.py`, `tests/test_repositories.py` and `tests/test_brand_settings.py` 191 passed (every test module that touches the voice entities, directly or through `tests/factories.py`); full suite NOT RUN (a change confined to `content/voice.py` with no bootstrap, config, contract or schema change; 6016 tests collected); migration chain NOT RUN; ruff and `uv build` pass. Agent cost: about 102k tokens over 2 runs.
 

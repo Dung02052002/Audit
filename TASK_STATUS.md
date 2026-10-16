@@ -163,6 +163,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | G-085 | Rights Tests | G-10 | PASS. User spec (2026-10-04), test-only: 104 tests in `tests/test_rights_scenarios.py` over the real asset, provenance, risk engine, rights gate and publish gate services: safe/uncertain/blocked scenarios with literal levels and codes, `{high}` vs `{high, medium}`, stale/outdated/never-assessed/reassessment, read-only snapshots, rights + policy blocks, `ensure_can_publish`, planted secrets. No production change, no bug found. Phase G complete. |
 | H-086 | Voice Provider | G-11 | PASS. User spec and decisions (2026-10-04): sync `SpeechSynthesizer` Protocol in `providers/speech_synthesis.py` (request/result value objects, `VoiceErrorCode`, `SpeechSynthesisError`), deterministic WAV sine `MockSpeechSynthesizer`, `Settings.voice_provider` (mock) registered in the bootstrap with a `voice_provider` health check; no consumer, HTTP or storage. 93 tests in `tests/test_speech_synthesis.py`, 10 cases in `tests/test_config.py`. |
 | H-087 | Voice Profile | H-1 | PASS. User spec and decisions (2026-10-05): `VoiceProfile` in `content/voice.py` validates like `SpeechRequest` (200-character `voice_id`/`speaking_style` limits from `providers/speech_synthesis.py`, Cc characters rejected, `language` and `provider` fullmatch, no values in errors) and gains `speech_request(text)`; pronunciation deferred (scope deviation: no evidence, no column, persistence out of scope). 97 tests in `tests/test_voice.py` (42 new). |
+| H-088 | TTS Job | H-2 | PASS. User decisions (2026-10-16): `TtsJobRunner` in `content/tts_job.py` reuses `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` in `pipeline/idempotency.py`, no migration); one chunk per script section, split at sentence ends, whitespace, then a hard cut (each 1..5000 characters); chunk audio in a `ChunkStore` Protocol (`InMemoryChunkStore`), scalar checkpoints `audio.planned`, `audio.chunk_done`, `audio.completed`; resume skips chunks whose stored bytes match; one merged PCM WAV, duration = sum of chunk durations; `take_over` recovers a stuck running job; succeeded rerun rebuilds without a provider call; no audit. 53 tests in `tests/test_tts_job.py`. |
 
 ## Current
 
@@ -257,4 +258,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - G-085 Rights Tests has PASSED. Phase G is complete.
 - H-086 Voice Provider has PASSED.
 - H-087 Voice Profile has PASSED.
-- Next task: **H-088 TTS Job**. It is NOT_STARTED.
+- H-088 TTS Job has PASSED.
+- Next task: **H-089 Audio Artifact**. It is NOT_STARTED.

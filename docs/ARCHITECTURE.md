@@ -191,6 +191,10 @@ Rights & Policy (C6): register assets #076 → provenance #077 → rights risk #
   │        → policy check #080 → AI disclosure #081 → reports #082, #083
   ▼
 Voice (C7): TTS job #088 → audio artifact #089 → validate #090
+  │        (TTS job: `content/tts_job.py`, a resumable AIJob `audio.generate` keyed by
+  │         script + voice profile version; one chunk per section (split at 5,000
+  │         characters), chunk audio in a ChunkStore, scalar checkpoints only, one
+  │         merged PCM WAV; a failed job resumes the missing chunks #088)
   ▼
 Production (C8 Shorts or C9 LongForm): timeline → subtitles → audio mix → render → thumbnail → metadata
   │  Artifact bundle #103 / #114 (MP4 + subtitles + thumbnail + metadata + reports), versioned in C2

@@ -11,6 +11,11 @@ key for the same action. The recipes were approved by the user on 2026-10-01:
 - ``publish_key(item_id, approval_request_id)``: ``pub:`` plus the sha256 of
   ``publish``, the item id and the approved request id, so a new approval
   gives a new key.
+- ``audio_key(script_id, voice_profile_id, voice_profile_version)``: ``tts:``
+  plus the sha256 of ``AUDIO_KIND`` (``audio.generate``), the script version id,
+  the voice profile id and its version (#088). The same script voiced with the
+  same profile version resumes the same TTS job; a new script version or a
+  changed voice gives a new one.
 
 The parts are hashed as a JSON array, so no separator inside a part can make
 two different actions collide. #151 builds on ``publish_key``.
@@ -24,6 +29,8 @@ from ai_youtube_agent.core.content_item import ContentItem
 GENERATION_KIND = "content.generate"
 GENERATION_PREFIX = "gen:"
 PUBLISH_PREFIX = "pub:"
+AUDIO_KIND = "audio.generate"
+AUDIO_PREFIX = "tts:"
 
 
 def generation_key(item: ContentItem, kind: str = GENERATION_KIND) -> str:
@@ -34,6 +41,12 @@ def generation_key(item: ContentItem, kind: str = GENERATION_KIND) -> str:
 
 def publish_key(content_item_id: str, approval_request_id: str) -> str:
     return PUBLISH_PREFIX + _digest("publish", content_item_id, approval_request_id)
+
+
+def audio_key(script_id: str, voice_profile_id: str, voice_profile_version: int) -> str:
+    return AUDIO_PREFIX + _digest(
+        AUDIO_KIND, script_id, voice_profile_id, str(voice_profile_version)
+    )
 
 
 def _digest(*parts: str) -> str:

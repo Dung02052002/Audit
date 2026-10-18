@@ -35,7 +35,17 @@ needs its tests run in the later test phase; those tests are listed per task in
 | J-108 B-roll Manager | `tests/test_broll_manager.py` (new), `tests/test_bootstrap.py`; regression `tests/test_longform_project.py`, `tests/test_rights_risk_engine.py` |
 | J-109 LongForm Subtitles | `tests/test_longform_subtitles.py` (new), `tests/test_bootstrap.py`; regression `tests/test_shorts_subtitles.py`, `tests/test_version_invalidation.py` |
 | J-110 LongForm Audio Mix | `tests/test_longform_audio_mix.py` (new), `tests/test_bootstrap.py`; regression `tests/test_audio_mix.py`, `tests/test_audio_validation.py`, `tests/test_shorts_audio_mix.py` |
-| Whole batch | full suite once (Settings, bootstrap, shared core and `artifact_storage.py` changed); migration chain once (I-094 adds 0027, J-105 adds 0028); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
+| J-111 LongForm Render | `tests/test_longform_render_scenarios.py` (new), `tests/test_bootstrap.py`; regression `tests/test_longform_audio_mix.py`, `tests/test_video_render.py` |
+| J-112 LongForm Thumbnail | `tests/test_longform_render_scenarios.py` (new), `tests/test_bootstrap.py`; regression `tests/test_shorts_thumbnail.py` |
+| J-113 LongForm Metadata | `tests/test_longform_render_scenarios.py` (new), `tests/test_bootstrap.py`; regression `tests/test_shorts_metadata.py`, `tests/test_longform_chapters.py` |
+| J-114 LongForm Artifact Bundle | `tests/test_longform_render_scenarios.py` (new), `tests/test_bootstrap.py`; regression `tests/test_shorts_bundle.py`, `tests/test_rights_report.py`, `tests/test_policy_report.py` |
+| J-115 LongForm Render Tests | `tests/test_longform_render_scenarios.py` (new); full LongForm production suite |
+| K-116 Test Harness | `tests/test_qc_video_checks.py` (new), `tests/test_bootstrap.py` |
+| K-117 Container Test | `tests/test_qc_video_checks.py` (new) |
+| K-118 Resolution Test | `tests/test_qc_video_checks.py` (new) |
+| K-119 FPS Test | `tests/test_qc_video_checks.py` (new) |
+| K-120 Duration Test | `tests/test_qc_video_checks.py` (new) |
+| Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
 

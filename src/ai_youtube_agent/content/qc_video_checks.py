@@ -8,6 +8,9 @@ Concrete QC check implementations that inspect rendered MP4 video files:
   configured targets.
 - K-119 FPS Test (``video.fps``): validates frame rate against configured target
   and standard video production rates.
+- K-120 Duration Test (``video.duration``): validates content-type duration limits
+  (Shorts 1..180s, LongForm 181..14400s) and synchronization with audio within
+  frame tolerance.
 """
 
 import struct
@@ -22,6 +25,7 @@ from ai_youtube_agent.providers.video_render import Mp4Info, probe_mp4
 CONTAINER_CHECK_NAME: Final[str] = "video.container"
 RESOLUTION_CHECK_NAME: Final[str] = "video.resolution"
 FPS_CHECK_NAME: Final[str] = "video.fps"
+DURATION_CHECK_NAME: Final[str] = "video.duration"
 
 KNOWN_MP4_BRANDS: Final[frozenset[str]] = frozenset(
     {"isom", "iso2", "mp41", "mp42", "avc1", "qt  ", "dash", "M4V "}
@@ -215,4 +219,62 @@ def check_fps(context: VideoInspectionContext) -> QCCheck:
         name=FPS_CHECK_NAME,
         status=QCStatus.PASS,
         detail=f"Valid frame rate: {fps:.0f} fps",
+    )
+
+
+def check_duration(context: VideoInspectionContext) -> QCCheck:
+    """Validate duration constraints for content type and sync (Prompt #120)."""
+    try:
+        info = probe_mp4(context.video_data)
+        duration_ms = info.duration_ms
+    except Exception as error:
+        return QCCheck(
+            name=DURATION_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Could not read video duration: {error}",
+        )
+
+    # 1. Content type boundary checks
+    if context.content_type == ContentType.SHORTS:
+        if duration_ms < 1000:
+            return QCCheck(
+                name=DURATION_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Shorts duration {duration_ms} ms is under 1 second minimum",
+            )
+        if duration_ms > context.max_duration_ms:
+            return QCCheck(
+                name=DURATION_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Shorts duration {duration_ms} ms exceeds maximum {context.max_duration_ms} ms",
+            )
+    else:
+        if duration_ms < 180_000:
+            return QCCheck(
+                name=DURATION_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"LongForm duration {duration_ms} ms is under 180 seconds minimum",
+            )
+        if duration_ms > context.max_duration_ms:
+            return QCCheck(
+                name=DURATION_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"LongForm duration {duration_ms} ms exceeds maximum {context.max_duration_ms} ms",
+            )
+
+    # 2. Audio sync check within frame tolerance
+    if context.expected_duration_ms > 0:
+        tolerance_ms = max(250, 2000 // context.expected_fps)
+        drift = abs(duration_ms - context.expected_duration_ms)
+        if drift > tolerance_ms:
+            return QCCheck(
+                name=DURATION_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Video duration {duration_ms} ms differs from audio {context.expected_duration_ms} ms by {drift} ms (tolerance: {tolerance_ms} ms)",
+            )
+
+    return QCCheck(
+        name=DURATION_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=f"Valid duration: {duration_ms} ms ({duration_ms / 1000:.1f}s)",
     )

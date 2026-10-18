@@ -18,6 +18,23 @@ health check. Since #061 it is wrapped in ``ResearchCache``.
 mock exists, and its ``check`` is the ``text_provider`` health check.
 ``SpeechSynthesizer`` (#086) is chosen by ``Settings.voice_provider``; only
 the mock exists, and its ``check`` is the ``voice_provider`` health check.
+``ArtifactStorage`` (#089) is ``LocalFileStorage`` at ``Settings.artifact_dir``
+(created on the first write); ``AudioArtifactRecorder`` (#089) stores audio
+through it and ``AudioValidator`` (#090) checks the stored audio.
+``AudioCostRecorder`` (#092) gets ``Settings.tts_price_per_1k_characters`` and
+``Settings.tts_cost_currency``. ``TtsJobRunner`` (#088) is not registered yet:
+its only chunk store keeps chunks in memory.
+``ShortsProjectService`` (#094) makes and keeps the Shorts project of a content
+item over the database. ``ShortsSubtitleRecorder`` (#098) stores its SRT
+subtitles through the same ``ArtifactStorage``. ``ShortsAudioMixer`` (#099)
+mixes the voice with the music and effects of a project in memory, reading the
+files through that storage; it stores nothing.
+``VideoRenderer`` (#100) is chosen by ``Settings.render_provider``: the mock
+(default) or ``FfmpegVideoRenderer`` with ``Settings.ffmpeg_binary``,
+``Settings.render_timeout_seconds`` and ``Settings.render_font_file``; its
+``check`` is the ``render_provider`` health check. ``ShortsRenderService``
+(#100) renders a ready project through it, with the mix of
+``ShortsAudioMixer``, and stores the MP4 through the ``ArtifactStorage``.
 ``ClaimExtractor`` (#068), ``EvidenceMatcher`` (#069), ``FactChecker``
 (#070), ``OriginalityChecker`` (#071), ``ScriptValidator`` (#072),
 ``ScriptVersioner`` (#073), ``AssetRegistry`` (#076), ``ProvenanceRecorder``
@@ -34,6 +51,9 @@ resolved); the kill switch gate joins it later.
 """
 
 from ai_youtube_agent.content.asset_registry import AssetRegistry
+from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
+from ai_youtube_agent.content.audio_cost import AudioCostRecorder
+from ai_youtube_agent.content.audio_validation import AudioValidator
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
@@ -49,15 +69,21 @@ from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
 from ai_youtube_agent.content.script_validator import ScriptValidator
 from ai_youtube_agent.content.script_versioner import ScriptVersioner
+from ai_youtube_agent.content.shorts_audio_mix import ShortsAudioMixer
+from ai_youtube_agent.content.shorts_render import ShortsRenderService
 from ai_youtube_agent.content.shorts_script_generator import ShortsScriptGenerator
+from ai_youtube_agent.content.shorts_service import ShortsProjectService
+from ai_youtube_agent.content.shorts_subtitles import ShortsSubtitleRecorder
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.content.topic_extractor import TopicExtractor
 from ai_youtube_agent.content.topic_scorer import TopicScorer
+from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
 from ai_youtube_agent.core.config import (
     Environment,
+    RenderProviderKind,
     ResearchProviderKind,
     Settings,
     TextProviderKind,
@@ -72,13 +98,16 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
+from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
+from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer
 from ai_youtube_agent.providers.research import ResearchProvider
 from ai_youtube_agent.providers.research_cache import ResearchCache
 from ai_youtube_agent.providers.speech_synthesis import SpeechSynthesizer
 from ai_youtube_agent.providers.text_generation import TextGenerator
+from ai_youtube_agent.providers.video_render import VideoRenderer
 
 logger = get_logger(__name__)
 
@@ -196,6 +225,58 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(PolicyReporter, lambda c: PolicyReporter(c.resolve(Database)))
     container.register(SpeechSynthesizer, _build_speech_synthesizer)
     container.register(
+        ArtifactStorage,
+        lambda c: LocalFileStorage(c.resolve(Settings).artifact_dir),
+    )
+    container.register(
+        AudioArtifactRecorder,
+        lambda c: AudioArtifactRecorder(
+            c.resolve(Database), c.resolve(ArtifactStorage), c.resolve(AuditLog)
+        ),
+    )
+    container.register(
+        AudioValidator,
+        lambda c: AudioValidator(
+            c.resolve(Database), c.resolve(ArtifactStorage), c.resolve(AuditLog)
+        ),
+    )
+    container.register(
+        AudioCostRecorder,
+        lambda c: AudioCostRecorder(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            price_per_1k=c.resolve(Settings).tts_price_per_1k_characters,
+            currency=c.resolve(Settings).tts_cost_currency,
+        ),
+    )
+    container.register(
+        ShortsProjectService,
+        lambda c: ShortsProjectService(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        ShortsSubtitleRecorder,
+        lambda c: ShortsSubtitleRecorder(
+            c.resolve(Database), c.resolve(ArtifactStorage), c.resolve(AuditLog)
+        ),
+    )
+    container.register(
+        ShortsAudioMixer,
+        lambda c: ShortsAudioMixer(
+            c.resolve(Database), c.resolve(ArtifactStorage), c.resolve(AuditLog)
+        ),
+    )
+    container.register(VideoRenderer, _build_video_renderer)
+    container.register(
+        ShortsRenderService,
+        lambda c: ShortsRenderService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(VideoRenderer),
+            c.resolve(ShortsAudioMixer),
+        ),
+    )
+    container.register(
         PublishGate, lambda c: PublishGate(c.resolve(Database), c.resolve(Settings))
     )
     return container
@@ -223,6 +304,20 @@ def _build_speech_synthesizer(container: Container) -> SpeechSynthesizer:
     if kind is VoiceProviderKind.MOCK:
         return MockSpeechSynthesizer()
     raise ValueError(f"unknown voice provider {kind!r}")
+
+
+def _build_video_renderer(container: Container) -> VideoRenderer:
+    settings = container.resolve(Settings)
+    kind = settings.render_provider
+    if kind is RenderProviderKind.MOCK:
+        return MockVideoRenderer()
+    if kind is RenderProviderKind.FFMPEG:
+        return FfmpegVideoRenderer(
+            binary=settings.ffmpeg_binary,
+            timeout_s=settings.render_timeout_seconds,
+            font_file=settings.render_font_file,
+        )
+    raise ValueError(f"unknown render provider {kind!r}")
 
 
 def _build_audit_sink(container: Container) -> AuditSink:
@@ -282,6 +377,13 @@ def _build_health_registry(container: Container) -> HealthRegistry:
             "voice_provider",
             CheckKind.PROVIDER,
             lambda: container.resolve(SpeechSynthesizer).check(),
+        )
+    )
+    registry.register(
+        HealthCheck(
+            "render_provider",
+            CheckKind.PROVIDER,
+            lambda: container.resolve(VideoRenderer).check(),
         )
     )
     return registry

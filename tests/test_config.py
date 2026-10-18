@@ -1,13 +1,17 @@
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from ai_youtube_agent.content.strategy import CURRENCY_PATTERN
 from ai_youtube_agent.core.config import (
+    DEFAULT_ARTIFACT_DIR,
     ENV_PREFIX,
     ENVIRONMENT_VARIABLE,
     Environment,
+    RenderProviderKind,
     RightsBlockLevel,
     Settings,
     VoiceProviderKind,
@@ -377,3 +381,252 @@ def test_env_example_documents_the_voice_provider(tmp_path: Path) -> None:
     # With the commented line switched on, the example file still parses.
     (tmp_path / ".env").write_text(example.replace(line, line[2:]))
     assert load_settings(tmp_path).voice_provider is VoiceProviderKind.MOCK
+
+
+# Artifact folder (H-089)
+
+ARTIFACT_DIR_VARIABLE = f"{ENV_PREFIX}ARTIFACT_DIR"
+
+
+def test_artifact_dir_defaults_to_data_artifacts(tmp_path: Path) -> None:
+    settings = load_settings(tmp_path)
+
+    assert settings.artifact_dir == DEFAULT_ARTIFACT_DIR == Path("data/artifacts")
+    assert not (tmp_path / "data").exists()
+
+
+def test_artifact_dir_reads_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(ARTIFACT_DIR_VARIABLE, str(tmp_path / "files"))
+
+    assert load_settings(tmp_path).artifact_dir == tmp_path / "files"
+
+
+def test_artifact_dir_reads_an_env_file(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(f"{ARTIFACT_DIR_VARIABLE}=media/out\n")
+
+    assert load_settings(tmp_path).artifact_dir == Path("media/out")
+
+
+def test_artifact_dir_keeps_the_database_path(tmp_path: Path) -> None:
+    settings = Settings(artifact_dir=tmp_path / "files")
+
+    assert settings.database_path == Path("data/ai_youtube_agent.db")
+    assert settings.artifact_dir == tmp_path / "files"
+
+
+def test_env_example_documents_the_artifact_dir(tmp_path: Path) -> None:
+    example = (REPO_ROOT / ".env.example").read_text()
+    line = f"# {ARTIFACT_DIR_VARIABLE}=data/artifacts"
+    assert line in example
+
+    # With the commented line switched on, the example file still parses.
+    (tmp_path / ".env").write_text(example.replace(line, line[2:]))
+    assert load_settings(tmp_path).artifact_dir == Path("data/artifacts")
+
+
+# TTS price and cost currency (H-092)
+
+TTS_PRICE_VARIABLE = f"{ENV_PREFIX}TTS_PRICE_PER_1K_CHARACTERS"
+TTS_CURRENCY_VARIABLE = f"{ENV_PREFIX}TTS_COST_CURRENCY"
+
+
+def test_tts_price_and_currency_have_defaults(tmp_path: Path) -> None:
+    settings = load_settings(tmp_path)
+
+    assert settings.tts_price_per_1k_characters == Decimal("0")
+    assert isinstance(settings.tts_price_per_1k_characters, Decimal)
+    assert settings.tts_cost_currency == "USD"
+
+
+def test_tts_price_and_currency_read_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(TTS_PRICE_VARIABLE, "0.015")
+    monkeypatch.setenv(TTS_CURRENCY_VARIABLE, "EUR")
+
+    settings = load_settings(tmp_path)
+
+    assert settings.tts_price_per_1k_characters == Decimal("0.015")
+    assert settings.tts_cost_currency == "EUR"
+
+
+def test_tts_price_and_currency_read_an_env_file(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(
+        f"{TTS_PRICE_VARIABLE}=2\n{TTS_CURRENCY_VARIABLE}=VND\n"
+    )
+
+    settings = load_settings(tmp_path)
+
+    assert settings.tts_price_per_1k_characters == Decimal("2")
+    assert settings.tts_cost_currency == "VND"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [0, 3, "0", "0.000001", "999999.999999", Decimal("0.015")],
+)
+def test_tts_price_accepts_valid_values(value) -> None:
+    settings = Settings(tts_price_per_1k_characters=value)
+
+    assert settings.tts_price_per_1k_characters == Decimal(str(value))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        -1,
+        "-0.01",
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "abc",
+        "",
+        None,
+        True,
+        False,
+        1.5,
+        0.0,
+        "0.0000001",
+        "1000000.000000",
+    ],
+)
+def test_tts_price_refuses_bad_values(value) -> None:
+    with pytest.raises(ValidationError, match="tts_price_per_1k_characters"):
+        Settings(tts_price_per_1k_characters=value)
+
+
+@pytest.mark.parametrize("text", ["-1", "NaN", "Infinity", "abc", "true", "1e400"])
+def test_an_invalid_tts_price_variable_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
+) -> None:
+    monkeypatch.setenv(TTS_PRICE_VARIABLE, text)
+
+    with pytest.raises(ValidationError, match="tts_price_per_1k_characters"):
+        load_settings(tmp_path)
+
+
+@pytest.mark.parametrize("value", ["usd", "US", "USDD", "", "U1D", "US ", None, 1])
+def test_tts_cost_currency_refuses_bad_values(value) -> None:
+    with pytest.raises(ValidationError, match="tts_cost_currency"):
+        Settings(tts_cost_currency=value)
+
+
+def test_an_invalid_tts_cost_currency_variable_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(TTS_CURRENCY_VARIABLE, "usd")
+
+    with pytest.raises(ValidationError, match="tts_cost_currency"):
+        load_settings(tmp_path)
+
+
+def test_tts_cost_currency_pattern_equals_the_strategy_currency_pattern() -> None:
+    patterns = [
+        getattr(item, "pattern", None)
+        for item in Settings.model_fields["tts_cost_currency"].metadata
+    ]
+
+    assert CURRENCY_PATTERN.pattern in patterns
+
+
+def test_env_example_documents_the_tts_price_and_currency(tmp_path: Path) -> None:
+    example = (REPO_ROOT / ".env.example").read_text()
+    price_line = f"# {TTS_PRICE_VARIABLE}=0"
+    currency_line = f"# {TTS_CURRENCY_VARIABLE}=USD"
+    assert price_line in example
+    assert currency_line in example
+
+    # With the commented lines switched on, the example file still parses.
+    switched = example.replace(price_line, price_line[2:]).replace(
+        currency_line, currency_line[2:]
+    )
+    (tmp_path / ".env").write_text(switched)
+    settings = load_settings(tmp_path)
+    assert settings.tts_price_per_1k_characters == Decimal("0")
+    assert settings.tts_cost_currency == "USD"
+
+
+# Video renderer (I-100)
+
+RENDER_PROVIDER_VARIABLE = f"{ENV_PREFIX}RENDER_PROVIDER"
+FFMPEG_BINARY_VARIABLE = f"{ENV_PREFIX}FFMPEG_BINARY"
+RENDER_TIMEOUT_VARIABLE = f"{ENV_PREFIX}RENDER_TIMEOUT_SECONDS"
+RENDER_FONT_VARIABLE = f"{ENV_PREFIX}RENDER_FONT_FILE"
+
+
+def test_render_settings_have_defaults(tmp_path: Path) -> None:
+    settings = load_settings(tmp_path)
+
+    assert settings.render_provider is RenderProviderKind.MOCK
+    assert settings.ffmpeg_binary == "ffmpeg"
+    assert settings.render_timeout_seconds == 600
+    assert settings.render_font_file is None
+
+
+def test_render_settings_read_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(RENDER_PROVIDER_VARIABLE, "ffmpeg")
+    monkeypatch.setenv(FFMPEG_BINARY_VARIABLE, "/opt/ffmpeg/bin/ffmpeg")
+    monkeypatch.setenv(RENDER_TIMEOUT_VARIABLE, "120")
+    monkeypatch.setenv(RENDER_FONT_VARIABLE, "fonts/captions.ttf")
+
+    settings = load_settings(tmp_path)
+
+    assert settings.render_provider is RenderProviderKind.FFMPEG
+    assert settings.ffmpeg_binary == "/opt/ffmpeg/bin/ffmpeg"
+    assert settings.render_timeout_seconds == 120
+    assert settings.render_font_file == Path("fonts/captions.ttf")
+
+
+def test_render_provider_reads_an_env_file(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(f"{RENDER_PROVIDER_VARIABLE}=ffmpeg\n")
+
+    assert load_settings(tmp_path).render_provider is RenderProviderKind.FFMPEG
+
+
+@pytest.mark.parametrize("value", ["blender", "", "MOCK", "ffmpeg ", None, 1])
+def test_render_provider_refuses_unknown_kinds(value) -> None:
+    with pytest.raises(ValidationError, match="render_provider"):
+        Settings(render_provider=value)
+
+
+@pytest.mark.parametrize("value", ["", " ", "   ", None])
+def test_ffmpeg_binary_refuses_blank_values(value) -> None:
+    with pytest.raises(ValidationError, match="ffmpeg_binary"):
+        Settings(ffmpeg_binary=value)
+
+
+@pytest.mark.parametrize("value", [1, 600, 7200, "30"])
+def test_render_timeout_accepts_whole_seconds(value) -> None:
+    assert Settings(render_timeout_seconds=value).render_timeout_seconds == int(value)
+
+
+@pytest.mark.parametrize("value", [0, -1, 7201, True, False, 1.5, "abc", None])
+def test_render_timeout_refuses_bad_values(value) -> None:
+    with pytest.raises(ValidationError, match="render_timeout_seconds"):
+        Settings(render_timeout_seconds=value)
+
+
+def test_env_example_documents_the_render_settings(tmp_path: Path) -> None:
+    example = (REPO_ROOT / ".env.example").read_text()
+    lines = [
+        f"# {RENDER_PROVIDER_VARIABLE}=mock",
+        f"# {FFMPEG_BINARY_VARIABLE}=ffmpeg",
+        f"# {RENDER_TIMEOUT_VARIABLE}=600",
+        f"# {RENDER_FONT_VARIABLE}=fonts/captions.ttf",
+    ]
+    for line in lines:
+        assert line in example
+
+    # With the commented lines switched on, the example file still parses.
+    for line in lines:
+        example = example.replace(line, line[2:])
+    (tmp_path / ".env").write_text(example)
+    settings = load_settings(tmp_path)
+    assert settings.render_provider is RenderProviderKind.MOCK
+    assert settings.ffmpeg_binary == "ffmpeg"
+    assert settings.render_timeout_seconds == 600
+    assert settings.render_font_file == Path("fonts/captions.ttf")

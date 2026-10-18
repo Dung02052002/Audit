@@ -130,6 +130,15 @@ class CostRecordRepository(Repository):
         row = self._one("SELECT * FROM cost_records WHERE id = ?", (record_id,))
         return _cost(row) if row else None
 
+    def find_by_ref(self, category: CostCategory, ref: str) -> CostRecord | None:
+        """The earliest cost of ``category`` that names ``ref``, or None."""
+        row = self._one(
+            "SELECT * FROM cost_records WHERE category = ? AND ref = ? "
+            "ORDER BY incurred_at, id LIMIT 1",
+            (category.value, ref),
+        )
+        return _cost(row) if row else None
+
     def list_by_channel(
         self,
         channel_id: str,

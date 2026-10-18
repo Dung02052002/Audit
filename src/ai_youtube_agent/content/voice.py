@@ -14,7 +14,8 @@ Two frozen entities:
   the ``Artifact`` of kind audio that holds the file (uri, checksum, size and
   media type), the exact ``Script`` version that was voiced, and the voice
   profile id and version used, and it records the provider and the duration in
-  whole milliseconds.
+  whole milliseconds. ``AudioArtifactRecorder`` (#089,
+  ``content/audio_artifact.py``) stores it with the artifact of a TTS job.
 
 The rules match the provider request: ``voice_id`` has no whitespace and no
 control characters and is at most 200 characters; ``language`` must fully match

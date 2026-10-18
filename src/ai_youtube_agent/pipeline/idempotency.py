@@ -16,6 +16,11 @@ key for the same action. The recipes were approved by the user on 2026-10-01:
   the voice profile id and its version (#088). The same script voiced with the
   same profile version resumes the same TTS job; a new script version or a
   changed voice gives a new one.
+- ``render_key(content_item_id, input_sha256, version)``: ``rnd:`` plus the
+  sha256 of ``RENDER_KIND`` (``video.render``), the item id, the sha256 of
+  everything the render reads (#100) and the VIDEO artifact version the render
+  would create. The same inputs on top of the same latest video resume the
+  same render job; new inputs or a newer latest video give a new one.
 
 The parts are hashed as a JSON array, so no separator inside a part can make
 two different actions collide. #151 builds on ``publish_key``.
@@ -31,6 +36,8 @@ GENERATION_PREFIX = "gen:"
 PUBLISH_PREFIX = "pub:"
 AUDIO_KIND = "audio.generate"
 AUDIO_PREFIX = "tts:"
+RENDER_KIND = "video.render"
+RENDER_PREFIX = "rnd:"
 
 
 def generation_key(item: ContentItem, kind: str = GENERATION_KIND) -> str:
@@ -46,6 +53,12 @@ def publish_key(content_item_id: str, approval_request_id: str) -> str:
 def audio_key(script_id: str, voice_profile_id: str, voice_profile_version: int) -> str:
     return AUDIO_PREFIX + _digest(
         AUDIO_KIND, script_id, voice_profile_id, str(voice_profile_version)
+    )
+
+
+def render_key(content_item_id: str, input_sha256: str, version: int) -> str:
+    return RENDER_PREFIX + _digest(
+        RENDER_KIND, content_item_id, input_sha256, str(version)
     )
 
 

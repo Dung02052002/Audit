@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-16 (H-088 TTS Job, after H-087 Voice Profile)
+Last updated: 2026-10-18 (BUILD-FIRST: up to I-100 implemented untested)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -11,21 +11,37 @@ PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
 CURRENT_CHECKPOINT = 8b41c0b
 BASELINE_STATUS    = CLEAN
-TEST_STATUS        = PASS
+TEST_STATUS        = PASS at 8b41c0b; DEFERRED for the uncommitted BUILD-FIRST work
 LINT_STATUS        = PASS
 BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-NEXT_TASK          = H-089 Audio Artifact
+BUILD_MODE         = BUILD-FIRST (user order 2026-10-16: no tests, lint, format or build until the user asks)
+UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED); all uncommitted
+NEXT_TASK          = I-101 Shorts Thumbnail
 ```
 
 ## Next task
 
-**H-089 Audio Artifact** (Prompt Pack v8, Phase H Voice & Audio, prompt 89). It depends on H-088 (TTS Job), which has PASSED.
+**BUILD-FIRST batch (user order, 2026-10-16/17).** Up to 10 tasks per batch, no tests, lint, format or build, nothing committed (the green gate is deferred), status `IMPLEMENTED_UNTESTED` or `STATIC_REVIEWED_UNTESTED`, never PASS. The user chose to stop the first batch before Phase I (I-094 Shorts Project needs scope decisions). Decisions for the batch: local file storage under `Settings.artifact_dir` (#089), TTS price per 1000 characters in Settings with a currency that must match the channel budget currency (#092), 3 attempts per chunk with 1 s and 2 s backoff (#091). Open risks, technical debt and the tests to run later: `docs/TECH_DEBT.md`.
 
-> Persist generated audio metadata, duration, provider and cost.
+H-089 Audio Artifact, H-090 Audio Validation, H-091 Audio Retry and H-092 Audio Cost are STATIC_REVIEWED_UNTESTED, and H-093 Voice Tests is IMPLEMENTED_UNTESTED (see `TASK_STATUS.md`). Phase H is implemented; none of it is verified and nothing is committed. Before the next checkpoint: run the tests listed in `docs/TECH_DEBT.md`, the full suite once, ruff, format and `uv build`, then commit.
 
-Note: confirm the scope with the user (3-4 options per question) before implementing. Contracts available: `TtsJobRunner.run(script, voice)` returns a `TtsResult` (merged WAV bytes, `audio/wav`, duration_ms, characters, format, attempts); chunk audio lives in a `ChunkStore` (only `InMemoryChunkStore` exists, so a durable store is #089's call); `AudioMetadata.create(artifact, script, voice, duration_ms=)` and `ArtifactKind.AUDIO` exist; cost is #092. Open from H-088: a job whose provider changes WAV format between attempts stays failed (store clear or voice version bump needed); take-over has no fence on the chunk store (a late put from a stale worker can spoil a later rebuild; key chunks by attempt in #089); two concurrent first runs give a raw `sqlite3.IntegrityError`.
+I-094 Shorts Project is IMPLEMENTED_UNTESTED (design defaults D1-D5 accepted by the user on 2026-10-17; config, timeline envelope, entity, migration 0027, repository, service, bootstrap; see `TASK_STATUS.md`). Routing: COMPLEX (score 13), planner and coder sonnet/high, reviewer opus/high skipped in BUILD-FIRST (main-session read-through). The first coder run was interrupted when the previous session ended; a fresh coder finished it.
+
+I-095 Shorts Timeline is IMPLEMENTED_UNTESTED (batch 2; scenes, `plan_timeline`, the planned status). Routing: NORMAL (score 6), coder sonnet/medium, reviewer off; the planner was skipped because the I-094 design already settled I-095.
+
+I-096 Shorts Scene is IMPLEMENTED_UNTESTED (batch 2; scene assets, music placements, D5 asset checks, provenance snapshot, the background rule). Routing: NORMAL (score 8), coder sonnet/medium, reviewer off; planner skipped (design settled in the I-094 notes).
+
+I-097 Shorts Captions is IMPLEMENTED_UNTESTED (batch 2; caption overlays, wrap, safe area, `plan_captions`, the caption rule). Routing: NORMAL (score 7), coder sonnet/medium, reviewer off; planner skipped (design settled in the I-094 notes).
+
+I-098 Shorts Subtitles is IMPLEMENTED_UNTESTED (batch 2; SRT subtitle artifact from the captions). Routing: NORMAL (score 8), coder sonnet/medium, reviewer off; the main session wrote the plan into the coder brief instead of a planner run.
+
+I-099 Shorts Audio Mix is IMPLEMENTED_UNTESTED (batch 2; in-memory mix of voice, music and SFX; D-STORE decided by the main session as "not persisted" and confirmed by the user on 2026-10-18). Routing (2026-10-16): NORMAL (score 8), planner and coder sonnet/medium, reviewer off. Batch 2 (I-095..I-099) stopped before I-100.
+
+I-100 Shorts Render is IMPLEMENTED_UNTESTED (user decisions of 2026-10-18: a sync `VideoRenderer` Protocol in `providers/video_render.py` with the deterministic `MockVideoRenderer` default and the ffmpeg command line `FfmpegVideoRenderer` through `subprocess`, no new dependency, `Settings.render_provider`; the MP4 is the next VIDEO artifact through the bytes `ArtifactStorage`, no migration; the mix is not stored; D1 reuse `AIJob` kind `video.render` with `render_key`, D2 no project status change, D3 unreadable visuals refused, D4 captions burnt in with `drawtext` from text files, D5 optional `Settings.render_font_file`, D6 the mixer runs on every call, D7 a changed provenance refused with 409; `content/shorts_render.py` `ShortsRenderService.render`, `check_timeline_assets` in `shorts_service.py`, bootstrap and the `render_provider` health check). Routing: ARCHITECTURAL (score 18), planner and coder opus/high, reviewer opus/high skipped in BUILD-FIRST (main-session read-through). Tests NOT RUN; see `docs/TECH_DEBT.md`.
+
+Next: **I-101 Shorts Thumbnail**. I-102..I-104 follow in order.
 
 H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 

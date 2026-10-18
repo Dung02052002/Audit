@@ -46,6 +46,7 @@ from ai_youtube_agent.content.script import (
     SectionKind,
 )
 from ai_youtube_agent.content.script_validation import ValidationStatus
+from ai_youtube_agent.content.shorts_project import ShortsProjectStatus
 from ai_youtube_agent.content.source import DuplicateReason
 from ai_youtube_agent.content.topic import EvidenceField
 from ai_youtube_agent.core.artifact import ArtifactKind
@@ -83,8 +84,8 @@ SHA = "a" * 64
 # 0020 originality checks (F-071), 0021 script validations (F-072),
 # 0022 script revisions (F-073), 0023 asset registry (G-076),
 # 0024 asset provenance (G-077), 0025 rights assessments (G-078),
-# 0026 disclosure decisions (G-081)
-LATEST = 26
+# 0026 disclosure decisions (G-081), 0027 shorts projects (I-094)
+LATEST = 27
 
 ENTITY_TABLES = {
     "channels",
@@ -145,6 +146,7 @@ ENTITY_TABLES = {
     "asset_provenance",  # G-077
     "rights_assessments",  # G-078
     "disclosure_decisions",  # G-081
+    "shorts_projects",  # I-094
 }
 
 ENUM_COLUMNS = {
@@ -196,6 +198,9 @@ ENUM_COLUMNS = {
     ("rights_assessments", "assessed_by_kind"): ActorKind,  # G-078
     ("disclosure_decisions", "decision"): DisclosureDecision,  # G-081
     ("disclosure_decisions", "decided_by_kind"): ActorKind,  # G-081
+    ("shorts_projects", "status"): ShortsProjectStatus,  # I-094
+    ("shorts_projects", "created_by_kind"): ActorKind,  # I-094
+    ("shorts_projects", "updated_by_kind"): ActorKind,  # I-094
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -300,6 +305,7 @@ def test_default_migrations_are_packaged() -> None:
         "asset_provenance",
         "rights_assessments",
         "disclosure_decisions",
+        "shorts_projects",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()

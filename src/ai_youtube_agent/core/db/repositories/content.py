@@ -121,6 +121,15 @@ class ArtifactRepository(Repository):
         )
         return [_artifact(row) for row in rows]
 
+    def latest(self, content_item_id: str, kind: ArtifactKind) -> Artifact | None:
+        """The highest version of one kind of the item, or None."""
+        row = self._one(
+            "SELECT * FROM artifacts WHERE content_item_id = ? AND kind = ? "
+            "ORDER BY version DESC LIMIT 1",
+            (content_item_id, kind.value),
+        )
+        return _artifact(row) if row else None
+
 
 class ScriptRepository(Repository):
     """Script versions, claims and evidence are immutable: add only."""

@@ -9,7 +9,9 @@ An ``Artifact`` is one immutable version of a file produced for a content item:
   such as JSON with the title, description and tags.
 - ``version``: starts at 1 and grows by one per new version of the same item
   and kind.
-- ``uri``: an opaque storage reference. No storage backend is chosen yet.
+- ``uri``: an opaque storage reference. The file itself is kept by an
+  ``ArtifactStorage`` (#089, ``core/artifact_storage.py``); the only backend is
+  local files with ``file://`` uris.
 - ``sha256``, ``size_bytes`` and ``media_type``: what the file contains. The
   checksum is what tells a changed artifact apart (#035).
 - ``created_at``: timezone-aware UTC.

@@ -16,7 +16,8 @@ valid. The rules were approved by the user on 2026-09-30:
   system, after the transaction commits (SQLite allows one writer at a time).
 
 ``invalidate_stale_approvals`` does the work inside a caller's transaction and
-leaves auditing to the caller.
+leaves auditing to the caller, which calls ``record_invalidations`` once the
+transaction has committed (the audio artifact recorder of #089 does so).
 """
 
 import sqlite3
@@ -128,16 +129,21 @@ class VersionInvalidation:
         return result
 
     def _record(self, result: InvalidationResult) -> None:
-        for entry in result.invalidated:
-            self._audit.record(
-                "approval.invalidated",
-                ACTOR,
-                EntityRef("approval_request", entry.approval.id),
-                AuditResult.SUCCESS,
-                {
-                    "content_item_id": result.item.id,
-                    "previous_status": entry.previous_status.value,
-                    "stale_kinds": ",".join(kind.value for kind in entry.stale_kinds),
-                    "item_reset": result.item_reset,
-                },
-            )
+        record_invalidations(self._audit, result)
+
+
+def record_invalidations(audit: AuditLog, result: InvalidationResult) -> None:
+    """Audit each invalidated request; call it after the transaction commits."""
+    for entry in result.invalidated:
+        audit.record(
+            "approval.invalidated",
+            ACTOR,
+            EntityRef("approval_request", entry.approval.id),
+            AuditResult.SUCCESS,
+            {
+                "content_item_id": result.item.id,
+                "previous_status": entry.previous_status.value,
+                "stale_kinds": ",".join(kind.value for kind in entry.stale_kinds),
+                "item_reset": result.item_reset,
+            },
+        )

@@ -46,9 +46,11 @@ from ai_youtube_agent.core.db.repositories.content import (
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.core.version_invalidation import (
+    ACTOR,
     RESET_STATUSES,
     VersionInvalidation,
     invalidate_stale_approvals,
+    record_invalidations,
 )
 from factories import (
     T0,
@@ -510,3 +512,46 @@ def test_the_in_transaction_function_leaves_audit_to_the_caller(
 
     assert len(result.invalidated) == 1
     assert load(database, item)[0].status is ContentStatus.GENERATING
+
+
+def test_record_invalidations_audits_like_the_service(
+    database: Database, sink: InMemoryAuditSink
+) -> None:
+    item = save_graph(database)
+    video = make_artifact(item)
+    save_artifacts(database, video, newer(video))
+    approval = make_approval_request(item, [video], status=ApprovalStatus.APPROVED)
+    save_approvals(database, approval)
+    with database.transaction() as connection:
+        result = invalidate_stale_approvals(connection, item.id, clock=at(T1))
+    assert sink.events() == ()
+
+    record_invalidations(AuditLog(sink, clock=at(T1)), result)
+
+    (event,) = sink.events()
+    assert event.action == "approval.invalidated"
+    assert event.actor == ACTOR
+    assert (event.entity.type, event.entity.id) == ("approval_request", approval.id)
+    assert event.result is AuditResult.SUCCESS
+    assert event.timestamp == T1
+    assert dict(event.metadata) == {
+        "content_item_id": item.id,
+        "previous_status": "approved",
+        "stale_kinds": "video",
+        "item_reset": True,
+    }
+
+
+def test_record_invalidations_records_nothing_without_invalidations(
+    database: Database, sink: InMemoryAuditSink
+) -> None:
+    item = save_graph(database)
+    video = make_artifact(item)
+    save_artifacts(database, video)
+    with database.transaction() as connection:
+        result = invalidate_stale_approvals(connection, item.id)
+
+    record_invalidations(AuditLog(sink), result)
+
+    assert result.invalidated == ()
+    assert sink.events() == ()

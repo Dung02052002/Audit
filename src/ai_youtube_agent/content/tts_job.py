@@ -43,6 +43,19 @@ through the ``SpeechSynthesizer`` provider (#086) as a resumable ``AIJob``
 - The voice profile's provider must be the synthesizer's name, the content
   item must exist and belong to the voice profile's channel; these are checked
   before anything is stored.
+- Retries (#091): a ``SpeechSynthesisError`` with ``retryable`` true is tried
+  again, up to ``MAX_ATTEMPTS`` (3) calls per chunk, waiting 1 s and then 2 s
+  (``BACKOFF_SECONDS``) through an injectable ``sleep``. A non-retryable
+  provider error, a ``TtsJobError`` (the answer was validated after the call)
+  and a ``ConcurrencyError`` are never retried. When the last try still fails
+  with a retryable error, that error fails the attempt with its code, as
+  below. A retry never changes ``AIJob.attempts``.
+- No duplication: one provider call is in flight per chunk at a time; a retry
+  starts only after the call failed, so no audio exists to duplicate; a chunk
+  is stored and checkpointed only after a validated success; finished chunks
+  are skipped on resume. The extra calls are bounded by ``max_attempts - 1``
+  per failing chunk and are visible in ``TtsResult.provider_calls`` and
+  ``TtsResult.retries`` (both 0 for a rebuilt result).
 - A provider error, or a ``TtsJobError`` once the attempt has started, saves
   the attempt as failed with the error code and is raised again. Any other
   error (such as a ``ConcurrencyError``) leaves the job as it is. No
@@ -50,16 +63,19 @@ through the ``SpeechSynthesizer`` provider (#086) as a resumable ``AIJob``
   written.
 
 Out of scope: audio storage, the audio ``Artifact`` and ``AudioMetadata``
-(#089), audio validation (#090), retries (#091) and TTS cost (#092).
+(#089, ``content/audio_artifact.py``), audio validation (#090) and TTS cost
+(#092).
 """
 
+import dataclasses
 import hashlib
 import io
 import re
 import struct
 import threading
+import time
 import wave
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -76,8 +92,10 @@ from ai_youtube_agent.pipeline.idempotency import AUDIO_KIND, audio_key
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus, JobCheckpoint
 from ai_youtube_agent.providers.speech_synthesis import (
     MAX_TEXT,
+    SpeechRequest,
     SpeechSynthesisError,
     SpeechSynthesizer,
+    SynthesizedSpeech,
 )
 
 MAX_CHUNK = MAX_TEXT
@@ -87,6 +105,8 @@ PLANNED = "audio.planned"
 CHUNK_DONE = "audio.chunk_done"
 COMPLETED = "audio.completed"
 INTERRUPTED = "interrupted"
+MAX_ATTEMPTS = 3
+BACKOFF_SECONDS = (1.0, 2.0)
 Clock = Callable[[], datetime]
 
 # Sentence ends first, then any whitespace; a token without whitespace is cut.
@@ -231,6 +251,8 @@ class TtsResult:
     attempts: int
     reused_chunks: int
     synthesized_chunks: int
+    provider_calls: int = 0
+    retries: int = 0
 
 
 class WavFormat(NamedTuple):
@@ -245,6 +267,8 @@ class _Attempt:
     def __init__(self, database: Database, job: AIJob) -> None:
         self._database = database
         self.job = job
+        self.provider_calls = 0
+        self.retries = 0
 
     def save(self, job: AIJob) -> None:
         with self._database.transaction() as connection:
@@ -262,11 +286,28 @@ class TtsJobRunner:
         store: ChunkStore,
         *,
         clock: Clock | None = None,
+        max_attempts: int = MAX_ATTEMPTS,
+        backoff: Sequence[float] = BACKOFF_SECONDS,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        if (
+            isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or max_attempts < 1
+        ):
+            raise ValueError("max_attempts must be a whole number of 1 or more")
+        waits = tuple(backoff)
+        if len(waits) < max_attempts - 1:
+            raise ValueError("backoff needs a wait for every retry")
+        if any(wait < 0 for wait in waits):
+            raise ValueError("backoff waits cannot be negative")
         self._database = database
         self._synthesizer = synthesizer
         self._store = store
         self._clock = clock
+        self._max_attempts = max_attempts
+        self._backoff = waits
+        self._sleep = sleep
 
     def run(
         self,
@@ -365,7 +406,11 @@ class TtsJobRunner:
         if wav_format is None:  # a script has at least one non-blank section
             raise AssertionError("no chunk was planned")
         merged = _merge(parts, wav_format)
-        result = _result(attempt.job, merged, plan, wav_format, reused, synthesized)
+        result = dataclasses.replace(
+            _result(attempt.job, merged, plan, wav_format, reused, synthesized),
+            provider_calls=attempt.provider_calls,
+            retries=attempt.retries,
+        )
         completed = attempt.job.checkpoint(
             COMPLETED,
             {
@@ -429,7 +474,7 @@ class TtsJobRunner:
         voice: VoiceProfile,
         wav_format: WavFormat | None,
     ) -> tuple[bytes, WavFormat]:
-        speech = self._synthesizer.synthesize(voice.speech_request(chunk.text))
+        speech = self._call(attempt, voice.speech_request(chunk.text))
         if speech.provider != self._synthesizer.name or speech.voice_id != (
             voice.voice_id
         ):
@@ -471,6 +516,19 @@ class TtsJobRunner:
             )
         )
         return speech.audio, chunk_format
+
+    def _call(self, attempt: _Attempt, request: SpeechRequest) -> SynthesizedSpeech:
+        """One chunk's provider call, tried again after a retryable error."""
+        for number in range(1, self._max_attempts + 1):
+            attempt.provider_calls += 1
+            try:
+                return self._synthesizer.synthesize(request)
+            except SpeechSynthesisError as error:
+                if not error.retryable or number == self._max_attempts:
+                    raise
+                attempt.retries += 1
+                self._sleep(self._backoff[number - 1])
+        raise AssertionError("max_attempts is at least 1")
 
     def _rebuild(self, job: AIJob, plan: tuple[TextChunk, ...]) -> TtsResult:
         completed = _latest(job, COMPLETED)
@@ -574,6 +632,20 @@ def _chunks_done(job: AIJob) -> dict[int, Mapping[str, MetadataValue]]:
         if saved.step == CHUNK_DONE:
             done[int(saved.data["index"])] = saved.data
     return done
+
+
+def chunk_durations(job: AIJob) -> tuple[int, ...] | None:
+    """The ``duration_ms`` of each chunk of a succeeded job, in chunk order.
+
+    None when the job has not succeeded or its checkpoints do not cover the
+    chunks 0..n-1 (the shorts planner then estimates the timing instead).
+    """
+    if job.status is not AIJobStatus.SUCCEEDED:
+        return None
+    done = _chunks_done(job)
+    if not done or sorted(done) != list(range(len(done))):
+        return None
+    return tuple(int(done[index]["duration_ms"]) for index in range(len(done)))
 
 
 def _latest(job: AIJob, step: str) -> JobCheckpoint | None:

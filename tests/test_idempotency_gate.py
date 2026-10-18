@@ -46,8 +46,10 @@ from ai_youtube_agent.core.gates import (
 from ai_youtube_agent.core.idempotency_gate import IdempotencyGate
 from ai_youtube_agent.pipeline.idempotency import (
     GENERATION_KIND,
+    RENDER_KIND,
     generation_key,
     publish_key,
+    render_key,
 )
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
 from ai_youtube_agent.pipeline.publish import PublishJob, PublishStatus
@@ -222,6 +224,36 @@ def test_key_parts_cannot_collide_through_separators() -> None:
     assert publish_key("a,b", "c") != publish_key("a", "b,c")
     with pytest.raises(ValueError):
         publish_key(" ", "approval-1")
+
+
+def test_the_render_key_is_deterministic_and_prefixed() -> None:
+    key = render_key("item-1", "a" * 64, 1)
+
+    assert key == render_key("item-1", "a" * 64, 1)
+    assert key.startswith("rnd:")
+    assert len(key) == len("rnd:") + 64
+    assert RENDER_KIND == "video.render"
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [("item-2", "a" * 64, 1), ("item-1", "b" * 64, 1), ("item-1", "a" * 64, 2)],
+)
+def test_the_render_key_changes_with_each_part(parts) -> None:
+    assert render_key("item-1", "a" * 64, 1) != render_key(*parts)
+
+
+def test_the_render_key_refuses_empty_parts() -> None:
+    with pytest.raises(ValueError):
+        render_key("item-1", " ", 1)
+
+
+def test_the_render_key_is_a_valid_job_key() -> None:
+    item = item_in(ContentStatus.DRAFT)
+
+    job = AIJob.create(RENDER_KIND, render_key(item.id, "c" * 64, 1), clock=at(T0))
+
+    assert job.kind == "video.render"
 
 
 def test_the_keys_are_valid_job_keys() -> None:

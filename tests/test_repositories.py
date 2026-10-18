@@ -10,6 +10,7 @@ from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.comment import CommentLabel, ReplyStatus
+from ai_youtube_agent.content.cost import CostCategory
 from ai_youtube_agent.content.revenue import RevenueStage
 from ai_youtube_agent.content.rights import RiskLevel
 from ai_youtube_agent.content.strategy import Budget, Market
@@ -345,6 +346,32 @@ def test_artifact_versions_round_trip_in_order(database: Database, graph) -> Non
     ) == [audio, video, newer]
 
 
+def test_latest_artifact_is_the_highest_version_of_the_kind(
+    database: Database, graph
+) -> None:
+    audio = make_artifact(graph.item, ArtifactKind.AUDIO)
+    second = audio.next_version(
+        uri="store://a2", sha256="e" * 64, size_bytes=5, media_type="audio/wav"
+    )
+    third = second.next_version(
+        uri="store://a3", sha256="d" * 64, size_bytes=6, media_type="audio/wav"
+    )
+    video = make_artifact(graph.item)
+    other_item = make_content_item(graph.channel, graph.strategy)
+    save(database, ContentItemRepository, "add", other_item)
+    elsewhere = make_artifact(other_item, ArtifactKind.AUDIO, version=7)
+    save(database, ArtifactRepository, "add", third, audio, elsewhere, second, video)
+
+    def latest(item_id, kind):
+        return read(database, ArtifactRepository, "latest", item_id, kind)
+
+    assert latest(graph.item.id, ArtifactKind.AUDIO) == third
+    assert latest(graph.item.id, ArtifactKind.VIDEO) == video
+    assert latest(graph.item.id, ArtifactKind.THUMBNAIL) is None
+    assert latest(other_item.id, ArtifactKind.AUDIO) == elsewhere
+    assert latest("missing", ArtifactKind.AUDIO) is None
+
+
 def test_artifact_version_is_unique(database: Database, graph) -> None:
     video = make_artifact(graph.item)
     save(database, ArtifactRepository, "add", video)
@@ -553,6 +580,67 @@ def test_cost_records_by_channel_in_a_half_open_range(
         start=T0,
         end=T2,
     ) == [at_start, inside]
+
+
+def test_find_cost_record_by_ref_returns_the_earliest_of_the_category(
+    database: Database, graph
+) -> None:
+    later = make_cost_record(graph.channel, ref="artifact-1", incurred_at=T2)
+    earliest = make_cost_record(graph.channel, ref="artifact-1", incurred_at=T1)
+    other_category = make_cost_record(
+        graph.channel,
+        category=CostCategory.LLM,
+        ref="artifact-1",
+        incurred_at=T0,
+    )
+    other_ref = make_cost_record(graph.channel, ref="artifact-2", incurred_at=T0)
+    save(
+        database,
+        CostRecordRepository,
+        "add",
+        later,
+        other_category,
+        other_ref,
+        earliest,
+    )
+
+    assert (
+        read(
+            database,
+            CostRecordRepository,
+            "find_by_ref",
+            CostCategory.TTS,
+            "artifact-1",
+        )
+        == earliest
+    )
+    assert (
+        read(
+            database,
+            CostRecordRepository,
+            "find_by_ref",
+            CostCategory.LLM,
+            "artifact-1",
+        )
+        == other_category
+    )
+
+
+def test_find_cost_record_by_ref_misses(database: Database, graph) -> None:
+    save(
+        database,
+        CostRecordRepository,
+        "add",
+        make_cost_record(graph.channel, ref="artifact-1"),
+    )
+
+    for category, ref in (
+        (CostCategory.TTS, "artifact-9"),
+        (CostCategory.RENDER, "artifact-1"),
+    ):
+        assert (
+            read(database, CostRecordRepository, "find_by_ref", category, ref) is None
+        )
 
 
 # Community

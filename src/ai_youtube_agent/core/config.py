@@ -16,6 +16,7 @@ Secrets never live in source control. A secret field must be typed as
 
 import json
 import os
+from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -32,6 +33,9 @@ ENV_NESTED_DELIMITER = "__"
 ENVIRONMENT_VARIABLE = f"{ENV_PREFIX}ENVIRONMENT"
 # SQLite database file (#029), relative to the working directory by default.
 DEFAULT_DATABASE_PATH = Path("data/ai_youtube_agent.db")
+# Root folder of the artifact files (#089), relative to the working directory by
+# default. One folder belongs to one database.
+DEFAULT_ARTIFACT_DIR = Path("data/artifacts")
 
 
 class Environment(StrEnum):
@@ -56,6 +60,17 @@ class VoiceProviderKind(StrEnum):
     """Which voice (TTS) provider bootstrap registers (#086). Only the mock exists."""
 
     MOCK = "mock"
+
+
+class RenderProviderKind(StrEnum):
+    """Which video renderer bootstrap registers (#100).
+
+    ``mock`` writes a deterministic MP4 container without a track; ``ffmpeg``
+    runs the ffmpeg command line program.
+    """
+
+    MOCK = "mock"
+    FFMPEG = "ffmpeg"
 
 
 class RightsBlockLevel(StrEnum):
@@ -83,10 +98,19 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: Severity = Severity.INFO
     database_path: Path = DEFAULT_DATABASE_PATH
+    artifact_dir: Path = DEFAULT_ARTIFACT_DIR
     flags: FeatureFlags = Field(default_factory=FeatureFlags)
     research_provider: ResearchProviderKind = ResearchProviderKind.MOCK
     text_provider: TextProviderKind = TextProviderKind.MOCK
     voice_provider: VoiceProviderKind = VoiceProviderKind.MOCK
+    # Video renderer (#100). ``ffmpeg_binary`` is the program name or path,
+    # ``render_timeout_seconds`` how long one render may take (1 to 7200, not a
+    # bool) and ``render_font_file`` an optional font file for captions without
+    # a font asset; without it ffmpeg chooses a system font (not reproducible).
+    render_provider: RenderProviderKind = RenderProviderKind.MOCK
+    ffmpeg_binary: str = Field(default="ffmpeg", min_length=1)
+    render_timeout_seconds: int = Field(default=600, ge=1, le=7200)
+    render_font_file: Path | None = None
     # Rights levels that block a publish (#078): a comma separated list
     # ("medium,high") or a JSON list (["medium", "high"]). ``high`` is required.
     rights_block_levels: Annotated[frozenset[RightsBlockLevel], NoDecode] = frozenset(
@@ -96,6 +120,43 @@ class Settings(BaseSettings):
     # integer >= 1 (not a bool); a version the catalog does not know fails when
     # the publish gate is built, with no fallback to another version.
     policy_rule_set_version: int = Field(default=1, ge=1)
+    # TTS price (#092): the cost of 1,000 characters of script text, 0 or more,
+    # at most 12 digits with 6 decimal places (not a bool or a float), in an
+    # ISO 4217 currency. The currency must match the channel budget currency, or
+    # the audio cost is refused. The pattern equals ``CURRENCY_PATTERN`` (kept
+    # equal by a test; this module has no import from ``content``).
+    tts_price_per_1k_characters: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        max_digits=12,
+        decimal_places=6,
+        allow_inf_nan=False,
+    )
+    tts_cost_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+
+    @field_validator("tts_price_per_1k_characters", mode="before")
+    @classmethod
+    def _refuse_bool_or_float_tts_price(cls, value: Any) -> Any:
+        if isinstance(value, bool | float):
+            raise ValueError(
+                "tts_price_per_1k_characters must be a Decimal, an integer or a "
+                "string, not a bool or a float"
+            )
+        return value
+
+    @field_validator("ffmpeg_binary", mode="after")
+    @classmethod
+    def _refuse_blank_ffmpeg_binary(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("ffmpeg_binary must not be blank")
+        return value
+
+    @field_validator("render_timeout_seconds", mode="before")
+    @classmethod
+    def _refuse_bool_render_timeout(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("render_timeout_seconds must be an integer, not a bool")
+        return value
 
     @field_validator("rights_block_levels", mode="before")
     @classmethod

@@ -83,7 +83,7 @@ class Ticker:
 class Flaky:
     """Wraps a synthesizer and fails the given call numbers (1-based)."""
 
-    def __init__(self, inner, fail_on, code=VoiceErrorCode.TIMEOUT) -> None:
+    def __init__(self, inner, fail_on, code=VoiceErrorCode.REFUSED) -> None:
         self.name = inner.name
         self.inner = inner
         self.fail_on = set(fail_on)
@@ -137,12 +137,14 @@ class World:
         sections = tuple(ScriptSection(SectionKind.BODY, text) for text in texts)
         return Script.create(self.item.id, sections=sections, clock=self.clock)
 
-    def runner(self, synthesizer=None, store=None) -> TtsJobRunner:
+    def runner(self, synthesizer=None, store=None, **options) -> TtsJobRunner:
+        options.setdefault("sleep", lambda seconds: None)  # never really wait
         return TtsJobRunner(
             self.database,
             synthesizer or self.mock,
             store or self.store,
             clock=self.clock,
+            **options,
         )
 
     def job(self, script: Script) -> AIJob | None:
@@ -436,7 +438,7 @@ def test_a_provider_error_fails_the_attempt_and_is_raised(
     flaky = Flaky(world.mock, {2}, code)
 
     with pytest.raises(SpeechSynthesisError) as caught:
-        world.runner(flaky).run(script, world.voice)
+        world.runner(flaky, max_attempts=1).run(script, world.voice)
 
     assert caught.value.voice_code is code
     assert caught.value.retryable is code.retryable

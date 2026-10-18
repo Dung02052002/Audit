@@ -6,6 +6,8 @@ Concrete QC check implementations that inspect rendered MP4 video files:
 - K-118 Resolution Test (``video.resolution``): validates actual dimensions and
   aspect ratio (9:16 vertical for Shorts, 16:9 horizontal for LongForm) against
   configured targets.
+- K-119 FPS Test (``video.fps``): validates frame rate against configured target
+  and standard video production rates.
 """
 
 import struct
@@ -19,10 +21,13 @@ from ai_youtube_agent.providers.video_render import Mp4Info, probe_mp4
 
 CONTAINER_CHECK_NAME: Final[str] = "video.container"
 RESOLUTION_CHECK_NAME: Final[str] = "video.resolution"
+FPS_CHECK_NAME: Final[str] = "video.fps"
 
 KNOWN_MP4_BRANDS: Final[frozenset[str]] = frozenset(
     {"isom", "iso2", "mp41", "mp42", "avc1", "qt  ", "dash", "M4V "}
 )
+STANDARD_FPS: Final[frozenset[int]] = frozenset({24, 25, 30, 48, 50, 60, 120})
+MIN_FPS: Final[int] = 24
 
 
 @dataclass(frozen=True)
@@ -178,4 +183,36 @@ def check_resolution(context: VideoInspectionContext) -> QCCheck:
         name=RESOLUTION_CHECK_NAME,
         status=QCStatus.PASS,
         detail=f"Valid resolution {width}x{height} ({aspect_desc})",
+    )
+
+
+def check_fps(context: VideoInspectionContext) -> QCCheck:
+    """Validate configured frame rate (Prompt #119)."""
+    fps = context.actual_fps if context.actual_fps is not None else float(context.expected_fps)
+
+    if fps <= 0:
+        return QCCheck(
+            name=FPS_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Invalid frame rate: {fps} fps",
+        )
+
+    if fps < MIN_FPS:
+        return QCCheck(
+            name=FPS_CHECK_NAME,
+            status=QCStatus.WARN,
+            detail=f"Frame rate {fps} fps is below standard minimum {MIN_FPS} fps",
+        )
+
+    if abs(fps - context.expected_fps) > 0.5:
+        return QCCheck(
+            name=FPS_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Video FPS {fps:.1f} differs from configured {context.expected_fps} fps",
+        )
+
+    return QCCheck(
+        name=FPS_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=f"Valid frame rate: {fps:.0f} fps",
     )

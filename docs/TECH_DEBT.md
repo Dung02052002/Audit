@@ -25,7 +25,17 @@ needs its tests run in the later test phase; those tests are listed per task in
 | I-098 Shorts Subtitles | `tests/test_shorts_subtitles.py` (new), `tests/test_artifact_storage.py`, `tests/test_bootstrap.py`; regression `tests/test_audio_artifact.py`, `tests/test_version_invalidation.py`, `tests/test_shorts_*.py` (shared `core/artifact_storage.py` changed) |
 | I-099 Shorts Audio Mix | `tests/test_audio_mix.py`, `tests/test_shorts_audio_mix.py` (new), `tests/test_bootstrap.py`; regression all `tests/test_shorts_*.py`, `tests/test_audio_validation.py` (`shorts_service.py` refactored) |
 | I-100 Shorts Render | `tests/test_video_render.py`, `tests/test_ffmpeg_video_render.py`, `tests/test_shorts_render.py` (new; fragile first: `::test_a_worker_that_was_taken_over_cannot_store_its_video`, `::test_captions_become_one_text_line_per_wrapped_line`, `::test_the_default_source_reads_generated_pictures`); `tests/test_config.py`, `tests/test_bootstrap.py`, `tests/test_health_check.py` (names and endpoint body gain `render_provider`), `tests/test_artifact_storage.py` (`MEDIA_EXTENSIONS` equality, `v1.mp4`), `tests/test_idempotency_gate.py` (`render_key`) (additions); regression all `tests/test_shorts_*.py`, `tests/test_health.py`, `tests/test_di.py`, `tests/test_speech_synthesis.py` (shared `shorts_service.py`, Settings, bootstrap and health registry changed); the real-ffmpeg tests skip without ffmpeg (and the caption one without a font file); full suite once (Settings, bootstrap, health registry, shared core) |
-| Whole batch | full suite once (Settings, bootstrap, shared core changed); migration chain once (I-094 adds 0027); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
+| I-101 Shorts Thumbnail | `tests/test_shorts_thumbnail.py` (new), `tests/test_artifact_storage.py` (`image/png`, `image/jpeg`, `image/webp` extensions), `tests/test_bootstrap.py`; regression `tests/test_version_invalidation.py`, `tests/test_shorts_render.py` |
+| I-102 Shorts Metadata | `tests/test_shorts_metadata.py` (new), `tests/test_artifact_storage.py` (`application/json` extension), `tests/test_bootstrap.py`; regression `tests/test_disclosure_decider.py`, `tests/test_policy_check.py`, `tests/test_version_invalidation.py` |
+| I-103 Shorts Artifact Bundle | `tests/test_shorts_bundle.py` (new), `tests/test_bootstrap.py`; regression `tests/test_rights_report.py`, `tests/test_policy_report.py`, `tests/test_shorts_render.py`, `tests/test_shorts_thumbnail.py`, `tests/test_shorts_metadata.py`, `tests/test_shorts_subtitles.py` |
+| I-104 Shorts Render Tests | `tests/test_shorts_render_scenarios.py` (new); full `tests/test_shorts_*.py` suite |
+| J-105 LongForm Project | `tests/test_longform_config.py`, `tests/test_longform_project.py` (new), `tests/test_migrations.py` (`LATEST = 28`, `longform_projects`), `tests/test_bootstrap.py`; migration chain once (0028) |
+| J-106 LongForm Timeline | `tests/test_longform_timeline.py` (new), `tests/test_longform_project.py` |
+| J-107 Chapters | `tests/test_longform_chapters.py` (new), `tests/test_longform_timeline.py`, `tests/test_longform_project.py` |
+| J-108 B-roll Manager | `tests/test_broll_manager.py` (new), `tests/test_bootstrap.py`; regression `tests/test_longform_project.py`, `tests/test_rights_risk_engine.py` |
+| J-109 LongForm Subtitles | `tests/test_longform_subtitles.py` (new), `tests/test_bootstrap.py`; regression `tests/test_shorts_subtitles.py`, `tests/test_version_invalidation.py` |
+| J-110 LongForm Audio Mix | `tests/test_longform_audio_mix.py` (new), `tests/test_bootstrap.py`; regression `tests/test_audio_mix.py`, `tests/test_audio_validation.py`, `tests/test_shorts_audio_mix.py` |
+| Whole batch | full suite once (Settings, bootstrap, shared core and `artifact_storage.py` changed); migration chain once (I-094 adds 0027, J-105 adds 0028); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
 
@@ -206,7 +216,10 @@ needs its tests run in the later test phase; those tests are listed per task in
 - Only generated visual assets (with an `artifact_id`) have readable files
   through `ArtifactVisualSource`, and `LocalFileStorage` stores only WAV, SRT
   and MP4, so images cannot be stored as artifacts yet; uploaded or licensed
-  pictures, clips and fonts give `asset_unavailable`.
+  pictures, clips and fonts give `asset_unavailable`. *(Note: I-101 added
+  `image/png`, `image/jpeg`, `image/webp` and I-102 added `application/json`
+  to `LocalFileStorage.MEDIA_EXTENSIONS`; external assets without an
+  `artifact_id` still require a custom `VisualSource`.)*
 - A RUNNING job left by a crashed worker needs `take_over=True`; there is no
   cancellation besides the ffmpeg timeout.
 - The whole MP4 and every input are held in memory, and the file is written
@@ -219,3 +232,102 @@ needs its tests run in the later test phase; those tests are listed per task in
   service; the ffmpeg renderer copies `Settings.render_font_file` itself.
 - Two concurrent first renders of the same inputs raise a raw
   `sqlite3.IntegrityError` (unique idempotency key), as H-088.
+
+### I-101 Shorts Thumbnail
+
+- **Task:** `I-101 Shorts Thumbnail`
+- **Issue:** `generate_thumbnail_png` produces a deterministic geometric
+  placeholder PNG (solid background + frame + accent bar) rather than extracting
+  a rendered video frame via `ffmpeg` or rendering title typography onto the
+  canvas.
+- **Potential impact:** Generated thumbnails are structurally valid (9:16,
+  >= 640x640, <= 2 MiB) for pipeline and QC tests, but real channels will want
+  either a selected `AssetKind.IMAGE` asset (`select`) or FFmpeg frame extraction.
+- **Verification phase:** Phase K (`#117–#129` QC checks) and full test run after
+  BUILD-FIRST batch.
+- **Priority:** Medium.
+
+### I-102 Shorts Metadata
+
+- **Task:** `I-102 Shorts Metadata`
+- **Issue:** `ShortsMetadata` is stored as a JSON `ArtifactKind.METADATA` file in
+  `ArtifactStorage` without a dedicated SQLite metadata table, so `ShortsBundleBuilder`
+  reads and parses the JSON artifact file to verify `project_version`,
+  `timeline_sha256` and `disclosure_decision_id`.
+- **Potential impact:** Extra small file read during bundle verification and
+  publish preparation (#149); acceptable because metadata files are a few
+  kilobytes.
+- **Verification phase:** Phase K (`#125 Metadata Check`, `#128 Disclosure QC`)
+  and Phase M (`#149 Shorts Publisher`).
+- **Priority:** Low.
+
+### I-103 Shorts Artifact Bundle
+
+- **Task:** `I-103 Shorts Artifact Bundle`
+- **Issue:** `ShortsBundleBuilder.build` computes the bundle on demand and
+  verifies the latest `video.render` `AIJob` via a SQL query on `ai_jobs` and
+  `job_checkpoints` (`step = 'video.rendered'`) rather than storing a dedicated
+  bundle table.
+- **Potential impact:** If a newer failed `video.render` job exists after a
+  succeeded render for the same item, the query orders by `updated_at DESC`
+  among `status = 'succeeded'` jobs and checks that the checkpoint's
+  `artifact_id` matches the latest `VIDEO` artifact; must be verified on SQLite
+  during the test run.
+- **Verification phase:** Post-batch pytest run (`tests/test_shorts_bundle.py`,
+  `tests/test_shorts_render_scenarios.py`) and `#116 Test Runner`.
+- **Priority:** Medium.
+
+### I-104 Shorts Render Tests
+
+- **Task:** `I-104 Shorts Render Tests`
+- **Issue:** `tests/test_shorts_render_scenarios.py` was written in BUILD-FIRST
+  mode without executing `pytest`.
+- **Potential impact:** Fixture setup or assertion details could fail on first
+  execution.
+- **Verification phase:** Immediate post-BUILD-FIRST test execution phase.
+- **Priority:** High (run before next git checkpoint).
+
+### J-105 LongForm Project & J-106 LongForm Timeline & J-107 Chapters
+
+- **Task:** `J-105`, `J-106`, `J-107`
+- **Issue:** Migration `0028_longform_projects.sql` and `LongFormProjectService`
+  were written in BUILD-FIRST mode without running the migration test suite
+  (`tests/test_migrations.py`). Also, `plan_longform_timeline` automatically
+  populates `ChapterMarker`s when `config.chapters` is `True`, which requires at
+  least 2 `SectionKind.CHAPTER` sections (so total markers >= 3 including the
+  `00:00` intro marker) and >= 10s chapter spacing; a LongForm script with
+  `config.chapters=True` whose chapter sections are shorter than 10s will fail
+  `plan()` with `domain.longform_timeline_invalid`.
+- **Potential impact:** Short test scripts with `chapters=True` must allocate at
+  least 10s per chapter scene (or set `chapters=False` in `FormatSpec`).
+- **Verification phase:** Post-BUILD-FIRST test run (`tests/test_migrations.py`,
+  `tests/test_longform_project.py`, `tests/test_longform_timeline.py`,
+  `tests/test_longform_chapters.py`).
+- **Priority:** High (migration 0028 verification).
+
+### J-108 B-roll Manager
+
+- **Task:** `J-108 B-roll Manager`
+- **Issue:** `BrollManager` checks `RightsRecordRepository.list_by_content_item`
+  for unresolved `HIGH`/`UNKNOWN` records, whereas `Settings.rights_block_levels`
+  can optionally include `MEDIUM`. Currently `BLOCKING_RISK_LEVELS` in
+  `broll_manager.py` is fixed to `{HIGH, UNKNOWN}`.
+- **Potential impact:** An asset with an unresolved `MEDIUM` rights record can
+  be assigned as B-roll even if `Settings.rights_block_levels` includes `MEDIUM`
+  (though `RightsGate` and `PublishGate` will still block at publish time).
+- **Verification phase:** `#114 LongForm Artifact Bundle` and `#126 Rights QC`.
+- **Priority:** Low.
+
+### J-109 LongForm Subtitles & J-110 LongForm Audio Mix
+
+- **Task:** `J-109`, `J-110`
+- **Issue:** `LongFormSubtitleRecorder` allows recording either SRT or WebVTT under
+  `ArtifactKind.SUBTITLES`; switching format from SRT to VTT creates a new
+  `SUBTITLES` version because the bytes differ. `LongFormAudioMixer` uses the
+  pure-Python per-sample loop in `content/audio_mix.py`, which can take several
+  seconds on multi-minute LongForm audio tracks.
+- **Potential impact:** Performance of `LongFormAudioMixer.mix` on 10–60 minute
+  LongForm tracks (#110/#111).
+- **Verification phase:** `J-111 LongForm Render`, `J-115 LongForm Render Tests`,
+  and post-BUILD-FIRST test run.
+- **Priority:** Medium.

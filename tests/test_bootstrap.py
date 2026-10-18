@@ -13,16 +13,23 @@ from ai_youtube_agent.bootstrap import build_container
 from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
 from ai_youtube_agent.content.audio_cost import AudioCostRecorder
 from ai_youtube_agent.content.audio_validation import AudioValidator
+from ai_youtube_agent.content.broll_manager import BrollManager
+from ai_youtube_agent.content.longform_audio_mix import LongFormAudioMixer
+from ai_youtube_agent.content.longform_service import LongFormProjectService
+from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.shorts_audio_mix import (
     ArtifactAssetSource,
     ShortsAudioMixer,
 )
+from ai_youtube_agent.content.shorts_bundle import ShortsBundleBuilder
+from ai_youtube_agent.content.shorts_metadata import ShortsMetadataRecorder
 from ai_youtube_agent.content.shorts_render import (
     ArtifactVisualSource,
     ShortsRenderService,
 )
 from ai_youtube_agent.content.shorts_service import ShortsProjectService
 from ai_youtube_agent.content.shorts_subtitles import ShortsSubtitleRecorder
+from ai_youtube_agent.content.shorts_thumbnail import ShortsThumbnailRecorder
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.config import Environment, RenderProviderKind, Settings
 from ai_youtube_agent.core.di import Container
@@ -250,3 +257,51 @@ def test_container_builds_the_ffmpeg_renderer_from_the_settings(
     assert renderer._binary == "/opt/ffmpeg"
     assert renderer._timeout_s == 90
     assert renderer._font_file == tmp_path / "captions.ttf"
+
+
+def test_container_resolves_shorts_thumbnail_metadata_and_bundle_services(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    thumbs = container.resolve(ShortsThumbnailRecorder)
+    metadata = container.resolve(ShortsMetadataRecorder)
+    bundles = container.resolve(ShortsBundleBuilder)
+
+    assert isinstance(thumbs, ShortsThumbnailRecorder)
+    assert isinstance(metadata, ShortsMetadataRecorder)
+    assert isinstance(bundles, ShortsBundleBuilder)
+    assert container.resolve(ShortsThumbnailRecorder) is thumbs
+    assert container.resolve(ShortsMetadataRecorder) is metadata
+    assert container.resolve(ShortsBundleBuilder) is bundles
+
+
+def test_container_resolves_longform_production_services(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+        flags=FeatureFlags(longform_enabled=True),
+    )
+    container = build_container(settings)
+
+    projects = container.resolve(LongFormProjectService)
+    broll = container.resolve(BrollManager)
+    subtitles = container.resolve(LongFormSubtitleRecorder)
+    mixer = container.resolve(LongFormAudioMixer)
+
+    assert isinstance(projects, LongFormProjectService)
+    assert isinstance(broll, BrollManager)
+    assert isinstance(subtitles, LongFormSubtitleRecorder)
+    assert isinstance(mixer, LongFormAudioMixer)
+    assert container.resolve(LongFormProjectService) is projects
+    assert container.resolve(BrollManager) is broll
+    assert container.resolve(LongFormSubtitleRecorder) is subtitles
+    assert container.resolve(LongFormAudioMixer) is mixer

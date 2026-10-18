@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-18 (BUILD-FIRST: up to I-100 implemented untested)
+Last updated: 2026-10-18 (BUILD-FIRST: up to J-110 implemented & statically reviewed untested)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -17,13 +17,13 @@ BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
 BUILD_MODE         = BUILD-FIRST (user order 2026-10-16: no tests, lint, format or build until the user asks)
-UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED); all uncommitted
-NEXT_TASK          = I-101 Shorts Thumbnail
+UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110 (STATIC_REVIEWED_UNTESTED); all uncommitted
+NEXT_TASK          = J-111 LongForm Render
 ```
 
 ## Next task
 
-**BUILD-FIRST batch (user order, 2026-10-16/17).** Up to 10 tasks per batch, no tests, lint, format or build, nothing committed (the green gate is deferred), status `IMPLEMENTED_UNTESTED` or `STATIC_REVIEWED_UNTESTED`, never PASS. The user chose to stop the first batch before Phase I (I-094 Shorts Project needs scope decisions). Decisions for the batch: local file storage under `Settings.artifact_dir` (#089), TTS price per 1000 characters in Settings with a currency that must match the channel budget currency (#092), 3 attempts per chunk with 1 s and 2 s backoff (#091). Open risks, technical debt and the tests to run later: `docs/TECH_DEBT.md`.
+**BUILD-FIRST batch (user order, 2026-10-16/18).** Up to 10 tasks per batch, no tests, lint, format or build, nothing committed (the green gate is deferred), status `IMPLEMENTED_UNTESTED` or `STATIC_REVIEWED_UNTESTED`, never PASS. The user chose to stop the first batch before Phase I (I-094 Shorts Project needs scope decisions). Decisions for the batch: local file storage under `Settings.artifact_dir` (#089), TTS price per 1000 characters in Settings with a currency that must match the channel budget currency (#092), 3 attempts per chunk with 1 s and 2 s backoff (#091). Open risks, technical debt and the tests to run later: `docs/TECH_DEBT.md`.
 
 H-089 Audio Artifact, H-090 Audio Validation, H-091 Audio Retry and H-092 Audio Cost are STATIC_REVIEWED_UNTESTED, and H-093 Voice Tests is IMPLEMENTED_UNTESTED (see `TASK_STATUS.md`). Phase H is implemented; none of it is verified and nothing is committed. Before the next checkpoint: run the tests listed in `docs/TECH_DEBT.md`, the full suite once, ruff, format and `uv build`, then commit.
 
@@ -41,7 +41,27 @@ I-099 Shorts Audio Mix is IMPLEMENTED_UNTESTED (batch 2; in-memory mix of voice,
 
 I-100 Shorts Render is IMPLEMENTED_UNTESTED (user decisions of 2026-10-18: a sync `VideoRenderer` Protocol in `providers/video_render.py` with the deterministic `MockVideoRenderer` default and the ffmpeg command line `FfmpegVideoRenderer` through `subprocess`, no new dependency, `Settings.render_provider`; the MP4 is the next VIDEO artifact through the bytes `ArtifactStorage`, no migration; the mix is not stored; D1 reuse `AIJob` kind `video.render` with `render_key`, D2 no project status change, D3 unreadable visuals refused, D4 captions burnt in with `drawtext` from text files, D5 optional `Settings.render_font_file`, D6 the mixer runs on every call, D7 a changed provenance refused with 409; `content/shorts_render.py` `ShortsRenderService.render`, `check_timeline_assets` in `shorts_service.py`, bootstrap and the `render_provider` health check). Routing: ARCHITECTURAL (score 18), planner and coder opus/high, reviewer opus/high skipped in BUILD-FIRST (main-session read-through). Tests NOT RUN; see `docs/TECH_DEBT.md`.
 
-Next: **I-101 Shorts Thumbnail**. I-102..I-104 follow in order.
+I-101 Shorts Thumbnail is STATIC_REVIEWED_UNTESTED (batch 3; `content/shorts_thumbnail.py` with `probe_image`, `generate_thumbnail_png`, and `ShortsThumbnailRecorder` (`select`, `generate`) storing `ArtifactKind.THUMBNAIL`; `image/png`, `image/jpeg`, `image/webp` added to `LocalFileStorage.MEDIA_EXTENSIONS`; registered in bootstrap).
+
+I-102 Shorts Metadata is STATIC_REVIEWED_UNTESTED (batch 3; `content/shorts_metadata.py` with `ShortsMetadata` and `ShortsMetadataRecorder` storing `ArtifactKind.METADATA` (`application/json`), injecting timeline asset attributions, enforcing `DisclosureRecord` and `PolicyChecker`; registered in bootstrap).
+
+I-103 Shorts Artifact Bundle is STATIC_REVIEWED_UNTESTED (batch 3; `content/shorts_bundle.py` with `ShortsArtifactBundle` and `ShortsBundleBuilder` verifying `AUDIO`, `VIDEO`, `SUBTITLES`, `THUMBNAIL`, `METADATA` artifacts, `RightsReport` and `PolicyReport`; registered in bootstrap).
+
+I-104 Shorts Render Tests is STATIC_REVIEWED_UNTESTED (batch 3; `tests/test_shorts_render_scenarios.py` covering end-to-end Shorts render/thumbnail/metadata/bundle pipeline, staleness, approval invalidation, renderer failure and disclosure/provenance drift). Phase I is implemented in BUILD-FIRST mode.
+
+J-105 LongForm Project is STATIC_REVIEWED_UNTESTED (batch 3; `content/longform_config.py`, `content/longform_project.py`, migration `0028_longform_projects.sql`, `core/db/repositories/longform.py` `LongFormProjectRepository`, `content/longform_service.py` `LongFormProjectService` guarded by `FeatureFlags.longform_enabled`, registered in bootstrap).
+
+J-106 LongForm Timeline is STATIC_REVIEWED_UNTESTED (batch 3; `content/longform_timeline.py` `LongFormTimeline` and `ChapterMarker`, `content/longform_planner.py` `plan_longform_timeline`).
+
+J-107 Chapters is STATIC_REVIEWED_UNTESTED (batch 3; `content/longform_chapters.py` `generate_chapters` and `format_youtube_chapters`, `LongFormProjectService.generate_chapters`).
+
+J-108 B-roll Manager is STATIC_REVIEWED_UNTESTED (batch 3; `content/broll_manager.py` `BrollAssignment` and `BrollManager` (`assign`, `auto_assign_backgrounds`) enforcing `FeatureFlags.longform_enabled`, D5 asset checks, provenance snapshots and blocking unresolved `RightsRecord` checks; registered in bootstrap).
+
+J-109 LongForm Subtitles is STATIC_REVIEWED_UNTESTED (batch 3; `content/longform_captions.py` and `content/longform_subtitles.py` `LongFormSubtitleRecorder` supporting SRT and WebVTT; registered in bootstrap).
+
+J-110 LongForm Audio Mix is STATIC_REVIEWED_UNTESTED (batch 3; `content/longform_audio_mix.py` `LongFormAudioMixer` mixing LongForm voice, music and scene SFX in memory with `audio_validation.analyze` self-check; registered in bootstrap).
+
+Next: **J-111 LongForm Render**. J-112..J-115 follow in order.
 
 H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 

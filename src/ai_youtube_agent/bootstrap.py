@@ -54,13 +54,17 @@ from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
 from ai_youtube_agent.content.audio_cost import AudioCostRecorder
 from ai_youtube_agent.content.audio_validation import AudioValidator
+from ai_youtube_agent.content.broll_manager import BrollManager
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
 from ai_youtube_agent.content.fact_checker import FactChecker
 from ai_youtube_agent.content.hook_generator import HookGenerator
+from ai_youtube_agent.content.longform_audio_mix import LongFormAudioMixer
 from ai_youtube_agent.content.longform_script_generator import LongFormScriptGenerator
+from ai_youtube_agent.content.longform_service import LongFormProjectService
+from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.originality_checker import OriginalityChecker
 from ai_youtube_agent.content.policy_report import PolicyReporter
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
@@ -70,10 +74,13 @@ from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
 from ai_youtube_agent.content.script_validator import ScriptValidator
 from ai_youtube_agent.content.script_versioner import ScriptVersioner
 from ai_youtube_agent.content.shorts_audio_mix import ShortsAudioMixer
+from ai_youtube_agent.content.shorts_bundle import ShortsBundleBuilder
+from ai_youtube_agent.content.shorts_metadata import ShortsMetadataRecorder
 from ai_youtube_agent.content.shorts_render import ShortsRenderService
 from ai_youtube_agent.content.shorts_script_generator import ShortsScriptGenerator
 from ai_youtube_agent.content.shorts_service import ShortsProjectService
 from ai_youtube_agent.content.shorts_subtitles import ShortsSubtitleRecorder
+from ai_youtube_agent.content.shorts_thumbnail import ShortsThumbnailRecorder
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.strategy_settings import StrategySettings
@@ -274,6 +281,61 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(AuditLog),
             c.resolve(VideoRenderer),
             c.resolve(ShortsAudioMixer),
+        ),
+    )
+    container.register(
+        ShortsThumbnailRecorder,
+        lambda c: ShortsThumbnailRecorder(
+            c.resolve(Database), c.resolve(ArtifactStorage), c.resolve(AuditLog)
+        ),
+    )
+    container.register(
+        ShortsMetadataRecorder,
+        lambda c: ShortsMetadataRecorder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(Settings),
+        ),
+    )
+    container.register(
+        ShortsBundleBuilder,
+        lambda c: ShortsBundleBuilder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(Settings),
+            c.resolve(RightsReporter),
+        ),
+    )
+    container.register(
+        LongFormProjectService,
+        lambda c: LongFormProjectService(
+            c.resolve(Database), c.resolve(AuditLog), c.resolve(FeatureFlags)
+        ),
+    )
+    container.register(
+        BrollManager,
+        lambda c: BrollManager(
+            c.resolve(Database), c.resolve(AuditLog), c.resolve(FeatureFlags)
+        ),
+    )
+    container.register(
+        LongFormSubtitleRecorder,
+        lambda c: LongFormSubtitleRecorder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        LongFormAudioMixer,
+        lambda c: LongFormAudioMixer(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(FeatureFlags),
         ),
     )
     container.register(

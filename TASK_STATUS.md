@@ -175,109 +175,38 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | I-097 | Shorts Captions | I-3 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-17, uncommitted). `CaptionPosition`, `CaptionStyle`, `CaptionOverlay` in `content/shorts_timeline.py` (ids `c1..`, NFC text, ordered, no overlap, inside their scene; uppercase hex colours); `content/shorts_captions.py`: `wrap` (NFC, greedy, <= max_lines x max_chars), `check_captions(config, timeline) -> CaptionCheck` (display time, wrap, captions-off, safe area for caption boxes and overlay boxes, > 20 chars/s a warning), `caption_box`, `covers_every_scene`, `plan_captions` (phrases by sentence then comma, word-weighted timing tiling each scene, merge or split to the display limits, font shrunk per caption to fit the safe width). `readiness`: `ready` = one background per scene and no caption errors (captions on: every scene covered). `ShortsProjectService.caption()`; font assets get the D5 checks; codes `domain.shorts_caption_invalid`, `domain.shorts_caption_unsafe`. Tests NOT RUN: `tests/test_shorts_captions.py` (new) and the other shorts test files. |
 | I-098 | Shorts Subtitles | I-4 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-17, uncommitted). `content/shorts_subtitles.py`: pure `render_srt` (one cue per caption, the on-screen wrap, NFC, `\n`, UTF-8 without BOM, deterministic) and `render_vtt` (not stored yet); `ShortsSubtitleRecorder.record(project_id, *, expected_version, actor)` stores the SRT (`application/x-subrip`) as the next `SUBTITLES` artifact with approval invalidation in one transaction (the `AudioArtifactRecorder` pattern: file deleted on failure, identical sha256 replays without a write), refuses captions off, missing or invalid captions and a stale project, audits `shorts.subtitles_recorded` (no text) after commit; codes `domain.shorts_subtitles_*`; registered in bootstrap; `core/artifact_storage.py` `MEDIA_EXTENSIONS` gains `srt`. No migration. Tests NOT RUN: `tests/test_shorts_subtitles.py` (new), `tests/test_artifact_storage.py`, `tests/test_bootstrap.py`. |
 | I-099 | Shorts Audio Mix | I-5 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-17, uncommitted). Main-session decision (D-STORE): the mix is not persisted (no new artifact kind, no migration, no storage change); `ShortsAudioMixer.mix(project_id, *, expected_version, actor) -> MixOutcome` (wav in memory, sha256s, `MixReport`, asset ids, QC warnings) for the render step. Engine `content/audio_mix.py` (stdlib: WAV decode/encode, channel and rate conversion, placement, gain clamp, fades, music ducking under the voice, RMS level normalisation (not LUFS), look-ahead limiter, deterministic, output length = voice length); service `content/shorts_audio_mix.py` re-runs the I-096 asset checks (`check_audio_assets`, `project_is_current` added to `shorts_service.py`), reads asset bytes through `AssetSource` (default: the generated asset's artifact; other assets are `asset_unavailable`), self-checks with `audio_validation.analyze`, audits `audio.mixed` (no bytes); constraints are module defaults (`DEFAULT_CONSTRAINTS`), not in `ShortsConfig`; codes `domain.shorts_mix_*`; registered in bootstrap. Tests NOT RUN: `tests/test_audio_mix.py`, `tests/test_shorts_audio_mix.py` (new), `tests/test_bootstrap.py`. |
-| I-100 | Shorts Render | I-6 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; main-session read-through instead of the opus/high architecture review). User decisions (2026-10-18): engine = sync `@runtime_checkable VideoRenderer` Protocol (`providers/video_render.py`: `RenderInput`, `PixelRect`, `VisualLayer`, `TextLine`, `RenderRequest.describe()`, `RenderedVideo`, `RenderErrorCode` with `render.unavailable`/`render.timeout` retryable, `VideoRenderError`, pure `probe_mp4`), deterministic `MockVideoRenderer` default (`providers/mock_video_render.py`, `stub_mp4`: ftyp + moov/mvhd + 1 KiB mdat of the request digest, probe-valid, not playable) and `FfmpegVideoRenderer` (`providers/ffmpeg_video_render.py`: ffmpeg CLI via `subprocess`, temp folder, generated plain file names only, `-filter_complex_script`, no shell, stderr only logged), no new dependency, `Settings.render_provider` (mock|ffmpeg), `ffmpeg_binary`, `render_timeout_seconds`, `render_font_file`; the MP4 is the next `ArtifactKind.VIDEO` version through the existing bytes `ArtifactStorage.write` (`MEDIA_EXTENSIONS` gains `video/mp4`), no migration; the mix is not stored (I-099 D-STORE confirmed). D1 reuse `AIJob` (kind `video.render`, key `render_key(item, input_sha256, next version)` in `pipeline/idempotency.py`, checkpoint `video.rendered`); D2 no project status change (rendered = latest VIDEO artifact + its job); D3 unreadable visual files refused with `domain.shorts_render_asset_unavailable`; D4 captions burnt in with one `drawtext` per wrapped line (`textfile=` + `expansion=none`) placed from the I-097 `caption_box`; D5 optional `Settings.render_font_file` copied into the temp folder, else the fontconfig default (not reproducible); D6 every call (replays too) runs the mixer and records `audio.mixed`, the mix sha256 is in the key; D7 a scene asset whose provenance changed since the timeline was saved is `domain.shorts_render_asset_changed` (409). `content/shorts_render.py`: `ShortsRenderService.render(project_id, *, expected_version, actor, take_over=False) -> RenderResult` (readiness recomputed, `project_is_current`, new read-only `check_timeline_assets` in `shorts_service.py`, `VisualSource`/`ArtifactVisualSource`, pure `build_render_request` and `render_input_sha256`, replay without a renderer call, `in_progress` for a running job unless `take_over`, MP4 probed with a duration tolerance of max(250, 2000 // fps) ms, write transaction re-checks the project and the latest video, invalidates stale approvals, saves the checkpoint and `succeed` under the job's `updated_at` guard, deletes the file on failure; audits `shorts.rendered` and `shorts.render_failed` without text or bytes; codes `domain.shorts_render_*`); bootstrap registers `VideoRenderer`, `ShortsRenderService` and the `render_provider` health check after `voice_provider`. Tests NOT RUN: `tests/test_video_render.py`, `tests/test_ffmpeg_video_render.py`, `tests/test_shorts_render.py` (new); additions in `tests/test_config.py`, `tests/test_bootstrap.py`, `tests/test_health_check.py`, `tests/test_artifact_storage.py`, `tests/test_idempotency_gate.py`. |
+| I-100 | Shorts Render | I-6 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; main-session read-through instead of the opus/high architecture review). User decisions (2026-10-18): engine = sync `@runtime_checkable VideoRenderer` Protocol (`providers/video_render.py`: `RenderInput`, `PixelRect`, `VisualLayer`, `TextLine`, `RenderRequest.describe()`, `RenderedVideo`, `RenderErrorCode` with `render.unavailable`/`render.timeout` retryable, `VideoRenderError`, pure `probe_mp4`), deterministic `MockVideoRenderer` default (`providers/mock_video_render.py`, `stub_mp4`: ftyp + moov/mvhd + 1 KiB mdat of the request digest, probe-valid, not playable) and `FfmpegVideoRenderer` (`providers/ffmpeg_video_render.py`: ffmpeg CLI via `subprocess`, temp folder, generated plain file names only, `-filter_complex_script`, no shell, stderr only logged), no new dependency, `Settings.render_provider` (mock|ffmpeg), `ffmpeg_binary`, `render_timeout_seconds`, `render_font_file`; the MP4 is the next `ArtifactKind.VIDEO` version through the existing bytes `ArtifactStorage.write` (`MEDIA_EXTENSIONS` gains `video/mp4`), no migration; the mix is not stored (I-099 D-STORE confirmed). D1 reuse `AIJob` (kind `video.render`, key `render_key(item, input_sha256, next version)` in `pipeline/idempotency.py`, checkpoint `video.rendered`); D2 no project status change (rendered = latest VIDEO artifact + its job); D3 unreadable visuals refused with `domain.shorts_render_asset_unavailable`; D4 captions burnt in with one `drawtext` per wrapped line (`textfile=` + `expansion=none`) placed from the I-097 `caption_box`; D5 optional `Settings.render_font_file` copied into the temp folder, else the fontconfig default (not reproducible); D6 every call (replays too) runs the mixer and records `audio.mixed`, the mix sha256 is in the key; D7 a scene asset whose provenance changed since the timeline was saved is `domain.shorts_render_asset_changed` (409). `content/shorts_render.py`: `ShortsRenderService.render(project_id, *, expected_version, actor, take_over=False) -> RenderResult` (readiness recomputed, `project_is_current`, new read-only `check_timeline_assets` in `shorts_service.py`, `VisualSource`/`ArtifactVisualSource`, pure `build_render_request` and `render_input_sha256`, replay without a renderer call, `in_progress` for a running job unless `take_over`, MP4 probed with a duration tolerance of max(250, 2000 // fps) ms, write transaction re-checks the project and the latest video, invalidates stale approvals, saves the checkpoint and `succeed` under the job's `updated_at` guard, deletes the file on failure; audits `shorts.rendered` and `shorts.render_failed` without text or bytes; codes `domain.shorts_render_*`); bootstrap registers `VideoRenderer`, `ShortsRenderService` and the `render_provider` health check after `voice_provider`. Tests NOT RUN: `tests/test_video_render.py`, `tests/test_ffmpeg_video_render.py`, `tests/test_shorts_render.py` (new); additions in `tests/test_config.py`, `tests/test_bootstrap.py`, `tests/test_health_check.py`, `tests/test_artifact_storage.py`, `tests/test_idempotency_gate.py`. |
+| I-101 | Shorts Thumbnail | I-7 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/shorts_thumbnail.py`: pure `probe_image(data)` (PNG IHDR, JPEG SOF0/SOF1/SOF2 and WebP VP8/VP8L/VP8X header parser, <= 2 MiB, >= 640x640, exact 9:16 vertical aspect ratio) and deterministic `generate_thumbnail_png(width, height, *, seed_hex)` (valid 8-bit RGB PNG at project canvas resolution); `ShortsThumbnailRecorder` (`select` from an attached `AssetKind.IMAGE` asset passing D5 + provenance check, or `generate` from project/timeline/script seed) stores `ArtifactKind.THUMBNAIL` (`image/png`, `image/jpeg`, `image/webp` added to `LocalFileStorage.MEDIA_EXTENSIONS`), replays on identical sha256, invalidates stale approvals in the same transaction, deletes file on failure, audits `shorts.thumbnail_recorded` with scalar metadata; registered in bootstrap. Tests NOT RUN: `tests/test_shorts_thumbnail.py` (new), `tests/test_artifact_storage.py`, `tests/test_bootstrap.py`. |
+| I-102 | Shorts Metadata | I-8 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/shorts_metadata.py`: frozen `ShortsMetadata` (schema v1, title <= 100 chars, description <= 5000 chars, tags <= 30 items and <= 500 chars total, no `<` or `>`, `#Shorts` marker required in title or description, canonical BCP-47 language from strategy, explicit `made_for_kids`, `contains_synthetic_media`, `disclosure_decision_id`, `policy_status`, `attributions`, `project_version`, `timeline_sha256`, `script_id`, `script_version`, canonical JSON `to_bytes`/`from_bytes`); `ShortsMetadataRecorder.record` appends missing asset attributions from timeline assets + latest provenance, enforces latest `DisclosureRecord` (REQUIRED forces `contains_synthetic_media=True`), runs `PolicyChecker` (blocking findings refused with `domain.shorts_metadata_policy_blocked`), stores `ArtifactKind.METADATA` (`application/json` added to `LocalFileStorage.MEDIA_EXTENSIONS`), replays on identical sha256, invalidates stale approvals, audits `shorts.metadata_recorded`; registered in bootstrap. Tests NOT RUN: `tests/test_shorts_metadata.py` (new), `tests/test_artifact_storage.py`, `tests/test_bootstrap.py`. |
+| I-103 | Shorts Artifact Bundle | I-9 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/shorts_bundle.py`: frozen `ShortsArtifactBundle` (manifest v1, `manifest_sha256`, bound `ShortsProject`, `AUDIO`, `VIDEO`, optional `SUBTITLES`, `THUMBNAIL`, `METADATA` artifacts, `RightsReport`, `PolicyReport`) and `ShortsBundleBuilder.build(project_id, *, expected_version, actor)`: verifies project is `READY` and current, verifies every artifact file in `ArtifactStorage` (size, sha256, `probe_mp4` on video, ` video.render` job `video.rendered` checkpoint matching `timeline.sha256`, exact `render_srt` bytes on subtitles when captions enabled, `probe_image` on thumbnail, `ShortsMetadata` binding to `project.version` and `timeline.sha256`), runs `RightsReporter.report` (refuses blocking rights gate or disclosure drift) and `PolicyChecker` over metadata title/description/tags (refuses blocking policy findings), audits `shorts.bundle_built` with scalar IDs and hashes; registered in bootstrap. Tests NOT RUN: `tests/test_shorts_bundle.py` (new), `tests/test_bootstrap.py`. |
+| I-104 | Shorts Render Tests | I-10 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted, test-only; manual static review). `tests/test_shorts_render_scenarios.py`: end-to-end Shorts production pipeline scenario tests (valid fixture through plan -> caption -> subtitles -> render -> thumbnail -> metadata -> bundle; timeline mutation staleness across video, subtitles and metadata; approval invalidation on artifact re-recording; renderer timeout and invalid MP4 job failure + audit; disclosure drift and provenance drift refusal). Phase I is implemented; nothing in it is verified by test execution yet. |
+
+## Phase J: LongForm Production (Prompt Pack v8, prompts 105–115)
+
+Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs/REQUIREMENTS.md`.
+
+| Task | Name | Dependency | Status |
+|---|---|---|---|
+| J-105 | LongForm Project | I-11 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `LongFormConfig` (`content/longform_config.py`, 16:9 horizontal 1280x720/1920x1080/3840x2160, 180..3600s, safe area permille 100/150/60/60, caption rules 2x42 chars, `chapters` and `captions` flags), `LongFormProject` and `LongFormProjectStatus` (`content/longform_project.py`), migration `0028_longform_projects.sql`, `LongFormProjectRepository` (`core/db/repositories/longform.py`), `LongFormProjectService` (`content/longform_service.py`: `FeatureFlags.longform_enabled` guard raising `LongFormDisabledError` first, `create`, `rebind`, `save_timeline`, `plan`, `generate_chapters`, `caption`, `get`, `get_by_content_item`, `list_by_channel`, `is_current`, `longform_readiness`, D5 asset checks + provenance snapshot; audits `longform.project_created`, `longform.project_rebound`, `longform.timeline_saved`, `longform.chapters_generated`), registered in bootstrap. Tests NOT RUN: `tests/test_longform_config.py`, `tests/test_longform_project.py`, `tests/test_migrations.py` (LATEST 28), `tests/test_bootstrap.py`. |
+| J-106 | LongForm Timeline | J-1 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `LongFormTimeline` and `ChapterMarker` in `content/longform_timeline.py` (contiguous scenes up to 400 covering `duration_ms`, chapter markers, captions, music placements up to 30, canonical JSON and `sha256`), `plan_longform_timeline` in `content/longform_planner.py` (timings from TTS chunk durations when within 5% tolerance else word-weighted estimate, plus automatic chapter marker generation when `config.chapters` is true). Tests NOT RUN: `tests/test_longform_timeline.py`, `tests/test_longform_project.py`. |
+| J-107 | Chapters | J-2 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/longform_chapters.py` (`generate_chapters`, `format_youtube_chapters`) and `format_chapter_timestamp` in `content/longform_timeline.py`: first chapter at `00:00` (`start_ms == 0`), at least 3 chapters (3..50), strictly increasing timestamps with >= 10,000 ms spacing, aligned to `SectionKind.CHAPTER` scenes, formatted as `MM:SS Title` or `H:MM:SS Title` for YouTube description embedding; wired into `LongFormProjectService.generate_chapters`. Tests NOT RUN: `tests/test_longform_chapters.py`. |
+| J-108 | B-roll Manager | J-3 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/broll_manager.py`: `BrollAssignment`, `BrollError`/`BrollErrorCode`, and `BrollManager` (`assign` and `auto_assign_backgrounds`): enforces `FeatureFlags.longform_enabled`, D5 asset checks (`asset_not_found`, `asset_other_channel`, `asset_not_attached`, `asset_rights_unknown`, `asset_kind_mismatch`, `asset_provenance_mismatch`), refuses assets with an unresolved blocking `RightsRecord` (`high`/`unknown` -> `domain.broll_asset_rights_blocked`), snapshots provenance, updates `LongFormProjectStatus` via `longform_readiness`, and audits `longform.broll_assigned`; registered in bootstrap. Tests NOT RUN: `tests/test_broll_manager.py`, `tests/test_bootstrap.py`. |
+| J-109 | LongForm Subtitles | J-4 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/longform_captions.py` (`check_longform_captions`, `covers_every_longform_scene`, `plan_longform_captions`) and `content/longform_subtitles.py` (`render_longform_srt`, `render_longform_vtt`, `SubtitleFormat`, `LongFormSubtitleRecorder.record`): enforces `FeatureFlags.longform_enabled`, validates captions against `LongFormConfig`, writes SRT (`application/x-subrip`) or WebVTT (`text/vtt`) as a versioned `SUBTITLES` artifact with idempotent sha256 replay and approval invalidation, audits `longform.subtitles_recorded`; registered in bootstrap. Tests NOT RUN: `tests/test_longform_subtitles.py`, `tests/test_bootstrap.py`. |
+| J-110 | LongForm Audio Mix | J-5 | STATIC_REVIEWED_UNTESTED (BUILD-FIRST, 2026-10-18, uncommitted; manual static review). `content/longform_audio_mix.py`: `LongFormAudioMixer.mix` enforces `FeatureFlags.longform_enabled`, verifies project readiness, currency, D5 audio asset rules and provenance snapshots in one read transaction, mixes voice, music and scene SFX in memory via `content/audio_mix.py`, self-checks via `audio_validation.analyze`, and audits `audio.mixed`; registered in bootstrap. Tests NOT RUN: `tests/test_longform_audio_mix.py`, `tests/test_bootstrap.py`. |
 
 ## Current
 
 - `PROJECT_STATE = READY_FOR_PHASE_A`
 - `BASELINE_COMMIT = 3b41416`
 - Phase 0 (000–011) is complete.
-- A-001 Project Audit has PASSED.
-- A-002 Requirements Freeze has PASSED.
-- A-003 Architecture Map has PASSED.
-- A-004 Folder Structure has PASSED.
-- A-005 Configuration Contract has PASSED.
-- A-006 Feature Flags has PASSED.
-- A-007 Logging Contract has PASSED.
-- A-008 Error Model has PASSED.
-- A-009 Dependency Injection has PASSED.
-- A-010 Health Check has PASSED.
-- A-011 Audit Event Model has PASSED.
-- A-012 Build Baseline has PASSED. Phase A is complete.
-- B-013 Channel Entity has PASSED.
-- B-014 StrategyProfile Entity has PASSED.
-- B-015 ContentItem Entity has PASSED.
-- B-016 Artifact Entity has PASSED.
-- B-017 Script Entity has PASSED.
-- B-018 Voice Entity has PASSED.
-- B-019 Rights Entity has PASSED.
-- B-020 QC Entity has PASSED.
-- B-021 Approval Entity has PASSED.
-- B-022 Publish Entity has PASSED.
-- B-023 Analytics Entity has PASSED.
-- B-024 Revenue Entity has PASSED.
-- B-025 Cost Entity has PASSED.
-- B-026 Comment Entity has PASSED.
-- B-027 AI Job Entity has PASSED.
-- B-028 Experiment Entity has PASSED.
-- B-029 Migrations has PASSED.
-- B-030 Repository Tests has PASSED. Phase B is complete.
-- C-031 Status Enum has PASSED.
-- C-032 Transition Rules has PASSED.
-- C-033 Pipeline Gate Contract has PASSED.
-- C-034 Approval Gate has PASSED.
-- C-035 Version Invalidation has PASSED.
-- C-036 Daily Limit Gate has PASSED.
-- C-037 Budget Gate has PASSED.
-- C-038 Rights Gate has PASSED.
-- C-039 Policy Gate has PASSED.
-- C-040 Kill Switch Gate has PASSED.
-- C-041 Idempotency Gate has PASSED.
-- C-042 Gate Tests has PASSED. Phase C is complete.
-- D-043 Channel Settings has PASSED.
-- D-044 Market Settings has PASSED.
-- D-045 Language Settings has PASSED.
-- D-046 Audience Settings has PASSED.
-- D-047 Niche Settings has PASSED.
-- D-048 Brand Settings has PASSED.
-- D-049 Format Settings has PASSED.
-- D-050 Cadence Settings has PASSED.
-- D-051 Budget Settings has PASSED.
-- D-052 Monetization Settings has PASSED.
-- D-053 Strategy Validation has PASSED. Phase D is complete.
-- E-054 Research Provider has PASSED.
-- E-055 Source Model has PASSED.
-- E-056 Source Collector has PASSED.
-- E-057 Source Deduplication has PASSED.
-- E-058 Topic Extractor has PASSED.
-- E-059 Topic Scoring has PASSED.
-- E-060 Research Report has PASSED.
-- E-061 Research Cache has PASSED.
-- E-062 Research Failure Recovery has PASSED.
-- E-063 Research Tests has PASSED. Phase E is complete.
-- F-064 Script Model has PASSED.
-- F-065 Hook Generator has PASSED.
-- F-066 Shorts Script Generator has PASSED.
-- F-067 LongForm Script Generator has PASSED.
-- F-068 Claim Extractor has PASSED.
-- F-069 Evidence Matcher has PASSED.
-- F-070 Fact Check Result has PASSED.
-- F-071 Originality Check has PASSED.
-- F-072 Script Validator has PASSED.
-- F-073 Script Versioning has PASSED.
-- F-074 Script Tests has PASSED. Phase F is complete.
-- G-075 Asset Model has PASSED.
-- G-076 Asset Registry has PASSED.
-- G-077 Provenance Record has PASSED.
-- G-078 Rights Risk Engine has PASSED.
-- G-078b Rights Gate Integration (follow-up) has PASSED.
-- G-079 Policy Rule Interface has PASSED.
-- G-080 Policy Check has PASSED.
-- G-081 AI Disclosure Rule has PASSED.
-- G-082 Rights Report has PASSED.
-- G-083 Policy Report has PASSED.
-- G-084 Publishing Blocker has PASSED.
-- G-085 Rights Tests has PASSED. Phase G is complete.
-- H-086 Voice Provider has PASSED.
-- H-087 Voice Profile has PASSED.
-- H-088 TTS Job has PASSED.
-- H-089 Audio Artifact, H-090 Audio Validation and H-091 Audio Retry are implemented in BUILD-FIRST mode (STATIC_REVIEWED_UNTESTED, uncommitted; no tests, lint, format or build run).
-- H-092 Audio Cost (STATIC_REVIEWED_UNTESTED) and H-093 Voice Tests (IMPLEMENTED_UNTESTED) are implemented in BUILD-FIRST mode. Phase H is implemented but untested.
-- I-094 Shorts Project is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted).
-- I-095 Shorts Timeline is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted).
-- I-096 Shorts Scene is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted).
-- I-097 Shorts Captions is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted).
-- I-098 Shorts Subtitles is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted).
-- I-099 Shorts Audio Mix is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted). Batch 2 stopped here: I-100 Shorts Render needs architecture decisions.
-- I-100 Shorts Render is implemented in BUILD-FIRST mode (IMPLEMENTED_UNTESTED, uncommitted) after the user's decisions of 2026-10-18 (render provider contract, mock and ffmpeg renderers, MP4 as a VIDEO artifact, mix not stored, D1-D7).
-- Next task: **I-101 Shorts Thumbnail**. I-102..I-104 follow in order.
+- Phase A (A-001..A-012) has PASSED.
+- Phase B (B-013..B-030) has PASSED.
+- Phase C (C-031..C-042) has PASSED.
+- Phase D (D-043..D-053) has PASSED.
+- Phase E (E-054..E-063) has PASSED.
+- Phase F (F-064..F-074) has PASSED.
+- Phase G (G-075..G-085) has PASSED.
+- H-086 Voice Provider, H-087 Voice Profile and H-088 TTS Job have PASSED.
+- H-089..H-093 (Phase H remainder) and I-094..I-100 are implemented in BUILD-FIRST mode (untested, uncommitted).
+- Batch 3 (I-101 Shorts Thumbnail, I-102 Shorts Metadata, I-103 Shorts Artifact Bundle, I-104 Shorts Render Tests, J-105 LongForm Project, J-106 LongForm Timeline, J-107 Chapters, J-108 B-roll Manager, J-109 LongForm Subtitles, J-110 LongForm Audio Mix) is implemented and manually reviewed in BUILD-FIRST mode (`STATIC_REVIEWED_UNTESTED`, uncommitted; no tests, lint, format or build run).
+- Next task: **J-111 LongForm Render**. J-112..J-115 follow in order.

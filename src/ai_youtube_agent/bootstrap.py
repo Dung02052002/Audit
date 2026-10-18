@@ -62,9 +62,14 @@ from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
 from ai_youtube_agent.content.fact_checker import FactChecker
 from ai_youtube_agent.content.hook_generator import HookGenerator
 from ai_youtube_agent.content.longform_audio_mix import LongFormAudioMixer
+from ai_youtube_agent.content.longform_bundle import LongFormBundleBuilder
+from ai_youtube_agent.content.longform_metadata import LongFormMetadataRecorder
+from ai_youtube_agent.content.longform_render import LongFormRenderService
 from ai_youtube_agent.content.longform_script_generator import LongFormScriptGenerator
 from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
+from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
+from ai_youtube_agent.content.qc_harness import VideoArtifactTestHarness
 from ai_youtube_agent.content.originality_checker import OriginalityChecker
 from ai_youtube_agent.content.policy_report import PolicyReporter
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
@@ -336,6 +341,55 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(ArtifactStorage),
             c.resolve(AuditLog),
             c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        LongFormRenderService,
+        lambda c: LongFormRenderService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(VideoRenderer),
+            c.resolve(LongFormAudioMixer),
+            flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        LongFormThumbnailRecorder,
+        lambda c: LongFormThumbnailRecorder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        LongFormMetadataRecorder,
+        lambda c: LongFormMetadataRecorder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        LongFormBundleBuilder,
+        lambda c: LongFormBundleBuilder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(Settings),
+            rights_reporter=c.resolve(RightsReporter),
+            policy_reporter=c.resolve(PolicyReporter),
+            flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        VideoArtifactTestHarness,
+        lambda c: VideoArtifactTestHarness(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
         ),
     )
     container.register(

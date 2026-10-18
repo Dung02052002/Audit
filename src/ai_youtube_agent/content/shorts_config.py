@@ -294,6 +294,11 @@ class ShortsConfig:
         )
 
     @property
+    def canvas_size(self) -> tuple[int, int]:
+        """The (width, height) of this canvas in pixels."""
+        return (self.width, self.height)
+
+    @property
     def safe_rect(self) -> Rect:
         """The safe area of this canvas in pixels."""
         return self.safe_area.rect(self.width, self.height)

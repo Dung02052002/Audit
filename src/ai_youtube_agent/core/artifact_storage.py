@@ -12,7 +12,8 @@ user on 2026-10-16:
   database. The root is created on the first write, not when the storage is
   built.
 - The extension comes from the media type (``MEDIA_EXTENSIONS``: WAV audio,
-  SRT subtitles (#098) and MP4 video (#100)); an unknown media type is
+  SRT subtitles (#098), MP4 video (#100), PNG/JPEG/WebP images (#101) and JSON
+  metadata (#102)); an unknown media type is
   refused. The item id, kind and version are checked before anything touches
   the disk, and every path must stay inside the root.
 - A write goes to a temporary file in the same folder, is flushed to disk and
@@ -41,6 +42,10 @@ MEDIA_EXTENSIONS = {
     "audio/wav": "wav",
     "application/x-subrip": "srt",
     "video/mp4": "mp4",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "application/json": "json",
 }
 CONTENT_ITEM_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 

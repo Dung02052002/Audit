@@ -238,7 +238,7 @@ def test_a_kind_that_is_not_an_artifact_kind_is_refused(
 
 
 @pytest.mark.parametrize(
-    "media_type", ["audio/mpeg", "video/mp4", "AUDIO/WAV", "audio/wav ", "", None]
+    "media_type", ["audio/mpeg", "video/quicktime", "AUDIO/WAV", "audio/wav ", "", None]
 )
 def test_an_unknown_media_type_is_refused(
     storage: LocalFileStorage, root: Path, media_type
@@ -259,11 +259,15 @@ def test_empty_or_non_bytes_data_is_refused(
     assert not root.exists()
 
 
-def test_only_wav_srt_and_mp4_have_an_extension_for_now() -> None:
+def test_supported_media_extensions() -> None:
     assert MEDIA_EXTENSIONS == {
         "audio/wav": "wav",
         "application/x-subrip": "srt",
         "video/mp4": "mp4",
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+        "application/json": "json",
     }
 
 
@@ -278,6 +282,30 @@ def test_an_mp4_video_is_stored_as_v1_mp4(
     assert path.read_bytes() == b"mp4 bytes"
     assert stored.uri == path.as_uri()
     assert storage.read(stored.uri) == b"mp4 bytes"
+
+
+@pytest.mark.parametrize(
+    ("kind", "media_type", "ext"),
+    [
+        (ArtifactKind.THUMBNAIL, "image/png", "png"),
+        (ArtifactKind.THUMBNAIL, "image/jpeg", "jpg"),
+        (ArtifactKind.THUMBNAIL, "image/webp", "webp"),
+        (ArtifactKind.METADATA, "application/json", "json"),
+    ],
+)
+def test_thumbnail_and_metadata_extensions_are_stored(
+    storage: LocalFileStorage,
+    root: Path,
+    kind: ArtifactKind,
+    media_type: str,
+    ext: str,
+) -> None:
+    stored = storage.write(ITEM, kind, 1, b"payload", media_type=media_type)
+
+    path = root.resolve() / ITEM / kind.value / f"v1.{ext}"
+    assert path.read_bytes() == b"payload"
+    assert stored.uri == path.as_uri()
+    assert storage.read(stored.uri) == b"payload"
 
 
 # Reading and deleting

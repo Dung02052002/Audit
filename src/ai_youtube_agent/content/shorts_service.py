@@ -208,6 +208,15 @@ class ShortsProjectError(DomainError):
             self.default_http_status = HTTP_STATUS[code]
 
 
+class ShortsProjectNotFoundError(ShortsProjectError):
+    default_code = ShortsProjectErrorCode.NOT_FOUND.value
+    default_user_message = USER_MESSAGES[ShortsProjectErrorCode.NOT_FOUND]
+    default_http_status = HTTPStatus.NOT_FOUND
+
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(detail, code=ShortsProjectErrorCode.NOT_FOUND)
+
+
 @dataclass(frozen=True)
 class _Inputs:
     """The latest inputs of a Shorts item and the configuration they give."""

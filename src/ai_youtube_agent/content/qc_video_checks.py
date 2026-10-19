@@ -1033,3 +1033,196 @@ def check_render_integrity(context: VideoInspectionContext) -> QCCheck:
         status=QCStatus.PASS,
         detail=f"Render integrity verified ({len(raw)} bytes, sha256={actual_sha256[:12]}...)",
     )
+
+
+def check_metadata(context: VideoInspectionContext) -> QCCheck:
+    """Validate consistency between artifact and publish metadata (Prompt #125)."""
+    raw = context.metadata_data
+    if raw is None or len(raw) == 0:
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Publish metadata artifact is missing or empty.",
+        )
+
+    try:
+        raw_payload = json.loads(bytes(raw).decode("utf-8"))
+        if context.content_type == ContentType.SHORTS:
+            meta: ShortsMetadata | LongFormMetadata = ShortsMetadata.from_json_bytes(raw)
+        else:
+            meta = LongFormMetadata.from_bytes(raw)
+    except Exception as error:
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Invalid publish metadata JSON: {error}",
+        )
+
+    if meta.content_item_id != context.content_item_id:
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=(
+                f"Metadata content_item_id {meta.content_item_id!r} does not match "
+                f"item {context.content_item_id!r}."
+            ),
+        )
+
+    if (
+        context.expected_project_id is not None
+        and meta.project_id != context.expected_project_id
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Metadata is bound to a different project ID.",
+        )
+
+    if (
+        context.expected_project_version is not None
+        and meta.project_version != context.expected_project_version
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=(
+                f"Metadata is stale: bound to project version {meta.project_version}, "
+                f"expected version {context.expected_project_version}."
+            ),
+        )
+
+    if (
+        isinstance(raw_payload, dict)
+        and "timeline_sha256" in raw_payload
+        and context.expected_timeline_sha256 is not None
+        and raw_payload["timeline_sha256"] != context.expected_timeline_sha256
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Metadata timeline_sha256 does not match current project timeline.",
+        )
+
+    if (
+        context.expected_script_id is not None
+        and meta.script_id != context.expected_script_id
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Metadata script_id does not match current project script.",
+        )
+
+    if (
+        context.expected_script_version is not None
+        and meta.script_version != context.expected_script_version
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=(
+                f"Metadata script_version {meta.script_version} does not match "
+                f"expected version {context.expected_script_version}."
+            ),
+        )
+
+    if (
+        context.expected_language is not None
+        and meta.language.lower() != context.expected_language.lower()
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=(
+                f"Metadata language {meta.language!r} does not match strategy "
+                f"primary language {context.expected_language!r}."
+            ),
+        )
+
+    if isinstance(meta, LongFormMetadata) and context.expected_chapters_enabled:
+        if len(meta.chapters) < 3:
+            return QCCheck(
+                name=METADATA_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail="LongForm metadata requires at least 3 chapters when chapters are enabled.",
+            )
+        if meta.chapters[0].start_ms != 0:
+            return QCCheck(
+                name=METADATA_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail="First LongForm metadata chapter must start at 00:00 (0 ms).",
+            )
+        if (
+            context.expected_chapter_count is not None
+            and len(meta.chapters) != context.expected_chapter_count
+        ):
+            return QCCheck(
+                name=METADATA_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"LongForm metadata has {len(meta.chapters)} chapters, "
+                    f"expected {context.expected_chapter_count}."
+                ),
+            )
+        chapter_block = "\n".join(
+            f"{format_chapter_timestamp(ch.start_ms)} {ch.title}"
+            for ch in meta.chapters
+        )
+        if chapter_block not in meta.description:
+            return QCCheck(
+                name=METADATA_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail="LongForm metadata description is missing formatted YouTube chapters.",
+            )
+
+    for attr in context.expected_attributions:
+        if attr not in meta.description:
+            return QCCheck(
+                name=METADATA_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Metadata is missing required asset attribution: {attr!r}",
+            )
+
+    if (
+        context.expected_disclosure_id is not None
+        and meta.disclosure_decision_id != context.expected_disclosure_id
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Metadata disclosure_decision_id does not match the latest disclosure decision.",
+        )
+
+    if (
+        context.expected_synthetic_media is True
+        and not meta.contains_synthetic_media
+    ):
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Metadata contains_synthetic_media is False while AI disclosure is required.",
+        )
+
+    if meta.policy_status is PolicyStatus.BLOCK:
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Metadata policy_status is BLOCK.",
+        )
+
+    if meta.policy_status is PolicyStatus.WARN:
+        return QCCheck(
+            name=METADATA_CHECK_NAME,
+            status=QCStatus.WARN,
+            detail="Metadata passed consistency checks with policy status WARN.",
+        )
+
+    return QCCheck(
+        name=METADATA_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=(
+            f"Valid {context.content_type.value} publish metadata "
+            f"(project v{meta.project_version}, script v{meta.script_version})"
+        ),
+    )
+

@@ -16,6 +16,8 @@ from ai_youtube_agent.core.di import Container
 from ai_youtube_agent.core.health import HealthRegistry
 from ai_youtube_agent.core.http import install_error_handlers, provide
 from ai_youtube_agent.core.log import configure_logging
+from ai_youtube_agent.pipeline.publish_api import audit_router as publish_audit_router
+from ai_youtube_agent.pipeline.publish_api import router as publish_router
 
 
 def health(
@@ -44,6 +46,8 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(strategy_router)
     app.include_router(preview_router)
     app.include_router(approval_router)
+    app.include_router(publish_router)
+    app.include_router(publish_audit_router)
     return app
 
 

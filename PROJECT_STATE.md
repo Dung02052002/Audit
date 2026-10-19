@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-18 (BUILD-FIRST: up to J-110 implemented & statically reviewed untested)
+Last updated: 2026-10-19 (BUILD-FIRST: up to K-130 implemented & statically reviewed untested; Phase K complete)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -17,35 +17,35 @@ BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
 BUILD_MODE         = BUILD-FIRST (user order 2026-10-16: no tests, lint, format or build until the user asks)
-UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120 (STATIC_REVIEWED_UNTESTED)
-NEXT_TASK          = K-121 Audio Test
+UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120, K-121, K-122, K-123, K-124, K-125, K-126, K-127, K-128, K-129, K-130 (STATIC_REVIEWED_UNTESTED)
+NEXT_TASK          = L-131 Preview Artifact API
 ```
 
 ## Next task
 
 **BUILD-FIRST batch (user order, 2026-10-16/18/19).** Up to 10 tasks per batch, no tests, lint, format or build, status `IMPLEMENTED_UNTESTED` or `STATIC_REVIEWED_UNTESTED`, never PASS.
 
-J-111 LongForm Render is STATIC_REVIEWED_UNTESTED (`content/longform_render.py` `LongFormRenderService`, D5/D7 checks, `LongFormAudioMixer` integration, `probe_mp4`, approval invalidation, `video.render` job, `longform.rendered` audit, registered in bootstrap).
+K-121 Audio Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_audio` `video.audio`, audio track presence, video/audio sync within frame tolerance, and PCM WAV clipping/silence/level analysis via `audio_validation.analyze`).
 
-J-112 LongForm Thumbnail is STATIC_REVIEWED_UNTESTED (`content/longform_thumbnail.py` `LongFormThumbnailRecorder`, 16:9 horizontal validation, pure Python PNG encoder, `longform.thumbnail_recorded` audit, registered in bootstrap).
+K-122 Subtitle Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_subtitles` `video.subtitles`, UTF-8 without BOM, SRT/WebVTT cue timing, non-overlap, duration bounds, and scene caption coverage).
 
-J-113 LongForm Metadata is STATIC_REVIEWED_UNTESTED (`content/longform_metadata.py` `LongFormMetadataRecorder`, embedded YouTube chapters, attribution, disclosure, `PolicyChecker`, `longform.metadata_recorded` audit, registered in bootstrap).
+K-123 Black Frame Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_black_frames` `video.black_frames`, black/frozen frame ratio checks from MP4 `mdat` payload luminance/block variance and telemetry).
 
-J-114 LongForm Artifact Bundle is STATIC_REVIEWED_UNTESTED (`content/longform_bundle.py` `LongFormBundleBuilder`, cross-artifact validation, `probe_mp4` frame tolerance, `longform.bundle_built` audit, registered in bootstrap).
+K-124 Render Integrity Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_render_integrity` `video.integrity`, artifact size/sha256 match, `probe_mp4`, `mdat` box verification, and `video.render` `AIJob` status/checkpoint verification).
 
-J-115 LongForm Render Tests is STATIC_REVIEWED_UNTESTED (`tests/test_longform_render_scenarios.py`, end-to-end LongForm pipeline test scenarios). Phase J is complete.
+K-125 Metadata Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_metadata` `video.metadata`, `ShortsMetadata`/`LongFormMetadata` consistency with rendered artifact/project, AI disclosure satisfaction, required asset attributions, and LongForm chapter timestamps).
 
-K-116 Test Harness is STATIC_REVIEWED_UNTESTED (`content/qc_harness.py` `VideoArtifactTestHarness`, registered in bootstrap).
+K-126 Rights QC is STATIC_REVIEWED_UNTESTED (`content/qc_rights.py` `RightsQCChecker`, `qc.rights` blocking QC dependency over `RightsReporter.report`, registered in bootstrap).
 
-K-117 Container Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_container` `video.container`).
+K-127 Policy QC is STATIC_REVIEWED_UNTESTED (`content/qc_policy.py` `PolicyQCChecker`, `qc.policy` blocking QC dependency over `PolicyReporter.report` with metadata description/tags auto-loading, registered in bootstrap).
 
-K-118 Resolution Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_resolution` `video.resolution`).
+K-128 AI Disclosure QC is STATIC_REVIEWED_UNTESTED (`content/qc_disclosure.py` `DisclosureQCChecker`, `qc.ai_disclosure` verifying `DisclosureRecord`, `disclosure-rules-v1`, generated visual asset drift, deterministic rule re-evaluation, and metadata disclosure satisfaction, registered in bootstrap).
 
-K-119 FPS Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_fps` `video.fps`).
+K-129 QC Report is STATIC_REVIEWED_UNTESTED (`content/qc_report.py` `QCReport`, `QCReportBuilder` aggregating all 9 `video.*` and 3 `qc.*` checks into a persisted `QCResult` with `qc.report_generated` audit, plus `TestGate` and `QCGate`, registered in bootstrap).
 
-K-120 Duration Test is STATIC_REVIEWED_UNTESTED (`content/qc_video_checks.py` `check_duration` `video.duration`).
+K-130 QC Regression Suite is STATIC_REVIEWED_UNTESTED (`content/qc_regression.py` and `tests/test_qc_regression_suite.py` regression fixtures and end-to-end scenarios for both Shorts and LongForm). Phase K is complete.
 
-Next: **K-121 Audio Test**. K-122..K-130 follow in order.
+Next: **L-131 Preview Artifact API**. L-132..L-144 follow in order.
 
 H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 

@@ -45,6 +45,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | K-118 Resolution Test | `tests/test_qc_video_checks.py` (new) |
 | K-119 FPS Test | `tests/test_qc_video_checks.py` (new) |
 | K-120 Duration Test | `tests/test_qc_video_checks.py` (new) |
+| K-121 Audio Test | `tests/test_qc_video_checks.py` (additions); regression `tests/test_audio_validation.py` |
+| K-122 Subtitle Test | `tests/test_qc_video_checks.py` (additions); regression `tests/test_shorts_subtitles.py`, `tests/test_longform_subtitles.py` |
+| K-123 Black Frame Test | `tests/test_qc_video_checks.py` (additions) |
+| K-124 Render Integrity Test | `tests/test_qc_video_checks.py` (additions); regression `tests/test_video_render.py` |
+| K-125 Metadata Test | `tests/test_qc_video_checks.py` (additions); regression `tests/test_shorts_metadata.py`, `tests/test_longform_metadata.py` |
+| K-126 Rights QC | `tests/test_qc_rights.py` (new), `tests/test_bootstrap.py`; regression `tests/test_rights_report.py`, `tests/test_rights_gate.py` |
+| K-127 Policy QC | `tests/test_qc_policy.py` (new), `tests/test_bootstrap.py`; regression `tests/test_policy_report.py`, `tests/test_policy_gate.py` |
+| K-128 AI Disclosure QC | `tests/test_qc_disclosure.py` (new), `tests/test_bootstrap.py`; regression `tests/test_disclosure_decider.py`, `tests/test_disclosure_rule.py` |
+| K-129 QC Report | `tests/test_qc_report.py` (new), `tests/test_bootstrap.py`; regression `tests/test_gate_matrix.py`, `tests/test_gates.py`, `tests/test_qc.py` |
+| K-130 QC Regression Suite | `tests/test_qc_regression_suite.py` (new); full Phase K QC suite (`tests/test_qc_*.py`) |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -341,3 +351,45 @@ needs its tests run in the later test phase; those tests are listed per task in
 - **Verification phase:** `J-111 LongForm Render`, `J-115 LongForm Render Tests`,
   and post-BUILD-FIRST test run.
 - **Priority:** Medium.
+
+### K-121..K-125 Video Artifact Checks (`qc_video_checks.py`)
+
+- **Task:** `K-121 Audio Test`, `K-122 Subtitle Test`, `K-123 Black Frame Test`,
+  `K-124 Render Integrity Test`, `K-125 Metadata Test`
+- **Issue:** `check_black_frames` (`K-123`) estimates black and frozen frame
+  ratios from raw MP4 `mdat` payload byte luminance/block variance when explicit
+  frame telemetry (`black_frame_ratio` / `frozen_frame_ratio`) is not supplied
+  on `VideoInspectionContext`. While deterministic for `stub_mp4` and raw frame
+  buffers, compressed H.264 `mdat` bitstreams from real `ffmpeg` renders do not
+  map byte values 1:1 to Y-luma samples without decoding frames via `ffmpeg` /
+  `ffprobe`. Also, `VideoArtifactTestHarness.default_video_checks()` keeps the
+  4 foundational checks (`K-117..K-120`) for backward compatibility while
+  `all_video_checks()` (used by `QCReportBuilder`) runs all 9 `video.*` checks
+  (`K-117..K-125`).
+- **Potential impact:** On real compressed H.264 outputs, high-entropy `mdat`
+  bytes will not falsely trigger black/frozen frame failures, whereas a truly
+  black H.264 stream may compress to small repeating NAL blocks (`frozen_ratio`
+  heuristic) unless `ffmpeg` `blackdetect`/`freezedetect` filter telemetry is
+  passed into `VideoInspectionContext`.
+- **Verification phase:** Post-BUILD-FIRST pytest run (`tests/test_qc_video_checks.py`)
+  and real-FFmpeg pilot (`#226`, `#227`).
+- **Priority:** Medium.
+
+### K-126..K-130 Compliance QC, QC Report & Regression Suite
+
+- **Task:** `K-126 Rights QC`, `K-127 Policy QC`, `K-128 AI Disclosure QC`,
+  `K-129 QC Report`, `K-130 QC Regression Suite`
+- **Issue:** `TestGate` (`GateName.TEST`) and `QCGate` (`GateName.QC`) are
+  implemented in `content/qc_report.py` as `PipelineGate` classes guarding transitions
+  to `PREVIEW_READY`, `AWAITING_APPROVAL`, `APPROVED`, and `PUBLISHING`, and are
+  deliberately NOT added to `GUARDS` in `tests/test_gate_matrix.py` (which
+  pins `set(GateName) - set(GUARDS) == {GateName.TEST, GateName.QC}`) or to
+  `PublishGate` (whose gate order is pinned in `tests/test_publishing_blocker.py`);
+  wiring `TestGate` and `QCGate` into the stage runner belongs to `#206 Pipeline Runner`.
+- **Potential impact:** None for existing gate tests; `#206 Pipeline Runner`
+  must include `TestGate` and `QCGate` when advancing items past `TESTING`.
+- **Verification phase:** Post-BUILD-FIRST pytest run (`tests/test_qc_rights.py`,
+  `tests/test_qc_policy.py`, `tests/test_qc_disclosure.py`, `tests/test_qc_report.py`,
+  `tests/test_qc_regression_suite.py`) and `#206 Pipeline Runner`.
+- **Priority:** Medium.
+

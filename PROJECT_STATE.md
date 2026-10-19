@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-19 (BUILD-FIRST: up to L-140 implemented & statically reviewed untested)
+Last updated: 2026-10-19 (BUILD-FIRST: up to M-150 implemented & statically reviewed untested)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,7 +9,7 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 972f408
+CURRENT_CHECKPOINT = 8111bd1
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS at 8b41c0b; DEFERRED for the BUILD-FIRST work
 LINT_STATUS        = PASS
@@ -17,35 +17,35 @@ BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
 BUILD_MODE         = BUILD-FIRST (user order 2026-10-16: no tests, lint, format or build until the user asks)
-UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120, K-121, K-122, K-123, K-124, K-125, K-126, K-127, K-128, K-129, K-130, L-131, L-132, L-133, L-134, L-135, L-136, L-137, L-138, L-139, L-140 (STATIC_REVIEWED_UNTESTED)
-NEXT_TASK          = L-141 Request Changes
+UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120, K-121, K-122, K-123, K-124, K-125, K-126, K-127, K-128, K-129, K-130, L-131, L-132, L-133, L-134, L-135, L-136, L-137, L-138, L-139, L-140, L-141, L-142, L-143, L-144, M-145, M-146, M-147, M-148, M-149, M-150 (STATIC_REVIEWED_UNTESTED)
+NEXT_TASK          = M-151 Idempotency Key
 ```
 
 ## Next task
 
 **BUILD-FIRST batch (user order, 2026-10-16/18/19).** Up to 10 tasks per batch, no tests, lint, format or build, status `IMPLEMENTED_UNTESTED` or `STATIC_REVIEWED_UNTESTED`, never PASS.
 
-L-131 Preview Artifact API is STATIC_REVIEWED_UNTESTED (`content/preview_artifact.py` `PreviewArtifactService`, on-disk `size_bytes`/`sha256` verification, `expected_version`/`expected_sha256` conflict checks, HTTP `Range` byte streaming, `/previews` router in `content/preview_api.py`).
+L-141 Request Changes is STATIC_REVIEWED_UNTESTED (`ApprovalRequest.request_changes` in `content/approval.py`, `ApprovalService.request_changes` in `content/approval_service.py` returning item to `GENERATING`, `approval.changes_requested` audit, `POST /approvals/{id}/request-changes`).
 
-L-132 Preview Player is STATIC_REVIEWED_UNTESTED (`content/preview_player.py` `PreviewPlayerService`, `render_preview_player_html`, `srt_to_vtt`, `/previews/{id}/player`, `/previews/{id}/player.html`, `/previews/{id}/subtitles.vtt`).
+L-142 Approval Expiry is STATIC_REVIEWED_UNTESTED (`Settings.approval_ttl_hours`, `ApprovalRequest.expires_at` / `is_expired` / `expire`, `ApprovalGate` optional `ttl` (`approval.expired`), `ApprovalService.expire_stale` and `revalidate`, `/approvals/by-item/{content_item_id}/expire` and `/approvals/{id}/revalidate`).
 
-L-133 Preview Metadata is STATIC_REVIEWED_UNTESTED (`content/preview_metadata.py` `PreviewMetadataService`, title/description/tags/disclosure/thumbnail/subtitles/chapters view, `/previews/{id}/metadata`).
+L-143 Approval Audit is STATIC_REVIEWED_UNTESTED (`content/approval_audit.py` `ApprovalAuditService` binding actor, timestamp, action, version, and reason, `/approvals/{id}/audit` and `/approvals/by-item/{content_item_id}/audit`).
 
-L-134 Preview Reports is STATIC_REVIEWED_UNTESTED (`content/preview_reports.py` `PreviewReportService`, combined QC, Rights and Policy reports with `ready_for_approval` and `blocking_reasons`, `/previews/{id}/reports`).
+L-144 Approval Tests is STATIC_REVIEWED_UNTESTED (`tests/test_approval.py`, `tests/test_approval_scenarios.py`).
 
-L-135 Version Comparison is STATIC_REVIEWED_UNTESTED (`content/version_comparison.py` `VersionComparisonService`, per-kind diffs across `VIDEO`, `AUDIO`, `SUBTITLES`, `THUMBNAIL`, `METADATA` plus invalidated/stale approval tracking, `/previews/{id}/compare`).
+M-145 OAuth Contract is STATIC_REVIEWED_UNTESTED (`providers/youtube_oauth.py` `OAuthScope`, `OAuthToken` with `SecretStr` tokens, `YouTubeOAuthProvider`, `providers/mock_youtube_oauth.py` `MockYouTubeOAuthProvider`).
 
-L-136 Preview Edit Loop is STATIC_REVIEWED_UNTESTED (`content/preview_edit_loop.py` `PreviewEditLoopService.run_edit_loop`, `change -> rerender -> retest -> new preview`, approval invalidation, QC re-evaluation, `/previews/{id}/edit-loop`).
+M-146 Channel Provider is STATIC_REVIEWED_UNTESTED (`providers/youtube_channel.py` `RemoteChannelInfo`, `YouTubeChannelProvider`, `providers/mock_youtube_channel.py` `MockYouTubeChannelProvider`).
 
-L-137 Approval Request is STATIC_REVIEWED_UNTESTED (`content/approval_service.py` `ApprovalService.request_approval`, version-bound `ApprovalRequest` creation, transition to `AWAITING_APPROVAL`, `approval.requested` audit, `POST /approvals`).
+M-147 Upload Provider is STATIC_REVIEWED_UNTESTED (`providers/youtube_upload.py` `YouTubeUploadPayload`, `YouTubeUploadReceipt`, `YouTubeUploadProvider`, `providers/mock_youtube_upload.py` `MockYouTubeUploadProvider`).
 
-L-138 Email Approval is STATIC_REVIEWED_UNTESTED (`providers/approval_email.py`, `providers/mock_approval_email.py`, `content/email_approval.py` `ApprovalEmailService`, safe preview reference without secrets/credentials and exact `video_artifact_id`/`sha256`, `approval.email_sent` audit, `POST /approvals/{id}/email`).
+M-148 Publish Metadata Mapper is STATIC_REVIEWED_UNTESTED (`pipeline/publish_metadata_mapper.py` `PublishMetadataMapper.map_to_payload`).
 
-L-139 Approve Action is STATIC_REVIEWED_UNTESTED (`ApprovalRequest.approve` in `content/approval.py` and `ApprovalService.approve` in `content/approval_service.py`, explicit human `ActorKind.USER` approval, `stale_kinds` verification, transition to `APPROVED`, `approval.approved` audit, `POST /approvals/{id}/approve`).
+M-149 Shorts Publisher is STATIC_REVIEWED_UNTESTED (`pipeline/shorts_publisher.py` `ShortsPublisher.publish`).
 
-L-140 Reject Action is STATIC_REVIEWED_UNTESTED (`ApprovalRequest.reject` in `content/approval.py` and `ApprovalService.reject` in `content/approval_service.py`, explicit human `ActorKind.USER` rejection with mandatory reason, transition to `REJECTED`, `approval.rejected` audit, `POST /approvals/{id}/reject`).
+M-150 LongForm Publisher is STATIC_REVIEWED_UNTESTED (`pipeline/longform_publisher.py` `LongFormPublisher.publish`).
 
-Next: **L-141 Request Changes**. L-142..L-144 follow in order.
+Next: **M-151 Idempotency Key**. M-152..M-156 follow in order.
 
 H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 

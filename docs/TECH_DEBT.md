@@ -65,6 +65,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | L-138 Email Approval | `tests/test_approval_workflow.py` (new), `tests/test_bootstrap.py` |
 | L-139 Approve Action | `tests/test_approval.py` (updated decision method list + approve tests), `tests/test_approval_workflow.py` (new); regression `tests/test_approval_gate.py` |
 | L-140 Reject Action | `tests/test_approval.py` (updated decision method list + reject tests), `tests/test_approval_workflow.py` (new) |
+| L-141 Request Changes | `tests/test_approval.py` (decision method list + `request_changes` tests), `tests/test_approval_scenarios.py` (new) |
+| L-142 Approval Expiry | `tests/test_approval.py` (`expires_at`, `is_expired`, `expire` tests), `tests/test_approval_scenarios.py` (new), `tests/test_config.py` (`approval_ttl_hours`); regression `tests/test_approval_gate.py`, `tests/test_gate_matrix.py`, `tests/test_publish_gate.py` |
+| L-143 Approval Audit | `tests/test_approval_scenarios.py` (new), `tests/test_bootstrap.py` |
+| L-144 Approval Tests | `tests/test_approval.py`, `tests/test_approval_workflow.py`, `tests/test_approval_scenarios.py` |
+| M-145 OAuth Contract | `tests/test_youtube_providers.py` (new), `tests/test_bootstrap.py` |
+| M-146 Channel Provider | `tests/test_youtube_providers.py` (new), `tests/test_bootstrap.py` |
+| M-147 Upload Provider | `tests/test_youtube_providers.py` (new), `tests/test_bootstrap.py` |
+| M-148 Publish Metadata Mapper | `tests/test_publishers.py` (new), `tests/test_bootstrap.py` |
+| M-149 Shorts Publisher | `tests/test_publishers.py` (new), `tests/test_bootstrap.py`; regression `tests/test_publish_gate.py`, `tests/test_idempotency_gate.py`, `tests/test_daily_limit.py` |
+| M-150 LongForm Publisher | `tests/test_publishers.py` (new), `tests/test_bootstrap.py`; regression `tests/test_publish_gate.py`, `tests/test_idempotency_gate.py`, `tests/test_daily_limit.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -442,4 +452,42 @@ needs its tests run in the later test phase; those tests are listed per task in
   (`tests/test_approval.py`, `tests/test_approval_workflow.py`).
 - **Priority:** Low.
 
+### L-141..L-144 Request Changes, Approval Expiry & Approval Audit
 
+- **Task:** `L-141 Request Changes`, `L-142 Approval Expiry`, `L-143 Approval Audit`,
+  `L-144 Approval Tests`
+- **Issue:** `ApprovalGate` accepts an optional `ttl: timedelta | None = None`
+  parameter (defaulting to `None` to preserve backward compatibility with existing
+  `tests/test_approval_gate.py`, `tests/test_gate_matrix.py`, and
+  `tests/test_publish_gate.py` fixtures that advance the evaluation clock by +1
+  to +30 days). `ApprovalService` enforces `Settings.approval_ttl_hours` (default
+  72h) automatically during `approve()`, `expire_stale()`, and `revalidate()`.
+  Also, in `TEST` environment `AuditSink` is `InMemoryAuditSink`, so
+  `ApprovalAuditService` reads from `InMemoryAuditSink.events` when present and
+  falls back to SQLite `audit_events` in non-test environments.
+- **Potential impact:** `PublishGate` does not pass `ttl` to `ApprovalGate`
+  unless explicitly configured, relying on `ApprovalService.expire_stale` or
+  explicit `ApprovalGate(approvals, artifacts, ttl=...)` when TTL enforcement at
+  publish-gate evaluation time is desired.
+- **Verification phase:** Post-BUILD-FIRST pytest run (`tests/test_approval.py`,
+  `tests/test_approval_scenarios.py`).
+- **Priority:** Low.
+
+### M-145..M-150 YouTube Providers, Metadata Mapper & Publishers
+
+- **Task:** `M-145 OAuth Contract`, `M-146 Channel Provider`, `M-147 Upload Provider`,
+  `M-148 Publish Metadata Mapper`, `M-149 Shorts Publisher`, `M-150 LongForm Publisher`
+- **Issue:** `YouTubeOAuthProvider`, `YouTubeChannelProvider`, and
+  `YouTubeUploadProvider` are wired to deterministic in-memory mocks
+  (`MockYouTubeOAuthProvider`, `MockYouTubeChannelProvider`,
+  `MockYouTubeUploadProvider`) in `bootstrap.py` so no real YouTube network
+  calls or video uploads ever happen during development or tests. Dedicated
+  upload-level idempotency key helpers, duplicate upload guards, retry policy,
+  and manual/scheduled publish modes are deferred to `M-151`..`M-156`.
+- **Potential impact:** If a failed publish attempt transitions `ContentItem`
+  from `PUBLISHING -> FAILED`, `ContentItem` must be moved back to `APPROVED`
+  before calling `ShortsPublisher.publish` / `LongFormPublisher.publish` again
+   until `M-153 Publish Retry` adds automated retry orchestration.
+- **Verification phase:** `M-151`..`M-156` and post-BUILD-FIRST pytest run
+  (`tests/test_youtube_providers.py`, `tests/test_publishers.py`).
+- **Priority:** Low.

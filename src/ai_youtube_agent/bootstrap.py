@@ -50,6 +50,9 @@ need no provider.
 resolved); the kill switch gate joins it later.
 """
 
+from datetime import timedelta
+
+from ai_youtube_agent.content.approval_audit import ApprovalAuditService
 from ai_youtube_agent.content.approval_service import ApprovalService
 from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
@@ -122,6 +125,9 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
+from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
+from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
+from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
 from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
 from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
 from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
@@ -129,11 +135,17 @@ from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
 from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer
+from ai_youtube_agent.providers.mock_youtube_channel import MockYouTubeChannelProvider
+from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvider
+from ai_youtube_agent.providers.mock_youtube_upload import MockYouTubeUploadProvider
 from ai_youtube_agent.providers.research import ResearchProvider
 from ai_youtube_agent.providers.research_cache import ResearchCache
 from ai_youtube_agent.providers.speech_synthesis import SpeechSynthesizer
 from ai_youtube_agent.providers.text_generation import TextGenerator
 from ai_youtube_agent.providers.video_render import VideoRenderer
+from ai_youtube_agent.providers.youtube_channel import YouTubeChannelProvider
+from ai_youtube_agent.providers.youtube_oauth import YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_upload import YouTubeUploadProvider
 
 logger = get_logger(__name__)
 
@@ -508,10 +520,60 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(Database),
             c.resolve(AuditLog),
             email_service=c.resolve(ApprovalEmailService),
+            ttl=timedelta(hours=c.resolve(Settings).approval_ttl_hours),
+        ),
+    )
+    container.register(
+        ApprovalAuditService,
+        lambda c: ApprovalAuditService(
+            c.resolve(Database), c.resolve(AuditLog)
         ),
     )
     container.register(
         PublishGate, lambda c: PublishGate(c.resolve(Database), c.resolve(Settings))
+    )
+    container.register(
+        YouTubeOAuthProvider, lambda _: MockYouTubeOAuthProvider()
+    )
+    container.register(
+        YouTubeChannelProvider,
+        lambda c: MockYouTubeChannelProvider(
+            oauth_provider=c.resolve(YouTubeOAuthProvider)
+        ),
+    )
+    container.register(
+        YouTubeUploadProvider, lambda _: MockYouTubeUploadProvider()
+    )
+    container.register(
+        PublishMetadataMapper, lambda _: PublishMetadataMapper()
+    )
+    container.register(
+        ShortsPublisher,
+        lambda c: ShortsPublisher(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(PublishGate),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(YouTubeChannelProvider),
+            c.resolve(YouTubeUploadProvider),
+            mapper=c.resolve(PublishMetadataMapper),
+            flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        LongFormPublisher,
+        lambda c: LongFormPublisher(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(PublishGate),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(YouTubeChannelProvider),
+            c.resolve(YouTubeUploadProvider),
+            mapper=c.resolve(PublishMetadataMapper),
+            flags=c.resolve(FeatureFlags),
+        ),
     )
     return container
 

@@ -379,10 +379,53 @@ def test_container_resolves_preview_and_approval_services(tmp_path: Path) -> Non
     assert isinstance(
         container.resolve(PreviewEditLoopService), PreviewEditLoopService
     )
+    from ai_youtube_agent.content.approval_audit import ApprovalAuditService
+
     assert isinstance(
         container.resolve(ApprovalEmailProvider), MockApprovalEmailProvider
     )
     assert isinstance(container.resolve(ApprovalEmailService), ApprovalEmailService)
     assert isinstance(container.resolve(ApprovalService), ApprovalService)
+    assert isinstance(container.resolve(ApprovalAuditService), ApprovalAuditService)
 
 
+def test_container_resolves_youtube_publishing_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
+    from ai_youtube_agent.pipeline.publish_metadata_mapper import (
+        PublishMetadataMapper,
+    )
+    from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
+    from ai_youtube_agent.providers.mock_youtube_channel import (
+        MockYouTubeChannelProvider,
+    )
+    from ai_youtube_agent.providers.mock_youtube_oauth import (
+        MockYouTubeOAuthProvider,
+    )
+    from ai_youtube_agent.providers.mock_youtube_upload import (
+        MockYouTubeUploadProvider,
+    )
+    from ai_youtube_agent.providers.youtube_channel import YouTubeChannelProvider
+    from ai_youtube_agent.providers.youtube_oauth import YouTubeOAuthProvider
+    from ai_youtube_agent.providers.youtube_upload import YouTubeUploadProvider
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    assert isinstance(
+        container.resolve(YouTubeOAuthProvider), MockYouTubeOAuthProvider
+    )
+    assert isinstance(
+        container.resolve(YouTubeChannelProvider), MockYouTubeChannelProvider
+    )
+    assert isinstance(
+        container.resolve(YouTubeUploadProvider), MockYouTubeUploadProvider
+    )
+    assert isinstance(
+        container.resolve(PublishMetadataMapper), PublishMetadataMapper
+    )
+    assert isinstance(container.resolve(ShortsPublisher), ShortsPublisher)
+    assert isinstance(container.resolve(LongFormPublisher), LongFormPublisher)

@@ -54,7 +54,8 @@ class MockYouTubeUploadProvider:
         self._uploads: list[tuple[YouTubeUploadPayload, YouTubeUploadReceipt]] = []
         self._by_key: dict[str, YouTubeUploadReceipt] = {}
         self._healthy = True
-        self._next_error: UploadErrorCode | None = None
+        self._failures: list[UploadErrorCode] = []
+        self._calls = 0
 
     @property
     def name(self) -> str:
@@ -65,21 +66,31 @@ class MockYouTubeUploadProvider:
         with self._lock:
             return tuple(self._uploads)
 
+    @property
+    def calls(self) -> int:
+        """How many times `upload` was called (successes, failures and replays)."""
+        with self._lock:
+            return self._calls
+
     def clear(self) -> None:
         with self._lock:
             self._uploads.clear()
             self._by_key.clear()
-            self._next_error = None
+            self._failures.clear()
+            self._calls = 0
 
     def set_healthy(self, healthy: bool) -> None:
         with self._lock:
             self._healthy = bool(healthy)
 
-    def fail_next(self, code: UploadErrorCode) -> None:
+    def fail_next(self, code: UploadErrorCode, times: int = 1) -> None:
+        """Make the next `times` upload calls raise `YouTubeUploadError(code)`."""
         if not isinstance(code, UploadErrorCode):
             raise TypeError("code must be an UploadErrorCode")
+        if isinstance(times, bool) or not isinstance(times, int) or times < 1:
+            raise ValueError("times must be a whole number of 1 or more")
         with self._lock:
-            self._next_error = code
+            self._failures.extend([code] * times)
 
     def _now(self) -> datetime:
         return self._clock() if self._clock else datetime.now(UTC)
@@ -163,9 +174,9 @@ class MockYouTubeUploadProvider:
                 )
 
         with self._lock:
-            if self._next_error is not None:
-                code = self._next_error
-                self._next_error = None
+            self._calls += 1
+            if self._failures:
+                code = self._failures.pop(0)
                 raise YouTubeUploadError(
                     code,
                     f"injected upload failure ({code.value})",

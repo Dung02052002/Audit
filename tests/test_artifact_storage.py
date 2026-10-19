@@ -263,6 +263,7 @@ def test_supported_media_extensions() -> None:
     assert MEDIA_EXTENSIONS == {
         "audio/wav": "wav",
         "application/x-subrip": "srt",
+        "text/vtt": "vtt",
         "video/mp4": "mp4",
         "image/png": "png",
         "image/jpeg": "jpg",

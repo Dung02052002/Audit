@@ -214,9 +214,60 @@ def test_request_is_frozen() -> None:
 
 
 def test_request_has_no_decision_methods_yet() -> None:
-    # invalidate came with #035 (C-035); the rest come with #139-#142.
-    for name in ("approve", "reject", "request_changes", "expire"):
+    # invalidate came with #035 (C-035), approve/reject with #139-#140;
+    # the rest come with #141-#142.
+    for name in ("request_changes", "expire"):
         assert not hasattr(ApprovalRequest, name)
+
+
+def test_approve_marks_pending_request_approved_by_user() -> None:
+    from ai_youtube_agent.content.approval import (
+        ApprovalNotAllowedError,
+        ApprovalStateError,
+    )
+
+    reviewer = Actor(ActorKind.USER, "owner-1")
+    request = new_request()
+    approved = request.approve(reviewer)
+    assert approved.status is ApprovalStatus.APPROVED
+    assert approved.id == request.id
+
+    with pytest.raises(ApprovalStateError):
+        approved.approve(reviewer)
+
+    for non_user in (
+        Actor(ActorKind.SYSTEM, "pipeline"),
+        Actor(ActorKind.AI, "agent"),
+    ):
+        with pytest.raises(ApprovalNotAllowedError):
+            request.approve(non_user)
+
+
+def test_reject_marks_pending_request_rejected_with_reason() -> None:
+    from ai_youtube_agent.content.approval import (
+        ApprovalNotAllowedError,
+        ApprovalReasonRequiredError,
+        ApprovalStateError,
+    )
+
+    reviewer = Actor(ActorKind.USER, "owner-1")
+    request = new_request()
+    rejected = request.reject(reviewer, "Hook needs stronger opening")
+    assert rejected.status is ApprovalStatus.REJECTED
+    assert rejected.id == request.id
+
+    with pytest.raises(ApprovalReasonRequiredError):
+        request.reject(reviewer, "   ")
+
+    with pytest.raises(ApprovalStateError):
+        rejected.reject(reviewer, "Already decided")
+
+    for non_user in (
+        Actor(ActorKind.SYSTEM, "pipeline"),
+        Actor(ActorKind.AI, "agent"),
+    ):
+        with pytest.raises(ApprovalNotAllowedError):
+            request.reject(non_user, "Reason")
 
 
 # Serialisation

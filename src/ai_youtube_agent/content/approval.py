@@ -26,11 +26,12 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from http import HTTPStatus
 from typing import Any
 
 from ai_youtube_agent.content.qc import QCResult
 from ai_youtube_agent.core.artifact import SHA256_PATTERN, Artifact, ArtifactKind
-from ai_youtube_agent.core.audit import Actor
+from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.errors import DomainError
 
 Clock = Callable[[], datetime]
@@ -53,6 +54,29 @@ INVALIDATABLE = frozenset({ApprovalStatus.PENDING, ApprovalStatus.APPROVED})
 class ApprovalStateError(DomainError):
     default_code = "domain.approval_state"
     default_user_message = "This approval cannot do that in its current state."
+
+
+class ApprovalNotAllowedError(DomainError):
+    default_code = "domain.approval_not_allowed"
+    default_user_message = "Only a human reviewer may record an approval decision."
+    default_http_status = HTTPStatus.FORBIDDEN
+
+
+class ApprovalReasonRequiredError(DomainError, ValueError):
+    default_code = "domain.approval_reason_required"
+    default_user_message = "A non-empty reason is required to reject an approval request."
+
+
+class ApprovalNotFoundError(DomainError):
+    default_code = "domain.approval_not_found"
+    default_user_message = "The requested approval or content item was not found."
+    default_http_status = HTTPStatus.NOT_FOUND
+
+
+class ApprovalConflictError(DomainError):
+    default_code = "domain.approval_conflict"
+    default_user_message = "The artifact version or ID does not match the expected value."
+    default_http_status = HTTPStatus.CONFLICT
 
 
 @dataclass(frozen=True)
@@ -150,6 +174,38 @@ class ApprovalRequest:
             created_at=clock() if clock else datetime.now(UTC),
         )
 
+    def approve(self, actor: Actor) -> "ApprovalRequest":
+        """Return this request marked approved by an explicit human reviewer (#139)."""
+        if not isinstance(actor, Actor):
+            raise TypeError("actor must be an Actor")
+        if actor.kind is not ActorKind.USER:
+            raise ApprovalNotAllowedError(
+                f"actor {actor.id} of kind {actor.kind.value} cannot approve content; "
+                "explicit human (user) approval is required"
+            )
+        if self.status is not ApprovalStatus.PENDING:
+            raise ApprovalStateError(
+                f"approval {self.id} is {self.status.value} and cannot be approved"
+            )
+        return replace(self, status=ApprovalStatus.APPROVED)
+
+    def reject(self, actor: Actor, reason: str) -> "ApprovalRequest":
+        """Return this request marked rejected by a human reviewer with a reason (#140)."""
+        if not isinstance(actor, Actor):
+            raise TypeError("actor must be an Actor")
+        if actor.kind is not ActorKind.USER:
+            raise ApprovalNotAllowedError(
+                f"actor {actor.id} of kind {actor.kind.value} cannot reject content; "
+                "explicit human (user) decision is required"
+            )
+        if not isinstance(reason, str) or not reason.strip():
+            raise ApprovalReasonRequiredError("rejection reason must not be empty")
+        if self.status is not ApprovalStatus.PENDING:
+            raise ApprovalStateError(
+                f"approval {self.id} is {self.status.value} and cannot be rejected"
+            )
+        return replace(self, status=ApprovalStatus.REJECTED)
+
     def invalidate(self) -> "ApprovalRequest":
         """Return this request marked invalidated (#035)."""
         if self.status not in INVALIDATABLE:
@@ -157,6 +213,13 @@ class ApprovalRequest:
                 f"approval {self.id} is {self.status.value} and cannot be invalidated"
             )
         return replace(self, status=ApprovalStatus.INVALIDATED)
+
+    def binding_for(self, kind: ArtifactKind) -> ArtifactBinding | None:
+        """Return the ArtifactBinding for ``kind``, or None if not bound."""
+        for binding in self.artifacts:
+            if binding.kind is kind:
+                return binding
+        return None
 
     def as_dict(self) -> dict[str, Any]:
         return {

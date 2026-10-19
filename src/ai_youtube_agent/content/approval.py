@@ -46,14 +46,23 @@ class ApprovalStatus(StrEnum):
     EXPIRED = "expired"
 
 
-# The statuses a changed artifact can invalidate (#035, user decision): a
+# The statuses a changed artifact or TTL expiry can transition (#035, #142): a
 # request still waiting for review and an approval that is still in force.
 INVALIDATABLE = frozenset({ApprovalStatus.PENDING, ApprovalStatus.APPROVED})
+EXPIRABLE = frozenset({ApprovalStatus.PENDING, ApprovalStatus.APPROVED})
+DEFAULT_APPROVAL_TTL = timedelta(hours=72)
 
 
 class ApprovalStateError(DomainError):
     default_code = "domain.approval_state"
     default_user_message = "This approval cannot do that in its current state."
+
+
+class ApprovalExpiredError(ApprovalStateError):
+    default_code = "domain.approval_expired"
+    default_user_message = (
+        "This approval request has expired and must be revalidated."
+    )
 
 
 class ApprovalNotAllowedError(DomainError):
@@ -64,7 +73,9 @@ class ApprovalNotAllowedError(DomainError):
 
 class ApprovalReasonRequiredError(DomainError, ValueError):
     default_code = "domain.approval_reason_required"
-    default_user_message = "A non-empty reason is required to reject an approval request."
+    default_user_message = (
+        "A non-empty reason is required to reject or request changes on an approval request."
+    )
 
 
 class ApprovalNotFoundError(DomainError):
@@ -205,6 +216,53 @@ class ApprovalRequest:
                 f"approval {self.id} is {self.status.value} and cannot be rejected"
             )
         return replace(self, status=ApprovalStatus.REJECTED)
+
+    def request_changes(self, actor: Actor, reason: str) -> "ApprovalRequest":
+        """Return this request marked changes_requested by a human reviewer (#141)."""
+        if not isinstance(actor, Actor):
+            raise TypeError("actor must be an Actor")
+        if actor.kind is not ActorKind.USER:
+            raise ApprovalNotAllowedError(
+                f"actor {actor.id} of kind {actor.kind.value} cannot request changes; "
+                "explicit human (user) decision is required"
+            )
+        if not isinstance(reason, str) or not reason.strip():
+            raise ApprovalReasonRequiredError(
+                "change request reason must not be empty"
+            )
+        if self.status is not ApprovalStatus.PENDING:
+            raise ApprovalStateError(
+                f"approval {self.id} is {self.status.value} and cannot request changes"
+            )
+        return replace(self, status=ApprovalStatus.CHANGES_REQUESTED)
+
+    def expires_at(self, ttl: timedelta = DEFAULT_APPROVAL_TTL) -> datetime:
+        """Return the UTC timestamp when this approval request expires (#142)."""
+        if not isinstance(ttl, timedelta) or ttl <= timedelta(0):
+            raise ValueError("ttl must be a positive timedelta")
+        return self.created_at + ttl
+
+    def is_expired(
+        self, now: datetime, ttl: timedelta = DEFAULT_APPROVAL_TTL
+    ) -> bool:
+        """Return True if this request is expired or past its TTL at ``now`` (#142)."""
+        if not isinstance(now, datetime) or now.utcoffset() != timedelta(0):
+            raise ValueError("now must be timezone-aware UTC")
+        if not isinstance(ttl, timedelta) or ttl <= timedelta(0):
+            raise ValueError("ttl must be a positive timedelta")
+        if self.status is ApprovalStatus.EXPIRED:
+            return True
+        if self.status in EXPIRABLE:
+            return now >= self.expires_at(ttl)
+        return False
+
+    def expire(self) -> "ApprovalRequest":
+        """Return this pending or approved request marked expired (#142)."""
+        if self.status not in EXPIRABLE:
+            raise ApprovalStateError(
+                f"approval {self.id} is {self.status.value} and cannot be expired"
+            )
+        return replace(self, status=ApprovalStatus.EXPIRED)
 
     def invalidate(self) -> "ApprovalRequest":
         """Return this request marked invalidated (#035)."""

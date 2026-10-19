@@ -892,3 +892,144 @@ def check_black_frames(context: VideoInspectionContext) -> QCCheck:
         status=QCStatus.PASS,
         detail=f"No excessive black or frozen frames ({len(blocks)} payload blocks inspected)",
     )
+
+
+def check_render_integrity(context: VideoInspectionContext) -> QCCheck:
+    """Detect incomplete, truncated or corrupt renders (Prompt #124)."""
+    raw = context.video_data
+    if not raw:
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Rendered video file is empty.",
+        )
+
+    if (
+        context.expected_video_size is not None
+        and len(raw) != context.expected_video_size
+    ):
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=(
+                f"Video size {len(raw)} bytes does not match artifact record "
+                f"{context.expected_video_size} bytes."
+            ),
+        )
+
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    if (
+        context.expected_video_sha256 is not None
+        and actual_sha256 != context.expected_video_sha256.lower()
+    ):
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Video SHA-256 digest does not match artifact record.",
+        )
+
+    pos = 0
+    end = len(raw)
+    seen_boxes: list[bytes] = []
+    mdat_bytes = 0
+    while pos < end:
+        if pos + 8 > end:
+            return QCCheck(
+                name=INTEGRITY_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Truncated MP4 box header at byte offset {pos}.",
+            )
+        size, kind = struct.unpack_from(">I4s", raw, pos)
+        if size == 1:
+            if pos + 16 > end:
+                return QCCheck(
+                    name=INTEGRITY_CHECK_NAME,
+                    status=QCStatus.FAIL,
+                    detail=f"Truncated 64-bit MP4 box header at byte offset {pos}.",
+                )
+            (size,) = struct.unpack_from(">Q", raw, pos + 8)
+            header_len = 16
+        else:
+            header_len = 8
+
+        if size < header_len or pos + size > end:
+            return QCCheck(
+                name=INTEGRITY_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"Incomplete or truncated MP4 box {kind.decode('latin1', errors='replace')!r} "
+                    f"at offset {pos} (declared size {size}, remaining {end - pos})."
+                ),
+            )
+        seen_boxes.append(kind)
+        if kind == b"mdat":
+            mdat_bytes += size - header_len
+        pos += size
+
+    for required_box in (b"ftyp", b"moov", b"mdat"):
+        if required_box not in seen_boxes:
+            return QCCheck(
+                name=INTEGRITY_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Missing required MP4 box {required_box.decode('ascii')!r}.",
+            )
+
+    if mdat_bytes <= 0:
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="MP4 mdat box contains 0 payload bytes.",
+        )
+
+    try:
+        info = probe_mp4(raw)
+    except Exception as error:
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Corrupt MP4 movie header: {error}",
+        )
+
+    if info.duration_ms <= 0 or info.timescale <= 0:
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="MP4 movie header reports non-positive duration or timescale.",
+        )
+
+    if (
+        context.render_job_status is not None
+        and context.render_job_status != "succeeded"
+    ):
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Render job is not succeeded (status: {context.render_job_status}).",
+        )
+
+    if (
+        context.render_job_video_sha256 is not None
+        and context.render_job_video_sha256.lower() != actual_sha256
+    ):
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Rendered video SHA-256 does not match the render job checkpoint.",
+        )
+
+    if (
+        context.render_job_timeline_sha256 is not None
+        and context.current_timeline_sha256 is not None
+        and context.render_job_timeline_sha256 != context.current_timeline_sha256
+    ):
+        return QCCheck(
+            name=INTEGRITY_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Rendered video is stale: project timeline changed after render.",
+        )
+
+    return QCCheck(
+        name=INTEGRITY_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=f"Render integrity verified ({len(raw)} bytes, sha256={actual_sha256[:12]}...)",
+    )

@@ -479,3 +479,271 @@ def check_audio(context: VideoInspectionContext) -> QCCheck:
             f"peak {stats.peak_dbfs:.1f} dBFS, rms {stats.rms_dbfs:.1f} dBFS)"
         ),
     )
+
+
+def _hms_to_ms(hours: str | None, minutes: str, seconds: str, millis: str) -> int:
+    h = int(hours) if hours is not None else 0
+    m = int(minutes)
+    s = int(seconds)
+    ms = int(millis)
+    if m >= 60 or s >= 60:
+        raise ValueError("minute and second fields must be < 60")
+    return ((h * 3600 + m * 60 + s) * 1000) + ms
+
+
+def _parse_subtitle_cues(
+    text: str, media_type: str | None
+) -> tuple[str, list[SubtitleCue]]:
+    """Parse SRT or WebVTT subtitle text into ordered ``SubtitleCue`` entries."""
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError("Subtitle content is empty.")
+
+    is_vtt = (
+        (media_type is not None and "vtt" in media_type.lower())
+        or stripped.startswith("WEBVTT")
+    )
+
+    blocks = re.split(r"\n\s*\n", stripped)
+    cues: list[SubtitleCue] = []
+
+    if is_vtt:
+        first_lines = blocks[0].split("\n")
+        if not first_lines[0].startswith("WEBVTT"):
+            raise ValueError("WebVTT file must start with a WEBVTT header.")
+        cue_blocks = blocks[1:]
+        for idx, block in enumerate(cue_blocks, start=1):
+            lines = [line for line in block.split("\n") if line.strip() != ""]
+            if not lines:
+                continue
+            if lines[0].startswith("NOTE") or lines[0].startswith("STYLE"):
+                continue
+            tc_line_idx = 0
+            if "-->" not in lines[0]:
+                if len(lines) < 2 or "-->" not in lines[1]:
+                    raise ValueError(f"Malformed WebVTT cue at block {idx}.")
+                tc_line_idx = 1
+            match = _VTT_TIMECODE_RE.match(lines[tc_line_idx].strip())
+            if match is None:
+                raise ValueError(
+                    f"Invalid WebVTT timestamp at cue {idx}: {lines[tc_line_idx]!r}"
+                )
+            start_ms = _hms_to_ms(
+                match.group(1), match.group(2), match.group(3), match.group(4)
+            )
+            end_ms = _hms_to_ms(
+                match.group(5), match.group(6), match.group(7), match.group(8)
+            )
+            text_lines = lines[tc_line_idx + 1 :]
+            if not text_lines:
+                raise ValueError(f"WebVTT cue {idx} has empty caption text.")
+            cues.append(
+                SubtitleCue(
+                    index=len(cues) + 1,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    text="\n".join(text_lines),
+                )
+            )
+        return ("WebVTT", cues)
+
+    for idx, block in enumerate(blocks, start=1):
+        lines = block.split("\n")
+        if len(lines) < 3:
+            raise ValueError(f"Malformed SRT cue block {idx} (expected index, timecode, text).")
+        if not lines[0].strip().isdigit():
+            raise ValueError(f"Invalid SRT cue index at block {idx}: {lines[0]!r}")
+        cue_num = int(lines[0].strip())
+        if cue_num != idx:
+            raise ValueError(
+                f"Non-sequential SRT cue index: expected {idx}, got {cue_num}"
+            )
+        match = _SRT_TIMECODE_RE.match(lines[1].strip())
+        if match is None:
+            raise ValueError(f"Invalid SRT timestamp at cue {idx}: {lines[1]!r}")
+        start_ms = _hms_to_ms(
+            match.group(1), match.group(2), match.group(3), match.group(4)
+        )
+        end_ms = _hms_to_ms(
+            match.group(5), match.group(6), match.group(7), match.group(8)
+        )
+        text_lines = lines[2:]
+        if not text_lines or any(not ln.strip() for ln in text_lines):
+            raise ValueError(f"SRT cue {idx} has empty caption text line.")
+        cues.append(
+            SubtitleCue(
+                index=cue_num,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                text="\n".join(text_lines),
+            )
+        )
+    return ("SRT", cues)
+
+
+def check_subtitles(context: VideoInspectionContext) -> QCCheck:
+    """Validate subtitle timing, encoding and missing captions (Prompt #122)."""
+    raw = context.subtitle_data
+    if not context.captions_enabled:
+        if raw is not None and len(raw) > 0:
+            return QCCheck(
+                name=SUBTITLE_CHECK_NAME,
+                status=QCStatus.WARN,
+                detail="Subtitles artifact is present while captions are disabled.",
+            )
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.PASS,
+            detail="Captions are disabled by configuration.",
+        )
+
+    if raw is None or len(raw) == 0:
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Subtitles artifact is missing or empty while captions are enabled.",
+        )
+
+    if raw.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff")):
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Subtitles file must be UTF-8 without a byte-order mark (BOM).",
+        )
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Subtitles file is not valid UTF-8: {error}",
+        )
+
+    if "\r" in text:
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Subtitles file must use LF ('\\n') line endings, not CRLF.",
+        )
+
+    if not unicodedata.is_normalized("NFC", text):
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Subtitles text must be Unicode NFC normalized.",
+        )
+
+    try:
+        fmt_name, cues = _parse_subtitle_cues(text, context.subtitle_media_type)
+    except ValueError as error:
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Invalid subtitle format: {error}",
+        )
+
+    if not cues:
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Subtitles contain no caption cues.",
+        )
+
+    if (
+        context.expected_caption_count is not None
+        and len(cues) < context.expected_caption_count
+    ):
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=(
+                f"Missing captions: found {len(cues)} of "
+                f"{context.expected_caption_count} expected cues."
+            ),
+        )
+
+    video_duration_ms = context.expected_duration_ms
+    if video_duration_ms <= 0 and context.video_data:
+        try:
+            video_duration_ms = probe_mp4(context.video_data).duration_ms
+        except Exception:
+            video_duration_ms = 0
+    tolerance_ms = max(250, 2000 // max(1, context.expected_fps))
+
+    warnings: list[str] = []
+    prev_end_ms = 0
+    for cue in cues:
+        if cue.start_ms < 0 or cue.end_ms <= cue.start_ms:
+            return QCCheck(
+                name=SUBTITLE_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"Cue {cue.index} has non-positive duration "
+                    f"({cue.start_ms}..{cue.end_ms} ms)."
+                ),
+            )
+        if cue.start_ms < prev_end_ms:
+            return QCCheck(
+                name=SUBTITLE_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"Cue {cue.index} at {cue.start_ms} ms overlaps previous cue "
+                    f"ending at {prev_end_ms} ms."
+                ),
+            )
+        if "<" in cue.text or ">" in cue.text:
+            return QCCheck(
+                name=SUBTITLE_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Cue {cue.index} contains forbidden angle brackets.",
+            )
+        if video_duration_ms > 0 and cue.end_ms > video_duration_ms + tolerance_ms:
+            return QCCheck(
+                name=SUBTITLE_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"Cue {cue.index} ends at {cue.end_ms} ms, beyond video duration "
+                    f"{video_duration_ms} ms."
+                ),
+            )
+        cue_duration_ms = cue.end_ms - cue.start_ms
+        if cue_duration_ms < 300:
+            warnings.append(f"cue {cue.index} is very short ({cue_duration_ms} ms)")
+        elif cue_duration_ms > 10_000:
+            warnings.append(f"cue {cue.index} is very long ({cue_duration_ms} ms)")
+
+        char_count = len(cue.text.replace("\n", ""))
+        cps = (char_count * 1000.0) / cue_duration_ms
+        if cps > 25.0:
+            warnings.append(f"cue {cue.index} reading speed is {cps:.1f} chars/s")
+
+        prev_end_ms = cue.end_ms
+
+    if context.scene_windows_ms:
+        for scene_idx, (s_start, s_end) in enumerate(context.scene_windows_ms, start=1):
+            covered = any(
+                cue.start_ms < s_end and cue.end_ms > s_start for cue in cues
+            )
+            if not covered:
+                return QCCheck(
+                    name=SUBTITLE_CHECK_NAME,
+                    status=QCStatus.FAIL,
+                    detail=(
+                        f"Missing captions for scene {scene_idx} "
+                        f"({s_start}..{s_end} ms)."
+                    ),
+                )
+
+    if warnings:
+        return QCCheck(
+            name=SUBTITLE_CHECK_NAME,
+            status=QCStatus.WARN,
+            detail=f"{fmt_name} subtitles warnings: {'; '.join(warnings[:3])}",
+        )
+
+    return QCCheck(
+        name=SUBTITLE_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=f"Valid {fmt_name} subtitles ({len(cues)} cues, UTF-8 NFC)",
+    )

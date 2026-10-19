@@ -95,8 +95,8 @@ class YouTubeChannelProviderError(ProviderError):
             code=code.value,
             user_message=USER_MESSAGES[code],
             retryable=code in RETRYABLE_CHANNEL_CODES,
-            cause=cause,
         )
+        self.__cause__ = cause
 
 
 @dataclass(frozen=True)

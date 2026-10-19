@@ -133,6 +133,15 @@ class Settings(BaseSettings):
         allow_inf_nan=False,
     )
     tts_cost_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    # Approval expiry TTL in hours (#142): 1 to 720 hours (default 72 hours = 3 days).
+    approval_ttl_hours: int = Field(default=72, ge=1, le=720)
+
+    @field_validator("approval_ttl_hours", mode="before")
+    @classmethod
+    def _refuse_bool_approval_ttl_hours(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("approval_ttl_hours must be an integer, not a bool")
+        return value
 
     @field_validator("tts_price_per_1k_characters", mode="before")
     @classmethod

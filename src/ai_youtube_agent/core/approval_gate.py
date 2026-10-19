@@ -21,6 +21,7 @@ stale approval as invalidated; this gate only refuses to use it.
 """
 
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 from typing import Protocol
 
 from ai_youtube_agent.content.approval import (
@@ -46,19 +47,28 @@ class ArtifactSource(Protocol):
 class ApprovalGate:
     name = GateName.APPROVAL
 
-    def __init__(self, approvals: ApprovalSource, artifacts: ArtifactSource) -> None:
+    def __init__(
+        self,
+        approvals: ApprovalSource,
+        artifacts: ArtifactSource,
+        *,
+        ttl: timedelta | None = None,
+    ) -> None:
+        if ttl is not None and (not isinstance(ttl, timedelta) or ttl <= timedelta(0)):
+            raise ValueError("ttl must be a positive timedelta when provided")
         self._approvals = approvals
         self._artifacts = artifacts
+        self._ttl = ttl
 
     def evaluate(self, context: GateContext) -> GateResult:
         if context.target_status is not ContentStatus.PUBLISHING:
             return GateResult.passed(self.name, context.at)
-        reason = self._check(context.item.id)
+        reason = self._check(context.item.id, context.at)
         if reason is None:
             return GateResult.passed(self.name, context.at)
         return GateResult.blocked(self.name, context.at, reason)
 
-    def _check(self, item_id: str) -> GateReason | None:
+    def _check(self, item_id: str, at: datetime) -> GateReason | None:
         requests = self._approvals.list_by_content_item(item_id)
         if not requests:
             return GateReason(
@@ -76,5 +86,10 @@ class ApprovalGate:
             return GateReason(
                 "approval.not_current",
                 f"The approval does not cover the current version of: {kinds}.",
+            )
+        if self._ttl is not None and newest.is_expired(at, self._ttl):
+            return GateReason(
+                "approval.expired",
+                "The approval has expired and must be revalidated.",
             )
         return None

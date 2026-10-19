@@ -15,8 +15,17 @@ from ai_youtube_agent.content.audio_cost import AudioCostRecorder
 from ai_youtube_agent.content.audio_validation import AudioValidator
 from ai_youtube_agent.content.broll_manager import BrollManager
 from ai_youtube_agent.content.longform_audio_mix import LongFormAudioMixer
+from ai_youtube_agent.content.longform_bundle import LongFormBundleBuilder
+from ai_youtube_agent.content.longform_metadata import LongFormMetadataRecorder
+from ai_youtube_agent.content.longform_render import LongFormRenderService
 from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
+from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
+from ai_youtube_agent.content.qc_disclosure import DisclosureQCChecker
+from ai_youtube_agent.content.qc_harness import VideoArtifactTestHarness
+from ai_youtube_agent.content.qc_policy import PolicyQCChecker
+from ai_youtube_agent.content.qc_report import QCReportBuilder
+from ai_youtube_agent.content.qc_rights import RightsQCChecker
 from ai_youtube_agent.content.shorts_audio_mix import (
     ArtifactAssetSource,
     ShortsAudioMixer,
@@ -301,7 +310,38 @@ def test_container_resolves_longform_production_services(
     assert isinstance(broll, BrollManager)
     assert isinstance(subtitles, LongFormSubtitleRecorder)
     assert isinstance(mixer, LongFormAudioMixer)
+    assert isinstance(container.resolve(LongFormRenderService), LongFormRenderService)
+    assert isinstance(
+        container.resolve(LongFormThumbnailRecorder), LongFormThumbnailRecorder
+    )
+    assert isinstance(
+        container.resolve(LongFormMetadataRecorder), LongFormMetadataRecorder
+    )
+    assert isinstance(container.resolve(LongFormBundleBuilder), LongFormBundleBuilder)
     assert container.resolve(LongFormProjectService) is projects
     assert container.resolve(BrollManager) is broll
     assert container.resolve(LongFormSubtitleRecorder) is subtitles
     assert container.resolve(LongFormAudioMixer) is mixer
+
+
+def test_container_resolves_qc_services(tmp_path: Path) -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    harness = container.resolve(VideoArtifactTestHarness)
+    rights_qc = container.resolve(RightsQCChecker)
+    policy_qc = container.resolve(PolicyQCChecker)
+    disclosure_qc = container.resolve(DisclosureQCChecker)
+    report_builder = container.resolve(QCReportBuilder)
+
+    assert isinstance(harness, VideoArtifactTestHarness)
+    assert isinstance(rights_qc, RightsQCChecker)
+    assert isinstance(policy_qc, PolicyQCChecker)
+    assert isinstance(disclosure_qc, DisclosureQCChecker)
+    assert isinstance(report_builder, QCReportBuilder)
+    assert container.resolve(QCReportBuilder) is report_builder
+

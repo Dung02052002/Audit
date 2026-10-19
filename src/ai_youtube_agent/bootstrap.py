@@ -69,10 +69,14 @@ from ai_youtube_agent.content.longform_script_generator import LongFormScriptGen
 from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
-from ai_youtube_agent.content.qc_harness import VideoArtifactTestHarness
 from ai_youtube_agent.content.originality_checker import OriginalityChecker
 from ai_youtube_agent.content.policy_report import PolicyReporter
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
+from ai_youtube_agent.content.qc_disclosure import DisclosureQCChecker
+from ai_youtube_agent.content.qc_harness import VideoArtifactTestHarness
+from ai_youtube_agent.content.qc_policy import PolicyQCChecker
+from ai_youtube_agent.content.qc_report import QCReportBuilder
+from ai_youtube_agent.content.qc_rights import RightsQCChecker
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
@@ -390,6 +394,41 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(Database),
             c.resolve(ArtifactStorage),
             c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        RightsQCChecker,
+        lambda c: RightsQCChecker(
+            c.resolve(Database),
+            c.resolve(Settings),
+            reporter=c.resolve(RightsReporter),
+        ),
+    )
+    container.register(
+        PolicyQCChecker,
+        lambda c: PolicyQCChecker(
+            c.resolve(Database),
+            storage=c.resolve(ArtifactStorage),
+            reporter=c.resolve(PolicyReporter),
+        ),
+    )
+    container.register(
+        DisclosureQCChecker,
+        lambda c: DisclosureQCChecker(
+            c.resolve(Database),
+            storage=c.resolve(ArtifactStorage),
+        ),
+    )
+    container.register(
+        QCReportBuilder,
+        lambda c: QCReportBuilder(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(Settings),
+            rights_checker=c.resolve(RightsQCChecker),
+            policy_checker=c.resolve(PolicyQCChecker),
+            disclosure_checker=c.resolve(DisclosureQCChecker),
         ),
     )
     container.register(

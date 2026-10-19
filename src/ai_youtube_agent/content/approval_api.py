@@ -1,8 +1,8 @@
-"""Approval HTTP API (Prompt Pack v8, prompts #137–#140), context C11 Review.
+"""Approval HTTP API (Prompt Pack v8, prompts #137–#143), context C11 Review.
 
 Exposes the HTTP endpoints for creating version-bound approval requests,
-dispatching safe approval emails, and recording explicit human approve/reject
-decisions:
+dispatching safe approval emails, recording explicit human approve/reject/change
+decisions, handling expiry/revalidation, and inspecting the approval audit trail:
 
 - ``POST /approvals`` (#137): create an approval request bound to the exact
   artifact versions of a content item, optionally sending the approval email (#138).
@@ -14,6 +14,16 @@ decisions:
   approval action.
 - ``POST /approvals/{approval_request_id}/reject`` (#140): explicit human
   reject action with reason.
+- ``POST /approvals/{approval_request_id}/request-changes`` (#141): explicit
+  human change-request workflow returning the item to ``GENERATING``.
+- ``POST /approvals/by-item/{content_item_id}/expire`` (#142): expire stale
+  approval requests past the configured TTL.
+- ``POST /approvals/{approval_request_id}/revalidate`` (#142): revalidate an
+  expired request against current artifacts and QC.
+- ``GET /approvals/{approval_request_id}/audit`` (#143): read the immutable
+  approval audit trail for one request.
+- ``GET /approvals/by-item/{content_item_id}/audit`` (#143): read the immutable
+  approval audit trail for all requests of a content item.
 """
 
 from typing import Annotated, Any
@@ -21,8 +31,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from ai_youtube_agent.content.approval_audit import ApprovalAuditService
 from ai_youtube_agent.content.approval_service import ApprovalService
 from ai_youtube_agent.content.email_approval import ApprovalEmailService
+from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.audit import Actor
 from ai_youtube_agent.core.http import current_actor, provide
 
@@ -30,6 +42,7 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 ApprovalServiceDep = Annotated[ApprovalService, provide(ApprovalService)]
 EmailServiceDep = Annotated[ApprovalEmailService, provide(ApprovalEmailService)]
+AuditServiceDep = Annotated[ApprovalAuditService, provide(ApprovalAuditService)]
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 
 
@@ -86,6 +99,28 @@ class RejectActionRequest(BaseModel):
         if not value:
             raise ValueError("reason must not be empty")
         return value
+
+
+class RequestChangesActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    target_kinds: list[ArtifactKind] | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _check_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be empty")
+        return value
+
+
+class RevalidateApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipient_email: str | None = None
+    base_url: str | None = None
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -166,3 +201,64 @@ def reject_request(
         actor=actor,
         reason=body.reason,
     ).as_dict()
+
+
+@router.post("/{approval_request_id}/request-changes")
+def request_changes_on_approval(
+    approval_request_id: str,
+    body: RequestChangesActionRequest,
+    service: ApprovalServiceDep,
+    actor: CurrentActor,
+) -> dict[str, Any]:
+    return service.request_changes(
+        approval_request_id,
+        actor=actor,
+        reason=body.reason,
+        target_kinds=body.target_kinds,
+    ).as_dict()
+
+
+@router.post("/by-item/{content_item_id}/expire")
+def expire_stale_approvals(
+    content_item_id: str,
+    service: ApprovalServiceDep,
+    actor: CurrentActor,
+) -> dict[str, Any]:
+    expired = service.expire_stale(content_item_id, actor=actor)
+    return {
+        "content_item_id": content_item_id,
+        "expired_count": len(expired),
+        "expired": [r.as_dict() for r in expired],
+    }
+
+
+@router.post("/{approval_request_id}/revalidate", status_code=status.HTTP_201_CREATED)
+def revalidate_approval_request(
+    approval_request_id: str,
+    service: ApprovalServiceDep,
+    actor: CurrentActor,
+    body: RevalidateApprovalRequest | None = None,
+) -> dict[str, Any]:
+    req_body = body or RevalidateApprovalRequest()
+    return service.revalidate(
+        approval_request_id,
+        requested_by=actor,
+        recipient_email=req_body.recipient_email,
+        base_url=req_body.base_url,
+    ).as_dict()
+
+
+@router.get("/{approval_request_id}/audit")
+def get_approval_request_audit(
+    approval_request_id: str,
+    audit_service: AuditServiceDep,
+) -> dict[str, Any]:
+    return audit_service.trail_for_request(approval_request_id).as_dict()
+
+
+@router.get("/by-item/{content_item_id}/audit")
+def get_content_item_approval_audit(
+    content_item_id: str,
+    audit_service: AuditServiceDep,
+) -> dict[str, Any]:
+    return audit_service.trail_for_content_item(content_item_id).as_dict()

@@ -213,11 +213,11 @@ def test_request_is_frozen() -> None:
         request.status = ApprovalStatus.APPROVED  # type: ignore[misc]
 
 
-def test_request_has_no_decision_methods_yet() -> None:
-    # invalidate came with #035 (C-035), approve/reject with #139-#140;
-    # the rest come with #141-#142.
-    for name in ("request_changes", "expire"):
-        assert not hasattr(ApprovalRequest, name)
+def test_request_has_all_decision_methods() -> None:
+    # invalidate came with #035, approve/reject with #139-#140,
+    # request_changes with #141, and expire with #142.
+    for name in ("approve", "reject", "request_changes", "expire", "invalidate"):
+        assert callable(getattr(ApprovalRequest, name, None))
 
 
 def test_approve_marks_pending_request_approved_by_user() -> None:
@@ -268,6 +268,58 @@ def test_reject_marks_pending_request_rejected_with_reason() -> None:
     ):
         with pytest.raises(ApprovalNotAllowedError):
             request.reject(non_user, "Reason")
+
+
+def test_request_changes_marks_pending_request_changes_requested() -> None:
+    from ai_youtube_agent.content.approval import (
+        ApprovalNotAllowedError,
+        ApprovalReasonRequiredError,
+        ApprovalStateError,
+    )
+
+    reviewer = Actor(ActorKind.USER, "owner-1")
+    request = new_request()
+    changed = request.request_changes(reviewer, "Adjust subtitle timing in scene 2")
+    assert changed.status is ApprovalStatus.CHANGES_REQUESTED
+    assert changed.id == request.id
+
+    with pytest.raises(ApprovalReasonRequiredError):
+        request.request_changes(reviewer, "   ")
+
+    with pytest.raises(ApprovalStateError):
+        changed.request_changes(reviewer, "Another change")
+
+    for non_user in (
+        Actor(ActorKind.SYSTEM, "pipeline"),
+        Actor(ActorKind.AI, "agent"),
+    ):
+        with pytest.raises(ApprovalNotAllowedError):
+            request.request_changes(non_user, "Adjust timing")
+
+
+def test_expiry_calculation_and_expire_transition() -> None:
+    from ai_youtube_agent.content.approval import (
+        DEFAULT_APPROVAL_TTL,
+        ApprovalStateError,
+    )
+
+    request = new_request()
+    ttl = timedelta(hours=24)
+    assert request.expires_at() == T0 + DEFAULT_APPROVAL_TTL
+    assert request.expires_at(ttl) == T0 + ttl
+    assert not request.is_expired(T0 + timedelta(hours=23, minutes=59), ttl)
+    assert request.is_expired(T0 + ttl, ttl)
+
+    expired = request.expire()
+    assert expired.status is ApprovalStatus.EXPIRED
+    assert expired.is_expired(T0, ttl)
+
+    with pytest.raises(ApprovalStateError):
+        expired.expire()
+
+    reviewer = Actor(ActorKind.USER, "owner-1")
+    approved = request.approve(reviewer)
+    assert approved.expire().status is ApprovalStatus.EXPIRED
 
 
 # Serialisation

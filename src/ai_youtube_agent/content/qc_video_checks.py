@@ -1,6 +1,7 @@
-"""Video QC checks (Prompt Pack v8, prompts K-117..K-120), context C10 Quality (Test & QC).
+"""Video QC checks (Prompt Pack v8, prompts K-117..K-125), context C10 Quality (Test & QC).
 
-Concrete QC check implementations that inspect rendered MP4 video files:
+Concrete QC check implementations that inspect rendered MP4 video files and
+their companion production artifacts:
 - K-117 Container Test (``video.container``): validates MP4 ISO-BMFF structure,
   major and compatible brands, moov/mvhd headers, timescale and duration.
 - K-118 Resolution Test (``video.resolution``): validates actual dimensions and
@@ -11,27 +12,73 @@ Concrete QC check implementations that inspect rendered MP4 video files:
 - K-120 Duration Test (``video.duration``): validates content-type duration limits
   (Shorts 1..180s, LongForm 181..14400s) and synchronization with audio within
   frame tolerance.
+- K-121 Audio Test (``video.audio``): validates audio track presence, duration
+  synchronization with the video container, and clipping/silence/level thresholds.
+- K-122 Subtitle Test (``video.subtitles``): validates UTF-8/NFC encoding, SRT/VTT
+  cue timing, monotonicity, video duration bounds, and scene caption coverage.
+- K-123 Black Frame Test (``video.black_frames``): detects excessive black or
+  frozen frames from frame luma/hash series and MP4 ``mdat`` payload blocks.
+- K-124 Render Integrity Test (``video.integrity``): detects incomplete, truncated
+  or corrupt MP4 boxes, checksum/size mismatches, and stale render job lineage.
+- K-125 Metadata Test (``video.metadata``): validates consistency between the
+  rendered artifacts, project/timeline/script versions, chapters, attributions,
+  AI disclosure and publish metadata.
 """
 
+import hashlib
+import json
+import re
 import struct
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
+from ai_youtube_agent.content.audio_validation import (
+    DEFAULT_LIMITS,
+    AudioLimits,
+    analyze as analyze_audio,
+)
+from ai_youtube_agent.content.longform_metadata import LongFormMetadata
+from ai_youtube_agent.content.longform_timeline import format_chapter_timestamp
+from ai_youtube_agent.content.policy_check import PolicyStatus
 from ai_youtube_agent.content.qc import QCCheck, QCStatus
+from ai_youtube_agent.content.shorts_metadata import ShortsMetadata
 from ai_youtube_agent.core.content_item import ContentType
-from ai_youtube_agent.providers.video_render import Mp4Info, probe_mp4
+from ai_youtube_agent.providers.video_render import probe_mp4
 
 CONTAINER_CHECK_NAME: Final[str] = "video.container"
 RESOLUTION_CHECK_NAME: Final[str] = "video.resolution"
 FPS_CHECK_NAME: Final[str] = "video.fps"
 DURATION_CHECK_NAME: Final[str] = "video.duration"
+AUDIO_CHECK_NAME: Final[str] = "video.audio"
+SUBTITLE_CHECK_NAME: Final[str] = "video.subtitles"
+BLACK_FRAME_CHECK_NAME: Final[str] = "video.black_frames"
+INTEGRITY_CHECK_NAME: Final[str] = "video.integrity"
+METADATA_CHECK_NAME: Final[str] = "video.metadata"
 
 KNOWN_MP4_BRANDS: Final[frozenset[str]] = frozenset(
     {"isom", "iso2", "mp41", "mp42", "avc1", "qt  ", "dash", "M4V "}
 )
 STANDARD_FPS: Final[frozenset[int]] = frozenset({24, 25, 30, 48, 50, 60, 120})
 MIN_FPS: Final[int] = 24
+
+_SRT_TIMECODE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})$"
+)
+_VTT_TIMECODE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})(?:\s+.*)?$"
+)
+
+
+@dataclass(frozen=True)
+class SubtitleCue:
+    """Parsed subtitle cue for timing and coverage inspection."""
+
+    index: int
+    start_ms: int
+    end_ms: int
+    text: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +97,39 @@ class VideoInspectionContext:
     actual_width: int | None = None
     actual_height: int | None = None
     actual_fps: float | None = None
+    # K-121 Audio Test context
+    audio_data: bytes | None = None
+    audio_sha256: str | None = None
+    audio_limits: AudioLimits | None = None
+    # K-122 Subtitle Test context
+    captions_enabled: bool = True
+    subtitle_data: bytes | None = None
+    subtitle_media_type: str | None = None
+    expected_caption_count: int | None = None
+    scene_windows_ms: tuple[tuple[int, int], ...] | None = None
+    # K-123 Black Frame Test context
+    frame_luma_samples: Sequence[float] | None = None
+    frame_hashes: Sequence[str] | None = None
+    # K-124 Render Integrity Test context
+    expected_video_sha256: str | None = None
+    expected_video_size: int | None = None
+    render_job_status: str | None = None
+    render_job_video_sha256: str | None = None
+    render_job_timeline_sha256: str | None = None
+    current_timeline_sha256: str | None = None
+    # K-125 Metadata Test context
+    metadata_data: bytes | None = None
+    expected_project_id: str | None = None
+    expected_project_version: int | None = None
+    expected_timeline_sha256: str | None = None
+    expected_script_id: str | None = None
+    expected_script_version: int | None = None
+    expected_language: str | None = None
+    expected_chapters_enabled: bool | None = None
+    expected_chapter_count: int | None = None
+    expected_attributions: tuple[str, ...] = ()
+    expected_disclosure_id: str | None = None
+    expected_synthetic_media: bool | None = None
     extra: dict[str, Any] | None = None
 
 
@@ -102,6 +182,33 @@ def _parse_tkhd_dimensions(data: bytes) -> tuple[int, int] | None:
     return None
 
 
+def _extract_mdat_payload(data: bytes) -> bytes | None:
+    """Extract the combined payload bytes of all top-level ``mdat`` boxes."""
+    pos = 0
+    end = len(data)
+    chunks: list[bytes] = []
+    while pos + 8 <= end:
+        size, kind = struct.unpack_from(">I4s", data, pos)
+        if size == 1:
+            if pos + 16 > end:
+                return None
+            (size,) = struct.unpack_from(">Q", data, pos + 8)
+            header_len = 16
+        elif size == 0:
+            size = end - pos
+            header_len = 8
+        else:
+            header_len = 8
+        if size < header_len or pos + size > end:
+            return None
+        if kind == b"mdat":
+            chunks.append(data[pos + header_len : pos + size])
+        pos += size
+    if not chunks:
+        return None
+    return b"".join(chunks)
+
+
 def check_container(context: VideoInspectionContext) -> QCCheck:
     """Validate MP4 container and ISO-BMFF readability (Prompt #117)."""
     raw = context.video_data
@@ -132,13 +239,15 @@ def check_container(context: VideoInspectionContext) -> QCCheck:
     return QCCheck(
         name=CONTAINER_CHECK_NAME,
         status=QCStatus.PASS,
-        detail=f"Valid MP4 container (brands: {', '.join(info.brands[:3])}, duration: {info.duration_ms} ms)",
+        detail=(
+            f"Valid MP4 container (brands: {', '.join(info.brands[:3])}, "
+            f"duration: {info.duration_ms} ms)"
+        ),
     )
 
 
 def check_resolution(context: VideoInspectionContext) -> QCCheck:
     """Validate configured resolution and aspect ratio (Prompt #118)."""
-    # 1. Determine actual width & height
     width = context.actual_width
     height = context.actual_height
     if width is None or height is None:
@@ -156,9 +265,7 @@ def check_resolution(context: VideoInspectionContext) -> QCCheck:
             detail=f"Invalid dimensions: {width}x{height}",
         )
 
-    # 2. Check aspect ratio
     if context.content_type == ContentType.SHORTS:
-        # Shorts requires 9:16 vertical
         if width * 16 != height * 9:
             return QCCheck(
                 name=RESOLUTION_CHECK_NAME,
@@ -166,7 +273,6 @@ def check_resolution(context: VideoInspectionContext) -> QCCheck:
                 detail=f"Shorts aspect ratio must be 9:16 vertical, got {width}x{height}",
             )
     else:
-        # LongForm requires 16:9 horizontal
         if width * 9 != height * 16:
             return QCCheck(
                 name=RESOLUTION_CHECK_NAME,
@@ -174,15 +280,21 @@ def check_resolution(context: VideoInspectionContext) -> QCCheck:
                 detail=f"LongForm aspect ratio must be 16:9 horizontal, got {width}x{height}",
             )
 
-    # 3. Check exact dimensions if expected
     if (width, height) != (context.expected_width, context.expected_height):
         return QCCheck(
             name=RESOLUTION_CHECK_NAME,
             status=QCStatus.FAIL,
-            detail=f"Resolution {width}x{height} does not match expected {context.expected_width}x{context.expected_height}",
+            detail=(
+                f"Resolution {width}x{height} does not match expected "
+                f"{context.expected_width}x{context.expected_height}"
+            ),
         )
 
-    aspect_desc = "9:16 vertical" if context.content_type == ContentType.SHORTS else "16:9 horizontal"
+    aspect_desc = (
+        "9:16 vertical"
+        if context.content_type == ContentType.SHORTS
+        else "16:9 horizontal"
+    )
     return QCCheck(
         name=RESOLUTION_CHECK_NAME,
         status=QCStatus.PASS,
@@ -192,7 +304,11 @@ def check_resolution(context: VideoInspectionContext) -> QCCheck:
 
 def check_fps(context: VideoInspectionContext) -> QCCheck:
     """Validate configured frame rate (Prompt #119)."""
-    fps = context.actual_fps if context.actual_fps is not None else float(context.expected_fps)
+    fps = (
+        context.actual_fps
+        if context.actual_fps is not None
+        else float(context.expected_fps)
+    )
 
     if fps <= 0:
         return QCCheck(
@@ -234,7 +350,6 @@ def check_duration(context: VideoInspectionContext) -> QCCheck:
             detail=f"Could not read video duration: {error}",
         )
 
-    # 1. Content type boundary checks
     if context.content_type == ContentType.SHORTS:
         if duration_ms < 1000:
             return QCCheck(
@@ -246,7 +361,10 @@ def check_duration(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=DURATION_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"Shorts duration {duration_ms} ms exceeds maximum {context.max_duration_ms} ms",
+                detail=(
+                    f"Shorts duration {duration_ms} ms exceeds maximum "
+                    f"{context.max_duration_ms} ms"
+                ),
             )
     else:
         if duration_ms < 180_000:
@@ -259,22 +377,105 @@ def check_duration(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=DURATION_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"LongForm duration {duration_ms} ms exceeds maximum {context.max_duration_ms} ms",
+                detail=(
+                    f"LongForm duration {duration_ms} ms exceeds maximum "
+                    f"{context.max_duration_ms} ms"
+                ),
             )
 
-    # 2. Audio sync check within frame tolerance
     if context.expected_duration_ms > 0:
-        tolerance_ms = max(250, 2000 // context.expected_fps)
+        tolerance_ms = max(250, 2000 // max(1, context.expected_fps))
         drift = abs(duration_ms - context.expected_duration_ms)
         if drift > tolerance_ms:
             return QCCheck(
                 name=DURATION_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"Video duration {duration_ms} ms differs from audio {context.expected_duration_ms} ms by {drift} ms (tolerance: {tolerance_ms} ms)",
+                detail=(
+                    f"Video duration {duration_ms} ms differs from audio "
+                    f"{context.expected_duration_ms} ms by {drift} ms "
+                    f"(tolerance: {tolerance_ms} ms)"
+                ),
             )
 
     return QCCheck(
         name=DURATION_CHECK_NAME,
         status=QCStatus.PASS,
         detail=f"Valid duration: {duration_ms} ms ({duration_ms / 1000:.1f}s)",
+    )
+
+
+def check_audio(context: VideoInspectionContext) -> QCCheck:
+    """Validate audio track presence, duration sync, and clipping/silence thresholds (Prompt #121)."""
+    audio_bytes = context.audio_data
+    if audio_bytes is None or len(audio_bytes) == 0:
+        return QCCheck(
+            name=AUDIO_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Audio track is missing or empty.",
+        )
+
+    expected_sha256 = (
+        context.audio_sha256.lower()
+        if context.audio_sha256 is not None
+        else hashlib.sha256(audio_bytes).hexdigest()
+    )
+    limits = context.audio_limits if context.audio_limits is not None else DEFAULT_LIMITS
+    sub_checks, stats = analyze_audio(
+        audio_bytes,
+        artifact_size=len(audio_bytes),
+        artifact_sha256=expected_sha256,
+        metadata_duration_ms=(
+            context.expected_duration_ms if context.expected_duration_ms > 0 else None
+        ),
+        limits=limits,
+    )
+
+    failed = [c for c in sub_checks if c.status is QCStatus.FAIL]
+    if failed:
+        reasons = "; ".join(f"{c.name}: {c.detail}" for c in failed if c.detail)
+        return QCCheck(
+            name=AUDIO_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=reasons or "Audio validation failed.",
+        )
+
+    if stats is not None and context.video_data:
+        try:
+            video_info = probe_mp4(context.video_data)
+            tolerance_ms = max(250, 2000 // max(1, context.expected_fps))
+            drift = abs(stats.duration_ms - video_info.duration_ms)
+            if drift > tolerance_ms:
+                return QCCheck(
+                    name=AUDIO_CHECK_NAME,
+                    status=QCStatus.FAIL,
+                    detail=(
+                        f"Audio duration {stats.duration_ms} ms drifts from video "
+                        f"duration {video_info.duration_ms} ms by {drift} ms "
+                        f"(tolerance: {tolerance_ms} ms)"
+                    ),
+                )
+        except Exception as error:
+            return QCCheck(
+                name=AUDIO_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=f"Cannot verify audio-video sync due to invalid video container: {error}",
+            )
+
+    warned = [c for c in sub_checks if c.status is QCStatus.WARN]
+    if warned:
+        reasons = "; ".join(f"{c.name}: {c.detail}" for c in warned if c.detail)
+        return QCCheck(
+            name=AUDIO_CHECK_NAME,
+            status=QCStatus.WARN,
+            detail=reasons or "Audio validation produced warnings.",
+        )
+
+    assert stats is not None
+    return QCCheck(
+        name=AUDIO_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=(
+            f"Valid audio track ({stats.duration_ms} ms, {stats.sample_rate} Hz, "
+            f"peak {stats.peak_dbfs:.1f} dBFS, rms {stats.rms_dbfs:.1f} dBFS)"
+        ),
     )

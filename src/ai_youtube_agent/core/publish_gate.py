@@ -38,7 +38,9 @@
   does. A gate that fails is a block (``evaluate_gates`` fails closed).
   ``ensure_can_publish`` raises ``GateBlockedError`` when the report blocks.
 
-Nothing calls ``PublishGate`` yet: the pipeline runner (#206) does.
+Since #149 and #150 ``PublishExecutor`` calls ``ensure_can_publish`` for every publish,
+while the item is ``APPROVED`` and before any publish job exists (a resumed item is
+evaluated as ``APPROVED`` again). The pipeline runner (#206) will call the publishers.
 """
 
 import sqlite3

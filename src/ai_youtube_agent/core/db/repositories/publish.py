@@ -3,6 +3,7 @@
 import sqlite3
 from datetime import datetime
 
+from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.content_item import ContentType
 from ai_youtube_agent.core.db.repositories.base import Repository, dt, parse_dt
 from ai_youtube_agent.pipeline.publish import PublishJob, PublishResult, PublishStatus
@@ -27,6 +28,29 @@ class PublishJobRepository(Repository):
             "SELECT * FROM publish_jobs WHERE content_item_id = ? "
             "ORDER BY created_at, id",
             (content_item_id,),
+        )
+        return [_job(row) for row in rows]
+
+    def find_succeeded_by_video_sha(
+        self, channel_id: str, video_sha256: str, *, exclude_content_item_id: str
+    ) -> list[PublishJob]:
+        """Succeeded jobs of *other* items of the channel whose approval bound a
+        VIDEO artifact with this sha256, oldest first (#152 duplicate guard)."""
+        rows = self._all(
+            "SELECT pj.* FROM publish_jobs pj "
+            "JOIN approval_artifacts aa "
+            "ON aa.approval_request_id = pj.approval_request_id AND aa.kind = ? "
+            "JOIN content_items ci ON ci.id = pj.content_item_id "
+            "WHERE pj.status = ? AND aa.sha256 = ? AND ci.channel_id = ? "
+            "AND pj.content_item_id != ? "
+            "ORDER BY pj.created_at, pj.id",
+            (
+                ArtifactKind.VIDEO.value,
+                PublishStatus.SUCCEEDED.value,
+                video_sha256,
+                channel_id,
+                exclude_content_item_id,
+            ),
         )
         return [_job(row) for row in rows]
 

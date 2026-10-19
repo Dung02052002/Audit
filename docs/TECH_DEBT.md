@@ -75,6 +75,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | M-148 Publish Metadata Mapper | `tests/test_publishers.py` (new), `tests/test_bootstrap.py` |
 | M-149 Shorts Publisher | `tests/test_publishers.py` (new), `tests/test_bootstrap.py`; regression `tests/test_publish_gate.py`, `tests/test_idempotency_gate.py`, `tests/test_daily_limit.py` |
 | M-150 LongForm Publisher | `tests/test_publishers.py` (new), `tests/test_bootstrap.py`; regression `tests/test_publish_gate.py`, `tests/test_idempotency_gate.py`, `tests/test_daily_limit.py` |
+| M-151 Idempotency Key | `tests/test_publish_keys.py` (new); regression `tests/test_idempotency_gate.py` |
+| M-152 Duplicate Guard | `tests/test_duplicate_guard.py` (new), `tests/publish_helpers.py` (new helper), `tests/test_publishers.py` (rewrite pending in M-157), `tests/test_bootstrap.py`; regression `tests/test_idempotency_gate.py`, `tests/test_repositories.py` |
+| M-153 Upload Retry | `tests/test_upload_retry.py` (new); `tests/test_config.py`, `tests/test_bootstrap.py`; executor-level retry scenarios are in M-157 `tests/test_publish_scenarios.py` |
+| M-154 Token Recovery | `tests/test_token_recovery.py` (new); executor-level token scenarios are in M-157 `tests/test_publish_scenarios.py`; regression `tests/test_youtube_providers.py` |
+| M-155 Publish Result | `tests/test_publish_result.py` (new), `tests/test_bootstrap.py`; the app route tests (`tests/test_health.py`) for the new router |
+| M-156 Publish Audit | `tests/test_publish_audit.py` (new), `tests/test_bootstrap.py`; regression `tests/test_approval_scenarios.py` |
+| M-157 Publishing Tests | `tests/test_publish_scenarios.py` (new), `tests/test_publishers.py` (rewritten), `tests/publish_helpers.py` (helper); then the whole Phase M test set (`tests/test_youtube_providers.py`, `tests/test_publish_keys.py`, `tests/test_duplicate_guard.py`, `tests/test_upload_retry.py`, `tests/test_token_recovery.py`, `tests/test_publish_result.py`, `tests/test_publish_audit.py`) |
+| N-158 Analytics Provider | `tests/test_analytics_provider.py` (new), `tests/test_bootstrap.py`, `tests/test_youtube_providers.py` (error classes) |
+| N-159 Channel Metrics | `tests/test_channel_metrics.py` (new), `tests/test_bootstrap.py`; regression `tests/test_repositories.py -k metric` |
+| N-160 Video Metrics | `tests/test_video_metrics.py` (new), `tests/test_channel_metrics.py` (shared helpers moved), `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -491,3 +501,54 @@ needs its tests run in the later test phase; those tests are listed per task in
 - **Verification phase:** `M-151`..`M-156` and post-BUILD-FIRST pytest run
   (`tests/test_youtube_providers.py`, `tests/test_publishers.py`).
 - **Priority:** Low.
+
+### M-151 Idempotency Key
+
+Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload Guard, Publish Retry, Manual/Scheduled Publish, Publish Result and Publish Tests. That was a guess. The pack catalog in `docs/REQUIREMENTS.md` is 152 Duplicate Guard, 153 Upload Retry, 154 Token Recovery, 155 Publish Result, 156 Publish Audit, 157 Publishing Tests; Phase M ends at 157, and 158 Analytics Provider starts Phase N.
+
+### M-152 Duplicate Guard
+
+- A job left `IN_PROGRESS` by a crashed worker blocks the item with `IN_FLIGHT` forever: there is no lease or stale-takeover yet (compare `SourceCollector` leases, #062). A later task should add one before real publishing is enabled.
+- Replays return the stored `PublishJob` result only; the `YouTubeUploadReceipt` details (privacy, thumbnail/captions flags) are in the audit event, not in a table.
+- Review finding, not yet verified by any run: before this batch, `ShortsPublisher`/`LongFormPublisher` could not have been imported (`ArtifactNotFoundError`). Nothing in M-145..M-150 has ever been executed, so more mistakes of this kind are likely until the deferred full test run.
+
+### M-153 Upload Retry
+
+- A failure after which the item stays `PUBLISHING` has no timeout or automatic resume: someone must call publish again. A scheduler for resumes belongs to the pipeline runner (#206/#208).
+- The retry waits use a blocking `time.sleep` inside the publish call; a long LongForm upload with the maximum settings (5 attempts, 60 s base) can block a worker for minutes. Revisit when the runner is asynchronous.
+- The mock `upload` counter `calls` counts calls that passed local media validation, not every call.
+
+### M-154 Token Recovery
+
+- `MockYouTubeOAuthProvider` mints a fresh token on every refresh and never expires the refresh grant by itself, so the real behaviour of Google refresh grants (7-day expiry of unverified apps in testing mode, rotation) is not exercised. Revisit with the real provider.
+- `TokenRecovery.renew` is allowed once per call site per publish call; a flapping authorisation would fail the publish as resumable each time and needs a human, by design.
+
+### M-155 Publish Result
+
+- The receipt details with no column (privacy status, disclosure flag, thumbnail/captions uploaded) exist only in the audit event; a table would need a migration (not added: migration tests pin the schema version and cannot be run in this batch).
+- A crash between a successful provider upload and the database commit leaves a job `IN_PROGRESS` while the video exists on YouTube. A resume re-sends the same upload key, which a provider that stores keys answers with the existing receipt (the mock does); the real provider (a later task) must do the same or look the video up before uploading again.
+
+### M-156 Publish Audit
+
+- The audit trail reads the in-memory sink in the TEST environment and `SqliteAuditSink` otherwise; `AuditSink.events()` loads every event, so the trail is linear in the size of the log. Add an indexed query when the log grows.
+- `publish.requested` is recorded when a publish is asked for, before the guard: a request that fails early (flags are checked first and write nothing; a not-found item has no context) leaves no event. Only requests that reached the item are audited.
+
+### N-158 Analytics Provider
+
+- The mock has no time dimension: the same seeded values answer every period, so it cannot exercise watch-time periods (#163), per-day series or subscriber gains by period (#166) beyond what a test seeds per call.
+- `KNOWN_METRICS` is a closed list chosen from the YouTube Analytics and Reporting metrics; the real provider (not built) must map them to API names (`views`, `estimatedMinutesWatched`, `averageViewDuration`, `averageViewPercentage`, `subscribersGained`, `subscribersLost`, `likes`, `comments`, `shares`; impressions and click-through rate come from the Reporting API, not the Analytics API) and say which are unavailable.
+- Review finding of this batch: the provider error classes of M-145..M-147 could not be built (`cause=`), so no provider test of those tasks could have passed. This is the second class of mistake found by reading APIs (after the M-149/M-150 storage calls); the first real test run is expected to find more.
+
+### N-159 Channel Metrics
+
+- OAuth errors (expired or revoked analytics authorisation) are raised unchanged; there is no renewal like `TokenRecovery` for analytics. Reusing `TokenRecovery` needs a neutral name (it raises `PublishAuthorizationError`).
+- `call_with_retry` and `UploadRetryPolicy` live in `pipeline/upload_retry.py` and are reused for analytics reads with a hard-coded default (3 attempts, 2 s base). A neutral `retry` module and an analytics setting would be cleaner.
+- The channel snapshot subject is the internal `Channel.id`; the YouTube channel id is not stored on the snapshot. Per-video snapshots (#160) use the YouTube video id.
+- The sync is not scheduled and has no HTTP endpoint; the pipeline runner (#206) or a scheduler must call it.
+
+### N-160 Video Metrics
+
+- The per-video snapshot subject is the YouTube video id, not the internal content item id: relating metrics to a content item goes through the publish result (`PublishResultService`).
+- A video published at the very start of the period still gets a whole-period snapshot; per-day series and "since publication" windows are not modelled.
+- Videos are listed from `PublishResultService.list_for_channel`, which loads every published item of the channel; a channel with many thousands of videos needs an indexed query.
+- The batch ends here: the next task is N-161 Shorts Metrics, then N-162 LongForm Metrics.

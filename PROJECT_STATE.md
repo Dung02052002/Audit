@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-19 (BUILD-FIRST: up to M-150 implemented & statically reviewed untested)
+Last updated: 2026-10-20 (BUILD-FIRST: up to N-160 implemented, untested)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,7 +9,7 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = READY_FOR_PHASE_A
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 8111bd1
+CURRENT_CHECKPOINT = 7c64291
 BASELINE_STATUS    = CLEAN
 TEST_STATUS        = PASS at 8b41c0b; DEFERRED for the BUILD-FIRST work
 LINT_STATUS        = PASS
@@ -17,8 +17,8 @@ BUILD_STATUS       = PASS
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
 BUILD_MODE         = BUILD-FIRST (user order 2026-10-16: no tests, lint, format or build until the user asks)
-UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120, K-121, K-122, K-123, K-124, K-125, K-126, K-127, K-128, K-129, K-130, L-131, L-132, L-133, L-134, L-135, L-136, L-137, L-138, L-139, L-140, L-141, L-142, L-143, L-144, M-145, M-146, M-147, M-148, M-149, M-150 (STATIC_REVIEWED_UNTESTED)
-NEXT_TASK          = M-151 Idempotency Key
+UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120, K-121, K-122, K-123, K-124, K-125, K-126, K-127, K-128, K-129, K-130, L-131, L-132, L-133, L-134, L-135, L-136, L-137, L-138, L-139, L-140, L-141, L-142, L-143, L-144 (STATIC_REVIEWED_UNTESTED), M-145, M-146, M-147, M-148, M-149, M-150 (IMPLEMENTED_UNTESTED, downgraded 2026-10-20 after API errors were found and fixed), M-151 (IMPLEMENTED_UNTESTED), M-152 (IMPLEMENTED_UNTESTED), M-153 (IMPLEMENTED_UNTESTED), M-154 (IMPLEMENTED_UNTESTED), M-155 (IMPLEMENTED_UNTESTED), M-156 (IMPLEMENTED_UNTESTED), M-157 (IMPLEMENTED_UNTESTED), N-158 (IMPLEMENTED_UNTESTED), N-159 (IMPLEMENTED_UNTESTED), N-160 (IMPLEMENTED_UNTESTED)
+NEXT_TASK          = N-161 Shorts Metrics
 ```
 
 ## Next task
@@ -33,19 +33,39 @@ L-143 Approval Audit is STATIC_REVIEWED_UNTESTED (`content/approval_audit.py` `A
 
 L-144 Approval Tests is STATIC_REVIEWED_UNTESTED (`tests/test_approval.py`, `tests/test_approval_scenarios.py`).
 
-M-145 OAuth Contract is STATIC_REVIEWED_UNTESTED (`providers/youtube_oauth.py` `OAuthScope`, `OAuthToken` with `SecretStr` tokens, `YouTubeOAuthProvider`, `providers/mock_youtube_oauth.py` `MockYouTubeOAuthProvider`).
+M-145 OAuth Contract is IMPLEMENTED_UNTESTED (downgraded 2026-10-20, API errors fixed) (`providers/youtube_oauth.py` `OAuthScope`, `OAuthToken` with `SecretStr` tokens, `YouTubeOAuthProvider`, `providers/mock_youtube_oauth.py` `MockYouTubeOAuthProvider`).
 
-M-146 Channel Provider is STATIC_REVIEWED_UNTESTED (`providers/youtube_channel.py` `RemoteChannelInfo`, `YouTubeChannelProvider`, `providers/mock_youtube_channel.py` `MockYouTubeChannelProvider`).
+M-146 Channel Provider is IMPLEMENTED_UNTESTED (downgraded 2026-10-20, API errors fixed) (`providers/youtube_channel.py` `RemoteChannelInfo`, `YouTubeChannelProvider`, `providers/mock_youtube_channel.py` `MockYouTubeChannelProvider`).
 
-M-147 Upload Provider is STATIC_REVIEWED_UNTESTED (`providers/youtube_upload.py` `YouTubeUploadPayload`, `YouTubeUploadReceipt`, `YouTubeUploadProvider`, `providers/mock_youtube_upload.py` `MockYouTubeUploadProvider`).
+M-147 Upload Provider is IMPLEMENTED_UNTESTED (downgraded 2026-10-20, API errors fixed) (`providers/youtube_upload.py` `YouTubeUploadPayload`, `YouTubeUploadReceipt`, `YouTubeUploadProvider`, `providers/mock_youtube_upload.py` `MockYouTubeUploadProvider`).
 
-M-148 Publish Metadata Mapper is STATIC_REVIEWED_UNTESTED (`pipeline/publish_metadata_mapper.py` `PublishMetadataMapper.map_to_payload`).
+M-148 Publish Metadata Mapper is IMPLEMENTED_UNTESTED (downgraded 2026-10-20, API errors fixed) (`pipeline/publish_metadata_mapper.py` `PublishMetadataMapper.map_to_payload`).
 
-M-149 Shorts Publisher is STATIC_REVIEWED_UNTESTED (`pipeline/shorts_publisher.py` `ShortsPublisher.publish`).
+M-149 Shorts Publisher is IMPLEMENTED_UNTESTED (downgraded 2026-10-20, API errors fixed) (`pipeline/shorts_publisher.py` `ShortsPublisher.publish`).
 
-M-150 LongForm Publisher is STATIC_REVIEWED_UNTESTED (`pipeline/longform_publisher.py` `LongFormPublisher.publish`).
+M-150 LongForm Publisher is IMPLEMENTED_UNTESTED (downgraded 2026-10-20, API errors fixed) (`pipeline/longform_publisher.py` `LongFormPublisher.publish`).
 
-Next: **M-151 Idempotency Key**. M-152..M-156 follow in order.
+M-151 Idempotency Key is IMPLEMENTED_UNTESTED. `pipeline/idempotency.py` adds `upload_key` (job key + YouTube channel id + video sha256, prefix `upl:`), `PublishKeys` / `derive_publish_keys`, and `is_publish_key` / `is_upload_key` shape checks; `publish_key` and the idempotency gate are unchanged.
+
+M-152 Duplicate Guard is IMPLEMENTED_UNTESTED. `PublishDuplicateGuard` (replay / in-flight / already published / same video bytes / lost race), shared `PublishContextLoader` + `PublishExecutor` extracted from the two publishers, and corrections of the API errors in the M-149/M-150 publishers and the `ApprovalAuditService` wiring found by reading the real signatures.
+
+M-153 Upload Retry is IMPLEMENTED_UNTESTED. `UploadRetryPolicy` / `call_with_retry` (exponential, bounded, only retryable errors), resumable failure handling in `PublishExecutor` (item stays `PUBLISHING`, same job restarted on the next call), `Settings.upload_max_attempts` and `upload_retry_base_delay_seconds`, and a multi-failure mock upload provider.
+
+M-154 Token Recovery is IMPLEMENTED_UNTESTED. `TokenRecovery` and `PublishAuthorizationError`: safe renewal of expired tokens, a clear re-authorisation error for everything a refresh cannot fix, and executor integration at token acquisition, channel verification and upload.
+
+M-155 Publish Result is IMPLEMENTED_UNTESTED. `confirm_receipt`, `PublishResultService` and read-only `/publish-results` endpoints; the executor refuses to record a receipt that does not match the approved payload (including the AI-disclosure flag).
+
+M-156 Publish Audit is IMPLEMENTED_UNTESTED. `PublishAuditRecorder` / `PublishAuditService` and the audit events for the request, duplicate block, replay, gate block, token recovery, retries, result and failure of a publish, plus `GET /publish-audit/by-item/{id}`.
+
+M-157 Publishing Tests is IMPLEMENTED_UNTESTED. End-to-end publishing scenarios with mock providers (success, failure, retry, resume, token recovery, duplicates, gates, preconditions), a rewritten mapper/loader test module and shared test helpers. Phase M is complete.
+
+N-158 Analytics Provider is IMPLEMENTED_UNTESTED. `AnalyticsProvider` contract (`AnalyticsQuery`, `AnalyticsRow`, `AnalyticsPage`, `KNOWN_METRICS`, typed errors) and a seeded `MockAnalyticsProvider` that never invents data; also fixes the YouTube provider error classes, which could not be constructed (`cause=` passed to `ProviderError`).
+
+N-159 Channel Metrics is IMPLEMENTED_UNTESTED. `ChannelMetricsSync`: idempotent, retrying sync of channel metrics into `MetricSnapshot`, keeping absent metrics absent and reporting data completeness.
+
+N-160 Video Metrics is IMPLEMENTED_UNTESTED. `VideoMetricsSync`: chunked, paged, idempotent per-video metrics snapshots for the published videos of a channel, with videos of other channels refused and absent metrics kept absent.
+
+Next: **N-161 Shorts Metrics**.
 
 H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 

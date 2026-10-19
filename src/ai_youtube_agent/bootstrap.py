@@ -59,6 +59,7 @@ from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
 from ai_youtube_agent.content.audio_cost import AudioCostRecorder
 from ai_youtube_agent.content.audio_validation import AudioValidator
 from ai_youtube_agent.content.broll_manager import BrollManager
+from ai_youtube_agent.content.channel_metrics import ChannelMetricsSync
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
@@ -106,6 +107,7 @@ from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.content.topic_extractor import TopicExtractor
 from ai_youtube_agent.content.topic_scorer import TopicScorer
 from ai_youtube_agent.content.version_comparison import VersionComparisonService
+from ai_youtube_agent.content.video_metrics import VideoMetricsSync
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
 from ai_youtube_agent.core.config import (
@@ -125,11 +127,18 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
+from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
+from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
+from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
 from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
+from ai_youtube_agent.pipeline.publish_result import PublishResultService
 from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
+from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
+from ai_youtube_agent.providers.analytics import AnalyticsProvider
 from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
 from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
+from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
 from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
@@ -526,7 +535,7 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         ApprovalAuditService,
         lambda c: ApprovalAuditService(
-            c.resolve(Database), c.resolve(AuditLog)
+            c.resolve(Database), c.resolve(AuditSink), c.resolve(AuditLog)
         ),
     )
     container.register(
@@ -547,17 +556,64 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         PublishMetadataMapper, lambda _: PublishMetadataMapper()
     )
+    container.register(AnalyticsProvider, lambda _: MockAnalyticsProvider())
     container.register(
-        ShortsPublisher,
-        lambda c: ShortsPublisher(
+        VideoMetricsSync,
+        lambda c: VideoMetricsSync(
             c.resolve(Database),
-            c.resolve(ArtifactStorage),
+            c.resolve(AnalyticsProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(PublishResultService),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        ChannelMetricsSync,
+        lambda c: ChannelMetricsSync(
+            c.resolve(Database),
+            c.resolve(AnalyticsProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        PublishDuplicateGuard, lambda c: PublishDuplicateGuard(c.resolve(Database))
+    )
+    container.register(
+        PublishAuditService,
+        lambda c: PublishAuditService(
+            c.resolve(Database),
+            c.resolve(AuditSink),
+            c.resolve(ApprovalAuditService),
+        ),
+    )
+    container.register(
+        PublishResultService,
+        lambda c: PublishResultService(c.resolve(Database), c.resolve(AuditSink)),
+    )
+    container.register(
+        PublishExecutor,
+        lambda c: PublishExecutor(
+            c.resolve(Database),
             c.resolve(AuditLog),
             c.resolve(PublishGate),
             c.resolve(YouTubeOAuthProvider),
             c.resolve(YouTubeChannelProvider),
             c.resolve(YouTubeUploadProvider),
+            retry_policy=UploadRetryPolicy(
+                max_attempts=c.resolve(Settings).upload_max_attempts,
+                base_delay_seconds=c.resolve(Settings).upload_retry_base_delay_seconds,
+            ),
+        ),
+    )
+    container.register(
+        ShortsPublisher,
+        lambda c: ShortsPublisher(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(PublishExecutor),
             mapper=c.resolve(PublishMetadataMapper),
+            guard=c.resolve(PublishDuplicateGuard),
             flags=c.resolve(FeatureFlags),
         ),
     )
@@ -566,12 +622,9 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda c: LongFormPublisher(
             c.resolve(Database),
             c.resolve(ArtifactStorage),
-            c.resolve(AuditLog),
-            c.resolve(PublishGate),
-            c.resolve(YouTubeOAuthProvider),
-            c.resolve(YouTubeChannelProvider),
-            c.resolve(YouTubeUploadProvider),
+            c.resolve(PublishExecutor),
             mapper=c.resolve(PublishMetadataMapper),
+            guard=c.resolve(PublishDuplicateGuard),
             flags=c.resolve(FeatureFlags),
         ),
     )

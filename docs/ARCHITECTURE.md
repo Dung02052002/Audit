@@ -213,8 +213,14 @@ Review (C11): preview the exact version #131 → approval request #137 → email
   │        (a change loops back: change → rerender → retest → new preview, #136)
   ▼
 Publishing (C12): gates pass → Shorts #149 or LongForm #150 publisher → upload → result with YouTube video ID #155
+  │        (publish: `ShortsPublisher` / `LongFormPublisher` load and verify the approved artifacts (`PublishContextLoader`), derive the job key and the upload key (#151),
+  │         ask the duplicate guard (#152), map the metadata (#148) and hand over to `PublishExecutor`: PublishGate while the item is APPROVED, token recovery (#154),
+  │         one job + item PUBLISHING transaction, upload with bounded retries (#153), receipt confirmation and result (#155), audit trail (#156); a resumable failure
+  │         leaves the item PUBLISHING and the next call restarts the same job; providers are mocks until a real one is chosen)
   ▼
 Analytics (C13) → Economics (C14)          Community (C15) reads comments on published videos
+  │        (analytics: `AnalyticsProvider` #158 (seeded mock, absent metric = absent, never 0) → `ChannelMetricsSync` #159 and `VideoMetricsSync` #160 store `MetricSnapshot`s,
+  │         idempotent, with `data_through` for freshness; later tasks normalise Shorts / LongForm metrics, watch time, retention, CTR and add the cache)
 ```
 
 ### 5.2 Lifecycle status (C2)

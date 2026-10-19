@@ -390,10 +390,14 @@ def test_container_resolves_preview_and_approval_services(tmp_path: Path) -> Non
 
 
 def test_container_resolves_youtube_publishing_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
     from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
+    from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
+    from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
     from ai_youtube_agent.pipeline.publish_metadata_mapper import (
         PublishMetadataMapper,
     )
+    from ai_youtube_agent.pipeline.publish_result import PublishResultService
     from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
     from ai_youtube_agent.providers.mock_youtube_channel import (
         MockYouTubeChannelProvider,
@@ -429,3 +433,35 @@ def test_container_resolves_youtube_publishing_services(tmp_path: Path) -> None:
     )
     assert isinstance(container.resolve(ShortsPublisher), ShortsPublisher)
     assert isinstance(container.resolve(LongFormPublisher), LongFormPublisher)
+    assert isinstance(container.resolve(PublishDuplicateGuard), PublishDuplicateGuard)
+    executor = container.resolve(PublishExecutor)
+    assert isinstance(executor, PublishExecutor)
+    assert container.resolve(PublishExecutor) is executor
+    assert executor._retry_policy.max_attempts == settings.upload_max_attempts
+    assert (
+        executor._retry_policy.base_delay_seconds
+        == settings.upload_retry_base_delay_seconds
+    )
+    assert isinstance(container.resolve(PublishResultService), PublishResultService)
+    assert isinstance(container.resolve(PublishAuditService), PublishAuditService)
+
+
+def test_container_resolves_the_analytics_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.content.channel_metrics import ChannelMetricsSync
+    from ai_youtube_agent.content.video_metrics import VideoMetricsSync
+    from ai_youtube_agent.providers.analytics import AnalyticsProvider
+    from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    provider = container.resolve(AnalyticsProvider)
+    assert isinstance(provider, MockAnalyticsProvider)
+    assert container.resolve(AnalyticsProvider) is provider
+    assert isinstance(container.resolve(ChannelMetricsSync), ChannelMetricsSync)
+    assert isinstance(container.resolve(VideoMetricsSync), VideoMetricsSync)
+    assert not (tmp_path / "agent.db").exists()

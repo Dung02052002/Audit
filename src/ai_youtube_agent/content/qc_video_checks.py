@@ -747,3 +747,148 @@ def check_subtitles(context: VideoInspectionContext) -> QCCheck:
         status=QCStatus.PASS,
         detail=f"Valid {fmt_name} subtitles ({len(cues)} cues, UTF-8 NFC)",
     )
+
+
+def check_black_frames(context: VideoInspectionContext) -> QCCheck:
+    """Detect excessive black or frozen frames (Prompt #123)."""
+    mdat = _extract_mdat_payload(context.video_data)
+    if mdat is None or len(mdat) == 0:
+        return QCCheck(
+            name=BLACK_FRAME_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Video mdat frame payload is missing or empty.",
+        )
+
+    fps = float(context.actual_fps or context.expected_fps or 30)
+    frame_ms = 1000.0 / max(1.0, fps)
+
+    if context.frame_luma_samples is not None or context.frame_hashes is not None:
+        luma_raw = list(context.frame_luma_samples or ())
+        hashes = list(context.frame_hashes or ())
+        scale = 255.0 if any(v > 1.0 for v in luma_raw) else 1.0
+        lumas = [v / scale for v in luma_raw]
+
+        total_frames = max(len(lumas), len(hashes))
+        if total_frames == 0:
+            return QCCheck(
+                name=BLACK_FRAME_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail="Frame sample sequence is empty.",
+            )
+
+        black_count = 0
+        max_black_run = 0
+        cur_black_run = 0
+        for val in lumas:
+            if val <= 0.02:
+                black_count += 1
+                cur_black_run += 1
+                if cur_black_run > max_black_run:
+                    max_black_run = cur_black_run
+            else:
+                cur_black_run = 0
+
+        frozen_count = 0
+        max_frozen_run = 0
+        cur_frozen_run = 0
+        if hashes:
+            for i in range(1, len(hashes)):
+                if hashes[i] == hashes[i - 1]:
+                    frozen_count += 1
+                    cur_frozen_run += 1
+                    if cur_frozen_run > max_frozen_run:
+                        max_frozen_run = cur_frozen_run
+                else:
+                    cur_frozen_run = 0
+        elif len(lumas) > 1:
+            for i in range(1, len(lumas)):
+                if lumas[i] > 0.02 and abs(lumas[i] - lumas[i - 1]) <= 1e-6:
+                    frozen_count += 1
+                    cur_frozen_run += 1
+                    if cur_frozen_run > max_frozen_run:
+                        max_frozen_run = cur_frozen_run
+                else:
+                    cur_frozen_run = 0
+
+        black_ratio = black_count / len(lumas) if lumas else 0.0
+        max_black_ms = max_black_run * frame_ms
+        frozen_ratio = frozen_count / total_frames
+        max_frozen_ms = max_frozen_run * frame_ms
+
+        if black_ratio >= 0.25 or max_black_ms >= 3000.0:
+            return QCCheck(
+                name=BLACK_FRAME_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"Excessive black frames detected ({black_ratio * 100:.1f}% black, "
+                    f"max continuous run {max_black_ms:.0f} ms)."
+                ),
+            )
+        if frozen_ratio >= 0.50 or max_frozen_ms >= 5000.0:
+            return QCCheck(
+                name=BLACK_FRAME_CHECK_NAME,
+                status=QCStatus.FAIL,
+                detail=(
+                    f"Excessive frozen frames detected ({frozen_ratio * 100:.1f}% frozen, "
+                    f"max continuous run {max_frozen_ms:.0f} ms)."
+                ),
+            )
+        if (
+            black_ratio >= 0.10
+            or max_black_ms >= 1000.0
+            or frozen_ratio >= 0.25
+            or max_frozen_ms >= 2500.0
+        ):
+            return QCCheck(
+                name=BLACK_FRAME_CHECK_NAME,
+                status=QCStatus.WARN,
+                detail=(
+                    f"Elevated black/frozen frames ({black_ratio * 100:.1f}% black, "
+                    f"{frozen_ratio * 100:.1f}% frozen)."
+                ),
+            )
+
+        return QCCheck(
+            name=BLACK_FRAME_CHECK_NAME,
+            status=QCStatus.PASS,
+            detail=(
+                f"No excessive black or frozen frames ({total_frames} frames inspected, "
+                f"{black_ratio * 100:.1f}% black, {frozen_ratio * 100:.1f}% frozen)"
+            ),
+        )
+
+    block_size = 64
+    blocks = [
+        mdat[i : i + block_size]
+        for i in range(0, len(mdat), block_size)
+        if len(mdat[i : i + block_size]) > 0
+    ]
+    zero_blocks = sum(1 for b in blocks if b == b"\x00" * len(b))
+    zero_ratio = zero_blocks / len(blocks)
+
+    if zero_ratio >= 0.50:
+        return QCCheck(
+            name=BLACK_FRAME_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail=f"Excessive black frames detected ({zero_ratio * 100:.1f}% zero mdat blocks).",
+        )
+
+    if len(mdat) >= 64 and len(set(mdat)) == 1:
+        return QCCheck(
+            name=BLACK_FRAME_CHECK_NAME,
+            status=QCStatus.FAIL,
+            detail="Frozen video stream detected: constant byte payload in mdat.",
+        )
+
+    if zero_ratio >= 0.20:
+        return QCCheck(
+            name=BLACK_FRAME_CHECK_NAME,
+            status=QCStatus.WARN,
+            detail=f"Elevated black frame blocks ({zero_ratio * 100:.1f}% zero mdat blocks).",
+        )
+
+    return QCCheck(
+        name=BLACK_FRAME_CHECK_NAME,
+        status=QCStatus.PASS,
+        detail=f"No excessive black or frozen frames ({len(blocks)} payload blocks inspected)",
+    )

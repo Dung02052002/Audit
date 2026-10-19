@@ -50,6 +50,7 @@ need no provider.
 resolved); the kill switch gate joins it later.
 """
 
+from ai_youtube_agent.content.approval_service import ApprovalService
 from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
 from ai_youtube_agent.content.audio_cost import AudioCostRecorder
@@ -58,6 +59,7 @@ from ai_youtube_agent.content.broll_manager import BrollManager
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
+from ai_youtube_agent.content.email_approval import ApprovalEmailService
 from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
 from ai_youtube_agent.content.fact_checker import FactChecker
 from ai_youtube_agent.content.hook_generator import HookGenerator
@@ -71,6 +73,11 @@ from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
 from ai_youtube_agent.content.originality_checker import OriginalityChecker
 from ai_youtube_agent.content.policy_report import PolicyReporter
+from ai_youtube_agent.content.preview_artifact import PreviewArtifactService
+from ai_youtube_agent.content.preview_edit_loop import PreviewEditLoopService
+from ai_youtube_agent.content.preview_metadata import PreviewMetadataService
+from ai_youtube_agent.content.preview_player import PreviewPlayerService
+from ai_youtube_agent.content.preview_reports import PreviewReportService
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
 from ai_youtube_agent.content.qc_disclosure import DisclosureQCChecker
 from ai_youtube_agent.content.qc_harness import VideoArtifactTestHarness
@@ -95,6 +102,7 @@ from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.content.topic_extractor import TopicExtractor
 from ai_youtube_agent.content.topic_scorer import TopicScorer
+from ai_youtube_agent.content.version_comparison import VersionComparisonService
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
 from ai_youtube_agent.core.config import (
@@ -114,7 +122,9 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
+from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
 from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
+from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
@@ -429,6 +439,75 @@ def build_container(settings: Settings | None = None) -> Container:
             rights_checker=c.resolve(RightsQCChecker),
             policy_checker=c.resolve(PolicyQCChecker),
             disclosure_checker=c.resolve(DisclosureQCChecker),
+        ),
+    )
+    container.register(
+        PreviewArtifactService,
+        lambda c: PreviewArtifactService(
+            c.resolve(Database), c.resolve(ArtifactStorage)
+        ),
+    )
+    container.register(
+        PreviewPlayerService,
+        lambda c: PreviewPlayerService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(PreviewArtifactService),
+        ),
+    )
+    container.register(
+        PreviewMetadataService,
+        lambda c: PreviewMetadataService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(PreviewArtifactService),
+        ),
+    )
+    container.register(
+        PreviewReportService,
+        lambda c: PreviewReportService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(Settings),
+            rights_reporter=c.resolve(RightsReporter),
+            policy_reporter=c.resolve(PolicyReporter),
+        ),
+    )
+    container.register(
+        VersionComparisonService,
+        lambda c: VersionComparisonService(
+            c.resolve(Database), c.resolve(ArtifactStorage)
+        ),
+    )
+    container.register(
+        PreviewEditLoopService,
+        lambda c: PreviewEditLoopService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            c.resolve(Settings),
+            qc_builder=c.resolve(QCReportBuilder),
+            preview_service=c.resolve(PreviewArtifactService),
+            comparison_service=c.resolve(VersionComparisonService),
+        ),
+    )
+    container.register(
+        ApprovalEmailProvider, lambda _: MockApprovalEmailProvider()
+    )
+    container.register(
+        ApprovalEmailService,
+        lambda c: ApprovalEmailService(
+            c.resolve(Database),
+            c.resolve(ApprovalEmailProvider),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        ApprovalService,
+        lambda c: ApprovalService(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            email_service=c.resolve(ApprovalEmailService),
         ),
     )
     container.register(

@@ -55,6 +55,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | K-128 AI Disclosure QC | `tests/test_qc_disclosure.py` (new), `tests/test_bootstrap.py`; regression `tests/test_disclosure_decider.py`, `tests/test_disclosure_rule.py` |
 | K-129 QC Report | `tests/test_qc_report.py` (new), `tests/test_bootstrap.py`; regression `tests/test_gate_matrix.py`, `tests/test_gates.py`, `tests/test_qc.py` |
 | K-130 QC Regression Suite | `tests/test_qc_regression_suite.py` (new); full Phase K QC suite (`tests/test_qc_*.py`) |
+| L-131 Preview Artifact API | `tests/test_preview_api.py` (new), `tests/test_bootstrap.py` |
+| L-132 Preview Player | `tests/test_preview_api.py` (new), `tests/test_artifact_storage.py` (`text/vtt` extension), `tests/test_bootstrap.py` |
+| L-133 Preview Metadata | `tests/test_preview_api.py` (new), `tests/test_bootstrap.py` |
+| L-134 Preview Reports | `tests/test_preview_api.py` (new), `tests/test_bootstrap.py`; regression `tests/test_rights_report.py`, `tests/test_policy_report.py` |
+| L-135 Version Comparison | `tests/test_preview_api.py` (new), `tests/test_bootstrap.py` |
+| L-136 Preview Edit Loop | `tests/test_preview_edit_loop.py` (new), `tests/test_bootstrap.py`; regression `tests/test_version_invalidation.py`, `tests/test_qc_report.py` |
+| L-137 Approval Request | `tests/test_approval_workflow.py` (new), `tests/test_bootstrap.py`; regression `tests/test_approval.py`, `tests/test_approval_gate.py` |
+| L-138 Email Approval | `tests/test_approval_workflow.py` (new), `tests/test_bootstrap.py` |
+| L-139 Approve Action | `tests/test_approval.py` (updated decision method list + approve tests), `tests/test_approval_workflow.py` (new); regression `tests/test_approval_gate.py` |
+| L-140 Reject Action | `tests/test_approval.py` (updated decision method list + reject tests), `tests/test_approval_workflow.py` (new) |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -392,4 +402,44 @@ needs its tests run in the later test phase; those tests are listed per task in
   `tests/test_qc_policy.py`, `tests/test_qc_disclosure.py`, `tests/test_qc_report.py`,
   `tests/test_qc_regression_suite.py`) and `#206 Pipeline Runner`.
 - **Priority:** Medium.
+
+### L-131..L-136 Preview API, Player, Metadata, Reports, Comparison & Edit Loop
+
+- **Task:** `L-131`..`L-136`
+- **Issue:** `PreviewArtifactService.stream_artifact` reads the full artifact file
+  into memory via `ArtifactStorage.read(uri)` to verify `size_bytes` and `sha256`
+  before slicing a `Range: bytes=start-end` payload. For large LongForm MP4 files,
+  repeated range requests during HTML5 video scrubbing will re-read and re-hash
+  the file on each request until `ArtifactStorage` gains streaming/ranged read
+  support (noted under `H-089`). Also, `PreviewEditLoopService.run_edit_loop`
+  produces a deterministic re-rendered MP4 (`stub_mp4`) when `rerender_video=True`
+  and `rendered_video_bytes=None` if a full `ShortsProject`/`LongFormProject`
+  render pipeline is not invoked directly.
+- **Potential impact:** Memory/CPU overhead when scrubbing multi-hundred-MB
+  LongForm videos over `/previews/{id}/artifacts/{artifact_id}/stream`.
+- **Verification phase:** Post-BUILD-FIRST pytest run (`tests/test_preview_api.py`,
+  `tests/test_preview_edit_loop.py`) and `#144 Approval Tests`.
+- **Priority:** Medium.
+
+### L-137..L-140 Approval Request, Email Approval, Approve & Reject Actions
+
+- **Task:** `L-137 Approval Request`, `L-138 Email Approval`, `L-139 Approve Action`,
+  `L-140 Reject Action`
+- **Issue:** To preserve `0001_initial_schema.sql` (`approval_requests` table
+  columns) and `ApprovalRequestRepository` without altering existing migrations,
+  `ApprovalRequest` keeps its 7 frozen fields while the decision actor, rejection
+  reason, and approval note are recorded in the immutable `AuditLog` (`approval.approved`,
+  `approval.rejected`) and returned in `ApprovalDecisionResult`. Dedicated
+  approval audit query helpers and history views belong to `L-143 Approval Audit`.
+  Also, `ApprovalEmailProvider` uses `MockApprovalEmailProvider` (in-memory outbox)
+  by default so no real external emails are sent during development or automated
+  runs; real SMTP/API email transport belongs to `#228 Email Approval Pilot`.
+- **Potential impact:** `ApprovalRequest.as_dict()` shows `status` (`approved` /
+  `rejected`), while the rejection `reason` and `decided_by` actor are carried
+  on `ApprovalDecisionResult` and `audit_events` until `L-143 Approval Audit`.
+- **Verification phase:** `L-141 Request Changes`, `L-142 Approval Expiry`,
+  `L-143 Approval Audit`, `L-144 Approval Tests`, and post-BUILD-FIRST pytest run
+  (`tests/test_approval.py`, `tests/test_approval_workflow.py`).
+- **Priority:** Low.
+
 

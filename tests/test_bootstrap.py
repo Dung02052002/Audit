@@ -345,3 +345,44 @@ def test_container_resolves_qc_services(tmp_path: Path) -> None:
     assert isinstance(report_builder, QCReportBuilder)
     assert container.resolve(QCReportBuilder) is report_builder
 
+
+def test_container_resolves_preview_and_approval_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.content.approval_service import ApprovalService
+    from ai_youtube_agent.content.email_approval import ApprovalEmailService
+    from ai_youtube_agent.content.preview_artifact import PreviewArtifactService
+    from ai_youtube_agent.content.preview_edit_loop import PreviewEditLoopService
+    from ai_youtube_agent.content.preview_metadata import PreviewMetadataService
+    from ai_youtube_agent.content.preview_player import PreviewPlayerService
+    from ai_youtube_agent.content.preview_reports import PreviewReportService
+    from ai_youtube_agent.content.version_comparison import VersionComparisonService
+    from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
+    from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    assert isinstance(
+        container.resolve(PreviewArtifactService), PreviewArtifactService
+    )
+    assert isinstance(container.resolve(PreviewPlayerService), PreviewPlayerService)
+    assert isinstance(
+        container.resolve(PreviewMetadataService), PreviewMetadataService
+    )
+    assert isinstance(container.resolve(PreviewReportService), PreviewReportService)
+    assert isinstance(
+        container.resolve(VersionComparisonService), VersionComparisonService
+    )
+    assert isinstance(
+        container.resolve(PreviewEditLoopService), PreviewEditLoopService
+    )
+    assert isinstance(
+        container.resolve(ApprovalEmailProvider), MockApprovalEmailProvider
+    )
+    assert isinstance(container.resolve(ApprovalEmailService), ApprovalEmailService)
+    assert isinstance(container.resolve(ApprovalService), ApprovalService)
+
+

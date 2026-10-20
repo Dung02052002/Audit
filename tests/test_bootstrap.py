@@ -447,10 +447,20 @@ def test_container_resolves_youtube_publishing_services(tmp_path: Path) -> None:
 
 
 def test_container_resolves_the_analytics_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.content.analytics_freshness import AnalyticsFreshnessService
     from ai_youtube_agent.content.channel_metrics import ChannelMetricsSync
+    from ai_youtube_agent.content.ctr import CTRSync
+    from ai_youtube_agent.content.longform_metrics import LongFormMetricsService
+    from ai_youtube_agent.content.retention import RetentionSync
+    from ai_youtube_agent.content.shorts_metrics import ShortsMetricsService
+    from ai_youtube_agent.content.subscriber_change import SubscriberChangeService
     from ai_youtube_agent.content.video_metrics import VideoMetricsSync
+    from ai_youtube_agent.content.watch_time import WatchTimeService
     from ai_youtube_agent.providers.analytics import AnalyticsProvider
+    from ai_youtube_agent.providers.analytics_cache import AnalyticsCache
     from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
+    from ai_youtube_agent.providers.mock_revenue import MockRevenueProvider
+    from ai_youtube_agent.providers.revenue import RevenueProvider
 
     settings = Settings(
         environment=Environment.TEST,
@@ -462,6 +472,23 @@ def test_container_resolves_the_analytics_services(tmp_path: Path) -> None:
     provider = container.resolve(AnalyticsProvider)
     assert isinstance(provider, MockAnalyticsProvider)
     assert container.resolve(AnalyticsProvider) is provider
+    assert isinstance(container.resolve(AnalyticsCache), AnalyticsCache)
     assert isinstance(container.resolve(ChannelMetricsSync), ChannelMetricsSync)
     assert isinstance(container.resolve(VideoMetricsSync), VideoMetricsSync)
+    assert isinstance(container.resolve(ShortsMetricsService), ShortsMetricsService)
+    assert isinstance(
+        container.resolve(LongFormMetricsService), LongFormMetricsService
+    )
+    assert isinstance(container.resolve(WatchTimeService), WatchTimeService)
+    assert isinstance(container.resolve(RetentionSync), RetentionSync)
+    assert isinstance(container.resolve(CTRSync), CTRSync)
+    assert isinstance(
+        container.resolve(SubscriberChangeService), SubscriberChangeService
+    )
+    assert isinstance(
+        container.resolve(AnalyticsFreshnessService), AnalyticsFreshnessService
+    )
+    rev_provider = container.resolve(RevenueProvider)
+    assert isinstance(rev_provider, MockRevenueProvider)
+    assert container.resolve(RevenueProvider) is rev_provider
     assert not (tmp_path / "agent.db").exists()

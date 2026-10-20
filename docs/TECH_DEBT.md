@@ -85,6 +85,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | N-158 Analytics Provider | `tests/test_analytics_provider.py` (new), `tests/test_bootstrap.py`, `tests/test_youtube_providers.py` (error classes) |
 | N-159 Channel Metrics | `tests/test_channel_metrics.py` (new), `tests/test_bootstrap.py`; regression `tests/test_repositories.py -k metric` |
 | N-160 Video Metrics | `tests/test_video_metrics.py` (new), `tests/test_channel_metrics.py` (shared helpers moved), `tests/test_bootstrap.py` |
+| N-161 Shorts Metrics | `tests/test_shorts_metrics.py` (new); regression `tests/test_analytics_provider.py`, `tests/test_repositories.py` |
+| N-162 LongForm Metrics | `tests/test_longform_metrics.py` (new) |
+| N-163 Watch Time | `tests/test_watch_time.py` (new) |
+| N-164 Retention | `tests/test_retention.py` (new) |
+| N-165 CTR | `tests/test_ctr.py` (new) |
+| N-166 Subscriber Change | `tests/test_subscriber_change.py` (new) |
+| N-167 Freshness Model | `tests/test_analytics_freshness.py` (new) |
+| N-168 Analytics Cache | `tests/test_analytics_cache.py` (new) |
+| N-169 Analytics Tests | `tests/test_analytics_scenarios.py` (new); then the whole Phase N test set (`tests/test_analytics_provider.py`, `tests/test_channel_metrics.py`, `tests/test_video_metrics.py`, `tests/test_shorts_metrics.py`, `tests/test_longform_metrics.py`, `tests/test_watch_time.py`, `tests/test_retention.py`, `tests/test_ctr.py`, `tests/test_subscriber_change.py`, `tests/test_analytics_freshness.py`, `tests/test_analytics_cache.py`) |
+| O-170 Revenue Provider | `tests/test_revenue_provider.py` (new), `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items

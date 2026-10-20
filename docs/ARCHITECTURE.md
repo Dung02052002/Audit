@@ -220,7 +220,10 @@ Publishing (C12): gates pass → Shorts #149 or LongForm #150 publisher → uplo
   ▼
 Analytics (C13) → Economics (C14)          Community (C15) reads comments on published videos
   │        (analytics: `AnalyticsProvider` #158 (seeded mock, absent metric = absent, never 0) → `ChannelMetricsSync` #159 and `VideoMetricsSync` #160 store `MetricSnapshot`s,
-  │         idempotent, with `data_through` for freshness; later tasks normalise Shorts / LongForm metrics, watch time, retention, CTR and add the cache)
+  │         idempotent, with `data_through` for freshness; `ShortsMetricsService` #161 and `LongFormMetricsService` #162 normalise per-type metrics;
+  │         `WatchTimeService` #163 normalises units and disjoint periods; `RetentionSync` #164 and `CTRSync` #165 store retention and CTR only when returned;
+  │         `SubscriberChangeService` #166 tracks gained/lost/net subscribers; `AnalyticsFreshnessService` #167 classifies `fresh`/`lagging`/`stale`;
+  │         `AnalyticsCache` #168 caches and invalidates pages safely; `RevenueProvider` #170 defines the estimated/final revenue source contract and seeded mock)
 ```
 
 ### 5.2 Lifecycle status (C2)

@@ -52,6 +52,7 @@ resolved); the kill switch gate joins it later.
 
 from datetime import timedelta
 
+from ai_youtube_agent.content.analytics_freshness import AnalyticsFreshnessService
 from ai_youtube_agent.content.approval_audit import ApprovalAuditService
 from ai_youtube_agent.content.approval_service import ApprovalService
 from ai_youtube_agent.content.asset_registry import AssetRegistry
@@ -62,6 +63,7 @@ from ai_youtube_agent.content.broll_manager import BrollManager
 from ai_youtube_agent.content.channel_metrics import ChannelMetricsSync
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
+from ai_youtube_agent.content.ctr import CTRSync
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.email_approval import ApprovalEmailService
 from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
@@ -70,6 +72,7 @@ from ai_youtube_agent.content.hook_generator import HookGenerator
 from ai_youtube_agent.content.longform_audio_mix import LongFormAudioMixer
 from ai_youtube_agent.content.longform_bundle import LongFormBundleBuilder
 from ai_youtube_agent.content.longform_metadata import LongFormMetadataRecorder
+from ai_youtube_agent.content.longform_metrics import LongFormMetricsService
 from ai_youtube_agent.content.longform_render import LongFormRenderService
 from ai_youtube_agent.content.longform_script_generator import LongFormScriptGenerator
 from ai_youtube_agent.content.longform_service import LongFormProjectService
@@ -89,6 +92,7 @@ from ai_youtube_agent.content.qc_policy import PolicyQCChecker
 from ai_youtube_agent.content.qc_report import QCReportBuilder
 from ai_youtube_agent.content.qc_rights import RightsQCChecker
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
+from ai_youtube_agent.content.retention import RetentionSync
 from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
 from ai_youtube_agent.content.script_validator import ScriptValidator
@@ -96,6 +100,7 @@ from ai_youtube_agent.content.script_versioner import ScriptVersioner
 from ai_youtube_agent.content.shorts_audio_mix import ShortsAudioMixer
 from ai_youtube_agent.content.shorts_bundle import ShortsBundleBuilder
 from ai_youtube_agent.content.shorts_metadata import ShortsMetadataRecorder
+from ai_youtube_agent.content.shorts_metrics import ShortsMetricsService
 from ai_youtube_agent.content.shorts_render import ShortsRenderService
 from ai_youtube_agent.content.shorts_script_generator import ShortsScriptGenerator
 from ai_youtube_agent.content.shorts_service import ShortsProjectService
@@ -104,10 +109,12 @@ from ai_youtube_agent.content.shorts_thumbnail import ShortsThumbnailRecorder
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.strategy_settings import StrategySettings
+from ai_youtube_agent.content.subscriber_change import SubscriberChangeService
 from ai_youtube_agent.content.topic_extractor import TopicExtractor
 from ai_youtube_agent.content.topic_scorer import TopicScorer
 from ai_youtube_agent.content.version_comparison import VersionComparisonService
 from ai_youtube_agent.content.video_metrics import VideoMetricsSync
+from ai_youtube_agent.content.watch_time import WatchTimeService
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
 from ai_youtube_agent.core.config import (
@@ -136,11 +143,13 @@ from ai_youtube_agent.pipeline.publish_result import PublishResultService
 from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
 from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
 from ai_youtube_agent.providers.analytics import AnalyticsProvider
+from ai_youtube_agent.providers.analytics_cache import AnalyticsCache
 from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
 from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
 from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
 from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
+from ai_youtube_agent.providers.mock_revenue import MockRevenueProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
 from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer
@@ -149,6 +158,7 @@ from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvid
 from ai_youtube_agent.providers.mock_youtube_upload import MockYouTubeUploadProvider
 from ai_youtube_agent.providers.research import ResearchProvider
 from ai_youtube_agent.providers.research_cache import ResearchCache
+from ai_youtube_agent.providers.revenue import RevenueProvider
 from ai_youtube_agent.providers.speech_synthesis import SpeechSynthesizer
 from ai_youtube_agent.providers.text_generation import TextGenerator
 from ai_youtube_agent.providers.video_render import VideoRenderer
@@ -558,6 +568,10 @@ def build_container(settings: Settings | None = None) -> Container:
     )
     container.register(AnalyticsProvider, lambda _: MockAnalyticsProvider())
     container.register(
+        AnalyticsCache,
+        lambda c: AnalyticsCache(c.resolve(AnalyticsProvider)),
+    )
+    container.register(
         VideoMetricsSync,
         lambda c: VideoMetricsSync(
             c.resolve(Database),
@@ -576,6 +590,55 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(AuditLog),
         ),
     )
+    container.register(
+        ShortsMetricsService,
+        lambda c: ShortsMetricsService(
+            c.resolve(Database), c.resolve(PublishResultService)
+        ),
+    )
+    container.register(
+        LongFormMetricsService,
+        lambda c: LongFormMetricsService(
+            c.resolve(Database), c.resolve(PublishResultService)
+        ),
+    )
+    container.register(
+        WatchTimeService, lambda c: WatchTimeService(c.resolve(Database))
+    )
+    container.register(
+        RetentionSync,
+        lambda c: RetentionSync(
+            c.resolve(Database),
+            c.resolve(AnalyticsProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(PublishResultService),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        CTRSync,
+        lambda c: CTRSync(
+            c.resolve(Database),
+            c.resolve(AnalyticsProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(PublishResultService),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        SubscriberChangeService,
+        lambda c: SubscriberChangeService(
+            c.resolve(Database),
+            c.resolve(AnalyticsProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        AnalyticsFreshnessService,
+        lambda c: AnalyticsFreshnessService(c.resolve(Database)),
+    )
+    container.register(RevenueProvider, lambda _: MockRevenueProvider())
     container.register(
         PublishDuplicateGuard, lambda c: PublishDuplicateGuard(c.resolve(Database))
     )

@@ -105,6 +105,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | O-178 Storage/API Cost | `tests/test_storage_api_cost.py` (new) |
 | O-179 Contribution Margin | `tests/test_contribution_margin.py` (new) |
 | O-180 Budget Guard | `tests/test_budget_guard.py` (new), `tests/test_bootstrap.py` |
+| O-181 Economics Tests | `tests/test_economics_scenarios.py` (new); then the whole Phase O test set (`tests/test_revenue_provider.py`, `tests/test_estimated_revenue.py`, `tests/test_final_revenue.py`, `tests/test_revenue_sources.py`, `tests/test_cost_ledger.py`, `tests/test_llm_cost.py`, `tests/test_tts_cost.py`, `tests/test_render_cost.py`, `tests/test_storage_api_cost.py`, `tests/test_contribution_margin.py`, `tests/test_budget_guard.py`) |
+| P-182 Comment Provider | `tests/test_comment_provider.py` (new) |
+| P-183 Comment Sync | `tests/test_comment_sync.py` (new) |
+| P-184 Comment Classification | `tests/test_comment_classifier.py` (new) |
+| P-185 Reply Draft | `tests/test_reply_draft.py` (new) |
+| P-186 Reply Approval | `tests/test_reply_approval.py` (new) |
+| P-187 Duplicate Reply Guard | `tests/test_duplicate_reply_guard.py` (new) |
+| P-188 AUTO_REPLY Flag | `pytest tests/test_auto_reply.py` |
+| P-189 Comment Audit | `pytest tests/test_comment_audit.py tests/test_bootstrap.py` |
+| P-190 Comment Tests | `pytest tests/test_comment_scenarios.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -576,3 +586,9 @@ Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload
 ### O-180 Budget Guard
 
 - `BudgetGuard` evaluates `day_window` and `month_window` in `strategy_time_zone(strategy)` and raises `BudgetGuardBlockedError` when `enforce` is called; wiring `BudgetGuard.enforce` before each provider-calling pipeline step belongs to the pipeline runner (`#206`).
+
+### P-182..P-190 Comments & Community
+
+- `CommentProvider` is wired to `MockCommentProvider` in `bootstrap.py` so no real YouTube Data API v3 comment calls or replies are made during development or tests.
+- `AUTO_REPLY_ENABLED` defaults to `False` in `FeatureFlags`; `AutoReplyGuard` and `AutoReplyService` refuse automated reply posting with `AutoReplyDisabledError` (`comment.auto_reply_blocked` audit event) unless `flags.auto_reply_enabled` is explicitly `True`, and even when enabled still block `MODERATION`-classified comments.
+- `CommentAuditService` queries `AuditSink.events()` linearly (matching `ApprovalAuditService` and `PublishAuditService`); add an indexed SQLite query if audit volume grows large.

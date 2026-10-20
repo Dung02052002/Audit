@@ -59,15 +59,20 @@ from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
 from ai_youtube_agent.content.audio_cost import AudioCostRecorder
 from ai_youtube_agent.content.audio_validation import AudioValidator
+from ai_youtube_agent.content.auto_reply import AutoReplyGuard, AutoReplyService
 from ai_youtube_agent.content.broll_manager import BrollManager
 from ai_youtube_agent.content.budget_guard import BudgetGuard
 from ai_youtube_agent.content.channel_metrics import ChannelMetricsSync
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
+from ai_youtube_agent.content.comment_audit import CommentAuditService
+from ai_youtube_agent.content.comment_classifier import CommentClassifier
+from ai_youtube_agent.content.comment_sync import CommentSync
 from ai_youtube_agent.content.contribution_margin import ContributionMarginCalculator
 from ai_youtube_agent.content.cost_ledger import CostLedger
 from ai_youtube_agent.content.ctr import CTRSync
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
+from ai_youtube_agent.content.duplicate_reply_guard import DuplicateReplyGuard
 from ai_youtube_agent.content.email_approval import ApprovalEmailService
 from ai_youtube_agent.content.estimated_revenue import EstimatedRevenueSync
 from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
@@ -98,6 +103,8 @@ from ai_youtube_agent.content.qc_policy import PolicyQCChecker
 from ai_youtube_agent.content.qc_report import QCReportBuilder
 from ai_youtube_agent.content.qc_rights import RightsQCChecker
 from ai_youtube_agent.content.render_cost import RenderCostRecorder
+from ai_youtube_agent.content.reply_approval import ReplyApprovalService
+from ai_youtube_agent.content.reply_draft import ReplyDraftService
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.retention import RetentionSync
 from ai_youtube_agent.content.revenue_sources import (
@@ -158,9 +165,11 @@ from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
 from ai_youtube_agent.providers.analytics import AnalyticsProvider
 from ai_youtube_agent.providers.analytics_cache import AnalyticsCache
 from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
+from ai_youtube_agent.providers.comments import CommentProvider
 from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
 from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
 from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
+from ai_youtube_agent.providers.mock_comments import MockCommentProvider
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_revenue import MockRevenueProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
@@ -719,6 +728,59 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         BudgetGuard,
         lambda c: BudgetGuard(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(CommentProvider, lambda _: MockCommentProvider())
+    container.register(
+        CommentSync,
+        lambda c: CommentSync(
+            c.resolve(Database),
+            c.resolve(CommentProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        CommentClassifier,
+        lambda c: CommentClassifier(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        ReplyDraftService,
+        lambda c: ReplyDraftService(
+            c.resolve(Database), c.resolve(TextGenerator), c.resolve(AuditLog)
+        ),
+    )
+    container.register(
+        DuplicateReplyGuard,
+        lambda c: DuplicateReplyGuard(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        ReplyApprovalService,
+        lambda c: ReplyApprovalService(
+            c.resolve(Database),
+            c.resolve(CommentProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+            duplicate_guard=c.resolve(DuplicateReplyGuard),
+        ),
+    )
+    container.register(
+        AutoReplyGuard,
+        lambda c: AutoReplyGuard(c.resolve(FeatureFlags), c.resolve(AuditLog)),
+    )
+    container.register(
+        AutoReplyService,
+        lambda c: AutoReplyService(
+            c.resolve(Database),
+            c.resolve(CommentProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+            c.resolve(AutoReplyGuard),
+            duplicate_guard=c.resolve(DuplicateReplyGuard),
+        ),
+    )
+    container.register(
+        CommentAuditService,
+        lambda c: CommentAuditService(c.resolve(Database), c.resolve(AuditSink)),
     )
     container.register(
         PublishDuplicateGuard, lambda c: PublishDuplicateGuard(c.resolve(Database))

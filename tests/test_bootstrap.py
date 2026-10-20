@@ -541,3 +541,35 @@ def test_container_resolves_the_economics_services(tmp_path: Path) -> None:
     )
     assert isinstance(container.resolve(BudgetGuard), BudgetGuard)
     assert not (tmp_path / "agent.db").exists()
+
+
+def test_container_resolves_the_community_comment_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.content.auto_reply import AutoReplyGuard, AutoReplyService
+    from ai_youtube_agent.content.comment_audit import CommentAuditService
+    from ai_youtube_agent.content.comment_classifier import CommentClassifier
+    from ai_youtube_agent.content.comment_sync import CommentSync
+    from ai_youtube_agent.content.duplicate_reply_guard import DuplicateReplyGuard
+    from ai_youtube_agent.content.reply_approval import ReplyApprovalService
+    from ai_youtube_agent.content.reply_draft import ReplyDraftService
+    from ai_youtube_agent.providers.comments import CommentProvider
+    from ai_youtube_agent.providers.mock_comments import MockCommentProvider
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    provider = container.resolve(CommentProvider)
+    assert isinstance(provider, MockCommentProvider)
+    assert container.resolve(CommentProvider) is provider
+    assert isinstance(container.resolve(CommentSync), CommentSync)
+    assert isinstance(container.resolve(CommentClassifier), CommentClassifier)
+    assert isinstance(container.resolve(ReplyDraftService), ReplyDraftService)
+    assert isinstance(container.resolve(DuplicateReplyGuard), DuplicateReplyGuard)
+    assert isinstance(container.resolve(ReplyApprovalService), ReplyApprovalService)
+    assert isinstance(container.resolve(AutoReplyGuard), AutoReplyGuard)
+    assert isinstance(container.resolve(AutoReplyService), AutoReplyService)
+    assert isinstance(container.resolve(CommentAuditService), CommentAuditService)
+    assert not (tmp_path / "agent.db").exists()

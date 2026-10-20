@@ -60,15 +60,21 @@ from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
 from ai_youtube_agent.content.audio_cost import AudioCostRecorder
 from ai_youtube_agent.content.audio_validation import AudioValidator
 from ai_youtube_agent.content.broll_manager import BrollManager
+from ai_youtube_agent.content.budget_guard import BudgetGuard
 from ai_youtube_agent.content.channel_metrics import ChannelMetricsSync
 from ai_youtube_agent.content.channel_settings import ChannelSettings
 from ai_youtube_agent.content.claim_extractor import ClaimExtractor
+from ai_youtube_agent.content.contribution_margin import ContributionMarginCalculator
+from ai_youtube_agent.content.cost_ledger import CostLedger
 from ai_youtube_agent.content.ctr import CTRSync
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.email_approval import ApprovalEmailService
+from ai_youtube_agent.content.estimated_revenue import EstimatedRevenueSync
 from ai_youtube_agent.content.evidence_matcher import EvidenceMatcher
 from ai_youtube_agent.content.fact_checker import FactChecker
+from ai_youtube_agent.content.final_revenue import FinalRevenueSync
 from ai_youtube_agent.content.hook_generator import HookGenerator
+from ai_youtube_agent.content.llm_cost import LLMCostRecorder
 from ai_youtube_agent.content.longform_audio_mix import LongFormAudioMixer
 from ai_youtube_agent.content.longform_bundle import LongFormBundleBuilder
 from ai_youtube_agent.content.longform_metadata import LongFormMetadataRecorder
@@ -91,8 +97,13 @@ from ai_youtube_agent.content.qc_harness import VideoArtifactTestHarness
 from ai_youtube_agent.content.qc_policy import PolicyQCChecker
 from ai_youtube_agent.content.qc_report import QCReportBuilder
 from ai_youtube_agent.content.qc_rights import RightsQCChecker
+from ai_youtube_agent.content.render_cost import RenderCostRecorder
 from ai_youtube_agent.content.report_generator import ResearchReportGenerator
 from ai_youtube_agent.content.retention import RetentionSync
+from ai_youtube_agent.content.revenue_sources import (
+    RevenueSourceService,
+    RevenueStreamRegistry,
+)
 from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
 from ai_youtube_agent.content.script_validator import ScriptValidator
@@ -108,10 +119,12 @@ from ai_youtube_agent.content.shorts_subtitles import ShortsSubtitleRecorder
 from ai_youtube_agent.content.shorts_thumbnail import ShortsThumbnailRecorder
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
+from ai_youtube_agent.content.storage_api_cost import StorageApiCostRecorder
 from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.content.subscriber_change import SubscriberChangeService
 from ai_youtube_agent.content.topic_extractor import TopicExtractor
 from ai_youtube_agent.content.topic_scorer import TopicScorer
+from ai_youtube_agent.content.tts_cost import TTSCostService
 from ai_youtube_agent.content.version_comparison import VersionComparisonService
 from ai_youtube_agent.content.video_metrics import VideoMetricsSync
 from ai_youtube_agent.content.watch_time import WatchTimeService
@@ -639,6 +652,74 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda c: AnalyticsFreshnessService(c.resolve(Database)),
     )
     container.register(RevenueProvider, lambda _: MockRevenueProvider())
+    container.register(
+        EstimatedRevenueSync,
+        lambda c: EstimatedRevenueSync(
+            c.resolve(Database),
+            c.resolve(RevenueProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+            results=c.resolve(PublishResultService),
+        ),
+    )
+    container.register(
+        FinalRevenueSync,
+        lambda c: FinalRevenueSync(
+            c.resolve(Database),
+            c.resolve(RevenueProvider),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+            results=c.resolve(PublishResultService),
+        ),
+    )
+    container.register(RevenueStreamRegistry, lambda _: RevenueStreamRegistry())
+    container.register(
+        RevenueSourceService,
+        lambda c: RevenueSourceService(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            registry=c.resolve(RevenueStreamRegistry),
+            results=c.resolve(PublishResultService),
+        ),
+    )
+    container.register(
+        CostLedger,
+        lambda c: CostLedger(c.resolve(Database), c.resolve(AuditLog)),
+    )
+    container.register(
+        LLMCostRecorder,
+        lambda c: LLMCostRecorder(c.resolve(CostLedger)),
+    )
+    container.register(
+        TTSCostService,
+        lambda c: TTSCostService(
+            c.resolve(CostLedger),
+            c.resolve(AudioCostRecorder),
+            price_per_1k=c.resolve(Settings).tts_price_per_1k_characters,
+            currency=c.resolve(Settings).tts_cost_currency,
+        ),
+    )
+    container.register(
+        RenderCostRecorder,
+        lambda c: RenderCostRecorder(c.resolve(CostLedger)),
+    )
+    container.register(
+        StorageApiCostRecorder,
+        lambda c: StorageApiCostRecorder(c.resolve(CostLedger)),
+    )
+    container.register(
+        ContributionMarginCalculator,
+        lambda c: ContributionMarginCalculator(
+            c.resolve(Database),
+            c.resolve(RevenueSourceService),
+            c.resolve(CostLedger),
+            publish_results=c.resolve(PublishResultService),
+        ),
+    )
+    container.register(
+        BudgetGuard,
+        lambda c: BudgetGuard(c.resolve(Database), c.resolve(AuditLog)),
+    )
     container.register(
         PublishDuplicateGuard, lambda c: PublishDuplicateGuard(c.resolve(Database))
     )

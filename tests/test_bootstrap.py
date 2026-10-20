@@ -492,3 +492,52 @@ def test_container_resolves_the_analytics_services(tmp_path: Path) -> None:
     assert isinstance(rev_provider, MockRevenueProvider)
     assert container.resolve(RevenueProvider) is rev_provider
     assert not (tmp_path / "agent.db").exists()
+
+
+def test_container_resolves_the_economics_services(tmp_path: Path) -> None:
+    from ai_youtube_agent.content.budget_guard import BudgetGuard
+    from ai_youtube_agent.content.contribution_margin import (
+        ContributionMarginCalculator,
+    )
+    from ai_youtube_agent.content.cost_ledger import CostLedger
+    from ai_youtube_agent.content.estimated_revenue import EstimatedRevenueSync
+    from ai_youtube_agent.content.final_revenue import FinalRevenueSync
+    from ai_youtube_agent.content.llm_cost import LLMCostRecorder
+    from ai_youtube_agent.content.render_cost import RenderCostRecorder
+    from ai_youtube_agent.content.revenue_sources import (
+        RevenueSourceService,
+        RevenueStreamRegistry,
+    )
+    from ai_youtube_agent.content.storage_api_cost import StorageApiCostRecorder
+    from ai_youtube_agent.content.tts_cost import TTSCostService
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    assert isinstance(
+        container.resolve(EstimatedRevenueSync), EstimatedRevenueSync
+    )
+    assert isinstance(container.resolve(FinalRevenueSync), FinalRevenueSync)
+    assert isinstance(
+        container.resolve(RevenueStreamRegistry), RevenueStreamRegistry
+    )
+    assert isinstance(
+        container.resolve(RevenueSourceService), RevenueSourceService
+    )
+    assert isinstance(container.resolve(CostLedger), CostLedger)
+    assert isinstance(container.resolve(LLMCostRecorder), LLMCostRecorder)
+    assert isinstance(container.resolve(TTSCostService), TTSCostService)
+    assert isinstance(container.resolve(RenderCostRecorder), RenderCostRecorder)
+    assert isinstance(
+        container.resolve(StorageApiCostRecorder), StorageApiCostRecorder
+    )
+    assert isinstance(
+        container.resolve(ContributionMarginCalculator),
+        ContributionMarginCalculator,
+    )
+    assert isinstance(container.resolve(BudgetGuard), BudgetGuard)
+    assert not (tmp_path / "agent.db").exists()

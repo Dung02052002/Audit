@@ -95,6 +95,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | N-168 Analytics Cache | `tests/test_analytics_cache.py` (new) |
 | N-169 Analytics Tests | `tests/test_analytics_scenarios.py` (new); then the whole Phase N test set (`tests/test_analytics_provider.py`, `tests/test_channel_metrics.py`, `tests/test_video_metrics.py`, `tests/test_shorts_metrics.py`, `tests/test_longform_metrics.py`, `tests/test_watch_time.py`, `tests/test_retention.py`, `tests/test_ctr.py`, `tests/test_subscriber_change.py`, `tests/test_analytics_freshness.py`, `tests/test_analytics_cache.py`) |
 | O-170 Revenue Provider | `tests/test_revenue_provider.py` (new), `tests/test_bootstrap.py` |
+| O-171 Estimated Revenue | `tests/test_estimated_revenue.py` (new) |
+| O-172 Final Revenue | `tests/test_final_revenue.py` (new) |
+| O-173 Revenue Sources | `tests/test_revenue_sources.py` (new) |
+| O-174 Cost Ledger | `tests/test_cost_ledger.py` (new) |
+| O-175 LLM Cost | `tests/test_llm_cost.py` (new) |
+| O-176 TTS Cost | `tests/test_tts_cost.py` (new) |
+| O-177 Render Cost | `tests/test_render_cost.py` (new) |
+| O-178 Storage/API Cost | `tests/test_storage_api_cost.py` (new) |
+| O-179 Contribution Margin | `tests/test_contribution_margin.py` (new) |
+| O-180 Budget Guard | `tests/test_budget_guard.py` (new), `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -562,3 +572,7 @@ Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload
 - A video published at the very start of the period still gets a whole-period snapshot; per-day series and "since publication" windows are not modelled.
 - Videos are listed from `PublishResultService.list_for_channel`, which loads every published item of the channel; a channel with many thousands of videos needs an indexed query.
 - The batch ends here: the next task is N-161 Shorts Metrics, then N-162 LongForm Metrics.
+
+### O-180 Budget Guard
+
+- `BudgetGuard` evaluates `day_window` and `month_window` in `strategy_time_zone(strategy)` and raises `BudgetGuardBlockedError` when `enforce` is called; wiring `BudgetGuard.enforce` before each provider-calling pipeline step belongs to the pipeline runner (`#206`).

@@ -41,13 +41,11 @@ class SessionRepository(Repository):
         row = self._one("SELECT * FROM sessions WHERE id = ?", (session_id,))
         if row is None:
             return None
-        return Session(
-            id=row["id"],
-            started_by=actor_from(row, "started_by"),
-            status=SessionStatus(row["status"]),
-            started_at=parse_dt(row["started_at"]),
-            stopped_at=parse_dt(row["stopped_at"]),
-        )
+        return _session(row)
+
+    def list_all(self) -> list[Session]:
+        rows = self._all("SELECT * FROM sessions ORDER BY started_at, id")
+        return [_session(row) for row in rows]
 
     def update(self, session: Session, *, expected_status: SessionStatus) -> None:
         self._update(
@@ -80,6 +78,17 @@ class AIJobRepository(Repository):
             "SELECT * FROM ai_jobs WHERE content_item_id = ? ORDER BY created_at, id",
             (content_item_id,),
         )
+        return [self._job(row) for row in rows]
+
+    def list_by_session(self, session_id: str) -> list[AIJob]:
+        rows = self._all(
+            "SELECT * FROM ai_jobs WHERE session_id = ? ORDER BY created_at, id",
+            (session_id,),
+        )
+        return [self._job(row) for row in rows]
+
+    def list_all(self) -> list[AIJob]:
+        rows = self._all("SELECT * FROM ai_jobs ORDER BY created_at, id")
         return [self._job(row) for row in rows]
 
     def update(self, job: AIJob, *, expected_updated_at: datetime) -> None:
@@ -140,6 +149,16 @@ class AIJobRepository(Repository):
             created_at=parse_dt(row["created_at"]),
             updated_at=parse_dt(row["updated_at"]),
         )
+
+
+def _session(row: sqlite3.Row) -> Session:
+    return Session(
+        id=row["id"],
+        started_by=actor_from(row, "started_by"),
+        status=SessionStatus(row["status"]),
+        started_at=parse_dt(row["started_at"]),
+        stopped_at=parse_dt(row["stopped_at"]),
+    )
 
 
 def _job_row(job: AIJob) -> dict:

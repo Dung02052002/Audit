@@ -1,0 +1,40 @@
+/* Shared iOS-style Command Center Design System (Prompt Pack v8, prompt Q-191) */
+:root {
+  --cc-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  --cc-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --cc-blur: 20px;
+  --cc-color-background-primary: #F2F2F7;
+  --cc-color-background-elevated: #FFFFFF;
+  --cc-color-surface-glass: rgba(255, 255, 255, 0.82);
+  --cc-color-text-primary: #1C1C1E;
+  --cc-color-text-secondary: #6C6C70;
+  --cc-color-accent-blue: #007AFF;
+  --cc-color-accent-indigo: #5856D6;
+  --cc-color-semantic-green: #34C759;
+  --cc-color-semantic-amber: #FF9500;
+  --cc-color-semantic-red: #FF3B30;
+  --cc-color-separator: rgba(60, 60, 67, 0.16);
+  --cc-radius-sm: 10px;
+  --cc-radius-md: 14px;
+  --cc-radius-lg: 20px;
+  --cc-radius-pill: 999px;
+  --cc-space-xs: 4px;
+  --cc-space-sm: 8px;
+  --cc-space-md: 12px;
+  --cc-space-lg: 16px;
+  --cc-space-xl: 24px;
+  --cc-space-xxl: 32px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body.cc-body {
+  margin: 0;
+  font-family: var(--cc-font-sans);
+  background: var(--cc-color-background-primary);
+  color: var(--cc-color-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+

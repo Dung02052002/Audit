@@ -55,6 +55,9 @@ MAX_PAGE_TOKEN_LENGTH: Final[int] = 200
 KNOWN_METRICS: Final[frozenset[str]] = frozenset(
     {
         "views",
+        "engaged_views",
+        "swiped_away",
+        "shorts_feed_impressions",
         "estimated_minutes_watched",
         "average_view_duration",
         "average_view_percentage",

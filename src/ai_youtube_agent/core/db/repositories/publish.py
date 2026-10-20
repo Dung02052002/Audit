@@ -31,6 +31,14 @@ class PublishJobRepository(Repository):
         )
         return [_job(row) for row in rows]
 
+    def list_by_youtube_video_id(self, youtube_video_id: str) -> list[PublishJob]:
+        rows = self._all(
+            "SELECT * FROM publish_jobs WHERE result_youtube_video_id = ? "
+            "ORDER BY created_at, id",
+            (youtube_video_id,),
+        )
+        return [_job(row) for row in rows]
+
     def find_succeeded_by_video_sha(
         self, channel_id: str, video_sha256: str, *, exclude_content_item_id: str
     ) -> list[PublishJob]:

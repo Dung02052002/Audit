@@ -115,6 +115,16 @@ needs its tests run in the later test phase; those tests are listed per task in
 | P-188 AUTO_REPLY Flag | `pytest tests/test_auto_reply.py` |
 | P-189 Comment Audit | `pytest tests/test_comment_audit.py tests/test_bootstrap.py` |
 | P-190 Comment Tests | `pytest tests/test_comment_scenarios.py` |
+| Q-191 Dashboard Shell | `tests/test_dashboard_shell.py` (new); regression `tests/test_repositories.py` |
+| Q-192 Home Screen | `tests/test_dashboard_home.py` |
+| Q-193 Channel Overview | `tests/test_dashboard_channel.py` |
+| Q-194 Content Screen | `tests/test_dashboard_content.py` |
+| Q-195 Video Detail | `tests/test_dashboard_video_detail.py` |
+| Q-196 Analytics Screen | `tests/test_dashboard_analytics.py` |
+| Q-197 Revenue Screen | `tests/test_dashboard_revenue.py` |
+| Q-198 Comments Screen | `tests/test_dashboard_comments.py` |
+| Q-199 AI Center | `tests/test_dashboard_ai_center.py` |
+| Q-200 Approval Center UI | `tests/test_dashboard_approvals.py`, `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items

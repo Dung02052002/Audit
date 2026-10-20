@@ -71,6 +71,16 @@ from ai_youtube_agent.content.comment_sync import CommentSync
 from ai_youtube_agent.content.contribution_margin import ContributionMarginCalculator
 from ai_youtube_agent.content.cost_ledger import CostLedger
 from ai_youtube_agent.content.ctr import CTRSync
+from ai_youtube_agent.content.dashboard_ai_center import AICenterScreenService
+from ai_youtube_agent.content.dashboard_analytics import AnalyticsScreenService
+from ai_youtube_agent.content.dashboard_approvals import ApprovalCenterService
+from ai_youtube_agent.content.dashboard_channel import ChannelOverviewService
+from ai_youtube_agent.content.dashboard_comments import CommentsScreenService
+from ai_youtube_agent.content.dashboard_content import ContentScreenService
+from ai_youtube_agent.content.dashboard_home import HomeScreenService
+from ai_youtube_agent.content.dashboard_revenue import RevenueScreenService
+from ai_youtube_agent.content.dashboard_shell import DashboardShellService
+from ai_youtube_agent.content.dashboard_video_detail import VideoDetailService
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.duplicate_reply_guard import DuplicateReplyGuard
 from ai_youtube_agent.content.email_approval import ApprovalEmailService
@@ -832,6 +842,93 @@ def build_container(settings: Settings | None = None) -> Container:
             mapper=c.resolve(PublishMetadataMapper),
             guard=c.resolve(PublishDuplicateGuard),
             flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        DashboardShellService,
+        lambda c: DashboardShellService(c.resolve(Database)),
+    )
+    container.register(
+        HomeScreenService,
+        lambda c: HomeScreenService(
+            c.resolve(Database),
+            health_registry=c.resolve(HealthRegistry),
+            flags=c.resolve(FeatureFlags),
+            budget_guard=c.resolve(BudgetGuard),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        ChannelOverviewService,
+        lambda c: ChannelOverviewService(
+            c.resolve(Database),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        ContentScreenService,
+        lambda c: ContentScreenService(
+            c.resolve(Database),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        VideoDetailService,
+        lambda c: VideoDetailService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(Settings),
+            shell_service=c.resolve(DashboardShellService),
+            artifact_service=c.resolve(PreviewArtifactService),
+            player_service=c.resolve(PreviewPlayerService),
+            metadata_service=c.resolve(PreviewMetadataService),
+            report_service=c.resolve(PreviewReportService),
+            comparison_service=c.resolve(VersionComparisonService),
+        ),
+    )
+    container.register(
+        AnalyticsScreenService,
+        lambda c: AnalyticsScreenService(
+            c.resolve(Database),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        RevenueScreenService,
+        lambda c: RevenueScreenService(
+            c.resolve(Database),
+            audit_log=c.resolve(AuditLog),
+            revenue_sources=c.resolve(RevenueSourceService),
+            cost_ledger=c.resolve(CostLedger),
+            margin_calculator=c.resolve(ContributionMarginCalculator),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        CommentsScreenService,
+        lambda c: CommentsScreenService(
+            c.resolve(Database),
+            flags=c.resolve(FeatureFlags),
+            reply_approval_service=c.resolve(ReplyApprovalService),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        AICenterScreenService,
+        lambda c: AICenterScreenService(
+            c.resolve(Database),
+            settings=c.resolve(Settings),
+            cost_ledger=c.resolve(CostLedger),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        ApprovalCenterService,
+        lambda c: ApprovalCenterService(
+            c.resolve(Database),
+            approval_service=c.resolve(ApprovalService),
+            shell_service=c.resolve(DashboardShellService),
+            ttl=timedelta(hours=c.resolve(Settings).approval_ttl_hours),
         ),
     )
     return container

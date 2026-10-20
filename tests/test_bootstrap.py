@@ -573,3 +573,49 @@ def test_container_resolves_the_community_comment_services(tmp_path: Path) -> No
     assert isinstance(container.resolve(AutoReplyService), AutoReplyService)
     assert isinstance(container.resolve(CommentAuditService), CommentAuditService)
     assert not (tmp_path / "agent.db").exists()
+
+
+def test_container_resolves_the_command_center_dashboard_services(
+    tmp_path: Path,
+) -> None:
+    from ai_youtube_agent.content.dashboard_ai_center import AICenterScreenService
+    from ai_youtube_agent.content.dashboard_analytics import AnalyticsScreenService
+    from ai_youtube_agent.content.dashboard_approvals import ApprovalCenterService
+    from ai_youtube_agent.content.dashboard_channel import ChannelOverviewService
+    from ai_youtube_agent.content.dashboard_comments import CommentsScreenService
+    from ai_youtube_agent.content.dashboard_content import ContentScreenService
+    from ai_youtube_agent.content.dashboard_home import HomeScreenService
+    from ai_youtube_agent.content.dashboard_revenue import RevenueScreenService
+    from ai_youtube_agent.content.dashboard_shell import DashboardShellService
+    from ai_youtube_agent.content.dashboard_video_detail import VideoDetailService
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    assert isinstance(
+        container.resolve(DashboardShellService), DashboardShellService
+    )
+    assert isinstance(container.resolve(HomeScreenService), HomeScreenService)
+    assert isinstance(
+        container.resolve(ChannelOverviewService), ChannelOverviewService
+    )
+    assert isinstance(container.resolve(ContentScreenService), ContentScreenService)
+    assert isinstance(container.resolve(VideoDetailService), VideoDetailService)
+    assert isinstance(
+        container.resolve(AnalyticsScreenService), AnalyticsScreenService
+    )
+    assert isinstance(container.resolve(RevenueScreenService), RevenueScreenService)
+    assert isinstance(
+        container.resolve(CommentsScreenService), CommentsScreenService
+    )
+    assert isinstance(
+        container.resolve(AICenterScreenService), AICenterScreenService
+    )
+    assert isinstance(
+        container.resolve(ApprovalCenterService), ApprovalCenterService
+    )
+    assert not (tmp_path / "agent.db").exists()

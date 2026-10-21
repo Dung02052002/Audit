@@ -72,6 +72,7 @@ from ai_youtube_agent.content.contribution_margin import ContributionMarginCalcu
 from ai_youtube_agent.content.cost_ledger import CostLedger
 from ai_youtube_agent.content.ctr import CTRSync
 from ai_youtube_agent.content.dashboard_ai_center import AICenterScreenService
+from ai_youtube_agent.content.dashboard_alerts import AlertsScreenService
 from ai_youtube_agent.content.dashboard_analytics import AnalyticsScreenService
 from ai_youtube_agent.content.dashboard_approvals import ApprovalCenterService
 from ai_youtube_agent.content.dashboard_channel import ChannelOverviewService
@@ -938,6 +939,15 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(Database),
             settings=c.resolve(Settings),
             flags=c.resolve(FeatureFlags),
+            shell_service=c.resolve(DashboardShellService),
+        ),
+    )
+    container.register(
+        AlertsScreenService,
+        lambda c: AlertsScreenService(
+            c.resolve(Database),
+            budget_guard=c.resolve(BudgetGuard),
+            health_registry=c.resolve(HealthRegistry),
             shell_service=c.resolve(DashboardShellService),
         ),
     )

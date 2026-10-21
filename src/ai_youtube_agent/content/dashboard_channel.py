@@ -261,6 +261,12 @@ class ChannelOverviewView:
     content_counts: ChannelContentCounts
     empty_message: str | None = None
 
+    @property
+    def channel_id(self) -> str | None:
+        if self.identity:
+            return self.identity.channel_id
+        return self.shell.active_channel_id
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "shell": self.shell.as_dict(),
@@ -327,7 +333,7 @@ class ChannelOverviewService:
                     subscribers=None,
                     views_and_watch_time=None,
                     content_counts=_empty_content_counts(),
-                    empty_message="No channel configured yet. Create a channel to view its overview.",
+                    empty_message="No channel selected or configured yet. Create a channel to view its overview.",
                 )
 
             strategy = StrategyProfileRepository(connection).get_by_channel(

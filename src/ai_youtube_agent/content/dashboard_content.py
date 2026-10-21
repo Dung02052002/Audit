@@ -226,7 +226,7 @@ class ContentScreenService:
                     shorts_column=empty_shorts,
                     longform_column=empty_longform,
                     total_items=0,
-                    empty_message="No channel configured yet. Create a channel to manage Shorts and LongForm content.",
+                    empty_message="No content items or channels configured yet. Create a channel to manage Shorts and LongForm content.",
                 )
 
             items = ContentItemRepository(connection).list_by_channel(

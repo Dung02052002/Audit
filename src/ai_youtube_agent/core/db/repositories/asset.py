@@ -1,6 +1,7 @@
 """Repositories of the asset registry (G-076): assets and their usages."""
 
 import sqlite3
+import unicodedata
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_usage import AssetUsage
@@ -13,12 +14,27 @@ from ai_youtube_agent.core.db.repositories.base import (
 )
 
 
+def _normalise(text: str) -> str:
+    stripped = unicodedata.normalize("NFC", text.strip())
+    return unicodedata.normalize("NFC", stripped.casefold())
+
+
 class AssetRepository(Repository):
     """An asset is complete when registered: add only."""
 
     table = "assets"
 
-    def add(self, asset: Asset, *, source_key: str, title_key: str) -> None:
+    def add(
+        self,
+        asset: Asset,
+        *,
+        source_key: str | None = None,
+        title_key: str | None = None,
+    ) -> None:
+        if source_key is None:
+            source_key = _normalise(asset.source)
+        if title_key is None:
+            title_key = _normalise(asset.title)
         self._insert(
             self.table,
             {

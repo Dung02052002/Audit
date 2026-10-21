@@ -16,6 +16,7 @@
    duplicate post attempt is blocked by ``ensure_can_post``.
 """
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from enum import StrEnum
@@ -43,8 +44,9 @@ DEFAULT_GUARD_ACTOR: Final[Actor] = Actor(
 
 
 def normalize_reply_text(text: str) -> str:
-    """Normalize reply text for duplicate detection (case-insensitive, collapsed whitespace)."""
-    return " ".join(text.strip().lower().split())
+    """Normalize reply text for duplicate detection (case-insensitive, collapsed whitespace, punctuation stripped)."""
+    cleaned = re.sub(r"[^\w\s]", " ", text)
+    return " ".join(cleaned.strip().lower().split())
 
 
 class ReplyDuplicateDecision(StrEnum):
@@ -56,6 +58,7 @@ class DuplicateReplyErrorCode(StrEnum):
     COMMENT_ALREADY_REPLIED = "domain.reply_duplicate_comment_already_replied"
     THREAD_ALREADY_REPLIED = "domain.reply_duplicate_thread_already_replied"
     IDENTICAL_TEXT_ON_VIDEO = "domain.reply_duplicate_identical_text_on_video"
+    DUPLICATE_TEXT_ON_VIDEO = "domain.reply_duplicate_identical_text_on_video"
     CONCURRENT = "domain.reply_duplicate_concurrent"
 
 
@@ -87,6 +90,13 @@ class DuplicateReplyError(DomainError):
             raise TypeError("code must be a DuplicateReplyErrorCode")
         self.duplicate_code = code
         super().__init__(detail, code=code.value, user_message=USER_MESSAGES[code])
+
+    @property
+    def reason(self) -> DuplicateReplyErrorCode:
+        return self.duplicate_code
+
+
+ReplyDuplicateReason: Final = DuplicateReplyErrorCode
 
 
 @dataclass(frozen=True)

@@ -169,6 +169,11 @@ class InMemoryAuditSink:
         with self._lock:
             return tuple(self._events)
 
+    @property
+    def entries(self) -> list[AuditEvent]:
+        with self._lock:
+            return list(self._events)
+
 
 class AuditLog:
     """The entry point for recording audit events."""

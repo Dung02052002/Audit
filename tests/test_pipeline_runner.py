@@ -1,5 +1,6 @@
 """Tests for PipelineRunner (Prompt Pack v8, prompt #206), context C16 Orchestration."""
 
+import dataclasses
 from datetime import UTC, datetime
 from decimal import Decimal
 import uuid
@@ -46,6 +47,8 @@ def _seed_valid_channel(
     shorts_per_day: int = 5,
     longform_per_day: int = 2,
 ) -> tuple[Channel, StrategyProfile]:
+    from tests.factories import make_strategy_profile
+
     now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
     channel = Channel(
         id=channel_id,
@@ -55,17 +58,15 @@ def _seed_valid_channel(
         created_at=now,
         updated_at=now,
     )
-    strategy = StrategyProfile.create(
-        channel_id=channel_id,
-        actor=Actor(ActorKind.USER, "owner"),
-        clock=lambda: now,
+    strategy = make_strategy_profile(
+        channel,
+        id=channel_id,
+        cadence=Cadence(
+            shorts_per_day=shorts_per_day,
+            longform_per_day=longform_per_day,
+            time_zone="UTC",
+        ),
     )
-    cadence = Cadence(
-        shorts_per_day=shorts_per_day,
-        longform_per_day=longform_per_day,
-        time_zone="UTC",
-    )
-    strategy = strategy.update(cadence=cadence, actor=Actor(ActorKind.USER, "owner"), clock=lambda: now)
 
     with database.transaction() as conn:
         ChannelRepository(conn).add(channel)

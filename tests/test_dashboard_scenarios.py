@@ -183,31 +183,30 @@ def test_command_center_populates_screens_and_calculates_badges(
     )
 
     # Active AI Job
-    session = Session(id="sess-alpha-1", started_by=USER, status=SessionStatus.ACTIVE)
-    active_job = AIJob(
+    session = Session.start(actor=USER, clock=lambda: FIXED_NOW)
+    active_job = AIJob.create(
         kind="content.generate",
         idempotency_key="job-gen-1",
         content_item_id=item_shorts.id,
         session_id=session.id,
-        status=AIJobStatus.RUNNING,
-        attempts=1,
-    )
+        clock=lambda: FIXED_NOW,
+    ).start(clock=lambda: FIXED_NOW)
 
     # Comment needing attention
-    comment = Comment(
+    comment = Comment.create(
         channel_id=channel.id,
         youtube_comment_id="yt-comm-101",
-        youtube_video_id="yt-vid-99",
+        youtube_video_id="dQw4w9WgXcQ",
         author_display_name="DevAuditor",
         text="Is this repository open source?",
         published_at=FIXED_NOW,
     )
     from ai_youtube_agent.content.comment import CommentClassification
-    classification = CommentClassification(
+    classification = CommentClassification.create(
         comment_id=comment.id,
         label=CommentLabel.NEEDS_ATTENTION,
         classified_by=USER,
-        classified_at=FIXED_NOW,
+        clock=lambda: FIXED_NOW,
     )
 
     with database.transaction() as conn:

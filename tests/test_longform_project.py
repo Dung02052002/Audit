@@ -6,7 +6,7 @@ import pytest
 
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
-from ai_youtube_agent.content.audio import AudioMetadata, VoiceProfile
+from ai_youtube_agent.content.channel import Channel, YouTubeIdentifiers
 from ai_youtube_agent.content.longform_config import LongFormConfig
 from ai_youtube_agent.content.longform_project import (
     LongFormProject,
@@ -14,7 +14,7 @@ from ai_youtube_agent.content.longform_project import (
 )
 from ai_youtube_agent.content.longform_script_generator import LongFormDisabledError
 from ai_youtube_agent.content.longform_service import (
-     CREATED,
+    CREATED,
     REBOUND,
     TIMELINE_SAVED,
     LongFormProjectError,
@@ -27,25 +27,24 @@ from ai_youtube_agent.content.shorts_timeline import (
     SceneAsset,
 )
 from ai_youtube_agent.content.strategy import (
-    AudienceSpec,
-    CadenceSpec,
-    ChannelFocus,
-    FormatPlan,
-    FormatSpec,
-    LanguageSpec,
+    Audience,
+    FormatSettings,
+    LongFormFormat,
+    Niche,
+    Pillar,
+    ShortsFormat,
     StrategyProfile,
-    ToneSpec,
 )
+from ai_youtube_agent.content.voice import AudioMetadata, VoiceProfile
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, InMemoryAuditSink
-from ai_youtube_agent.core.channel import Channel
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import migrate
-from ai_youtube_agent.core.db.repositories.audio import VoiceProfileRepository
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
+    VoiceProfileRepository,
 )
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
@@ -71,21 +70,20 @@ class Clock:
 def _seed_longform_item(
     database: Database, clock: Clock, *, chapters: bool = True, captions: bool = True
 ) -> tuple[Channel, ContentItem, Script, Artifact]:
-    channel = Channel.create("LongForm Science", clock=clock)
+    channel = Channel.create(
+        "LongForm Science",
+        YouTubeIdentifiers("UC" + "1" * 22, "@science"),
+        clock=clock,
+    )
     strategy = StrategyProfile.create(
         channel.id,
-        niche="Deep Science",
-        audience=AudienceSpec(summary="Adult learners"),
-        tone=ToneSpec(style="analytical"),
-        cadence=CadenceSpec(videos_per_week=2),
-        language=LanguageSpec(primary="en"),
-        format=FormatPlan(
-            focus=ChannelFocus.BOTH,
-            shorts=FormatSpec(min_seconds=20, max_seconds=50, pace="fast"),
-            longform=FormatSpec(
-                min_seconds=180,
-                max_seconds=900,
-                pace="measured",
+        niche=Niche("Deep Science", (Pillar("physics"),)),
+        audience=Audience("Adult learners"),
+        format=FormatSettings(
+            ShortsFormat(15, 60),
+            LongFormFormat(
+                181,
+                900,
                 captions=captions,
                 chapters=chapters,
             ),
@@ -95,9 +93,10 @@ def _seed_longform_item(
     )
     item = ContentItem.create(
         channel.id,
-        "How Fusion Reactors Work",
+        strategy.id,
+        strategy.version,
         ContentType.LONGFORM,
-        actor=USER,
+        "How Fusion Reactors Work",
         clock=clock,
     )
     sections = (
@@ -127,10 +126,9 @@ def _seed_longform_item(
     script = Script.create(item.id, sections, actor=USER, clock=clock)
     profile = VoiceProfile.create(
         channel.id,
-        name="Narrator",
-        provider="mock",
+        provider="mock_tts",
         voice_id="en-narrator",
-        language="en",
+        language="en-US",
         actor=USER,
         clock=clock,
     )
@@ -140,18 +138,14 @@ def _seed_longform_item(
         uri=f"{item.id}/audio/v1.wav",
         sha256=hashlib.sha256(b"longform-voice").hexdigest(),
         size_bytes=48_000,
+        media_type="audio/wav",
         clock=clock,
     )
     audio_meta = AudioMetadata.create(
-        audio_artifact.id,
-        script_id=script.id,
-        voice_profile_id=profile.id,
-        voice_profile_version=profile.version,
-        provider="mock",
+        audio_artifact,
+        script,
+        profile,
         duration_ms=250_000,
-        sample_rate_hz=24_000,
-        channels=1,
-        format="wav",
         clock=clock,
     )
     with database.transaction() as conn:

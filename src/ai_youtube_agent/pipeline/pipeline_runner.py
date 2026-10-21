@@ -31,7 +31,7 @@ from ai_youtube_agent.content.approval import (
 )
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.qc_report import QCReportBuilder
-from ai_youtube_agent.content.strategy_validation import StrategyGate
+from ai_youtube_agent.core.strategy_gate import StrategyGate
 from ai_youtube_agent.core.approval_gate import ApprovalGate
 from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.audit import (

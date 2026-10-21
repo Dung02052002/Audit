@@ -6,6 +6,7 @@ transitions (ALLOWED_TRANSITIONS), version invalidation, and control gates
 IdempotencyGate, and PublishGate).
 """
 
+import dataclasses
 from decimal import Decimal
 import json
 import pytest
@@ -15,7 +16,7 @@ from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.qc import QCCheck, QCResult, QCStatus
 from ai_youtube_agent.content.rights_assessment import RULES_VERSION
 from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
-from ai_youtube_agent.content.strategy import Budget, Cadence
+from ai_youtube_agent.content.strategy import Brand, Budget, Cadence
 from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.budget_gate import BudgetGate
@@ -174,7 +175,8 @@ def test_persistence_and_lifecycle_transitions_with_gates(
 
     # Assess rights via RightsRiskEngine so FreshnessSource sees current basis + RULES_VERSION
     risk_engine = RightsRiskEngine(database, audit, clock=at(3))
-    assessment = risk_engine.assess(rights_rec.id)
+    run = risk_engine.assess(item.id, actor=SYSTEM)
+    assessment = run.assessments[0]
     assert assessment.rules_version == RULES_VERSION
 
     with database.transaction() as conn:
@@ -201,7 +203,7 @@ def test_persistence_and_lifecycle_transitions_with_gates(
     publish_gate = PublishGate(database, settings)
     report = publish_gate.ensure_can_publish(item, actor=SYSTEM, at=T0)
     assert report.passed is True
-    assert report.blocked is False
+    assert not report.blocked
 
     # 6. Version invalidation resets item to GENERATING and causes PublishGate to block
     invalidation = VersionInvalidation(database, audit, clock=at(6))
@@ -238,6 +240,16 @@ def test_publish_gate_blocks_when_policy_fails_or_daily_limit_reached(
     """Verifies PublishGate blocks when title contains a banned phrase or daily limit is met."""
     seed = seed_approved_item(database, tmp_path)
     gate = PublishGate(database, seed.settings)
+
+    # Mutate strategy profile to include banned phrase ("guaranteed profit")
+    banned_profile = dataclasses.replace(
+        seed.profile,
+        brand=Brand(seed.profile.brand.name, seed.profile.brand.tone, banned_phrases=("guaranteed profit",)),
+    )
+    with database.transaction() as conn:
+        StrategyProfileRepository(conn).update(
+            banned_profile, expected_version=seed.profile.version
+        )
 
     # Mutate item title to include banned phrase from strategy profile ("guaranteed profit")
     bad_item = seed.item.rename("How to get guaranteed profit today", clock=at(2))

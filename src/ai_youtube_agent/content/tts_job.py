@@ -88,6 +88,7 @@ from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.errors import DomainError
+from ai_youtube_agent.pipeline.job import AIJob
 from ai_youtube_agent.pipeline.idempotency import AUDIO_KIND, audio_key
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus, JobCheckpoint
 from ai_youtube_agent.providers.speech_synthesis import (
@@ -239,20 +240,27 @@ class InMemoryChunkStore:
 
 @dataclass(frozen=True)
 class TtsResult:
-    job_id: str
-    audio: bytes
-    media_type: str
-    duration_ms: int
-    characters: int
-    chunks: int
-    sample_rate: int
-    channels: int
-    sample_width: int
-    attempts: int
-    reused_chunks: int
-    synthesized_chunks: int
+    job_id: str = ""
+    audio: bytes = b""
+    media_type: str = "audio/wav"
+    duration_ms: int = 0
+    characters: int = 0
+    chunks: int = 0
+    sample_rate: int = 24000
+    channels: int = 1
+    sample_width: int = 2
+    attempts: int = 1
+    reused_chunks: int = 0
+    synthesized_chunks: int = 0
     provider_calls: int = 0
     retries: int = 0
+    provider: str | None = None
+    voice_id: str | None = None
+    job: AIJob | None = None
+
+    def __post_init__(self) -> None:
+        if self.job is not None and not self.job_id:
+            object.__setattr__(self, "job_id", self.job.id)
 
 
 class WavFormat(NamedTuple):

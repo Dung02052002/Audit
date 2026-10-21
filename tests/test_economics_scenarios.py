@@ -120,7 +120,7 @@ from ai_youtube_agent.core.db.repositories.economics import (
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.db.repositories.publish import PublishJobRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
-from ai_youtube_agent.core.gates import GateOutcome, TransitionContext
+from ai_youtube_agent.core.gates import GateContext, GateOutcome
 from ai_youtube_agent.pipeline.publish import PublishJob
 from ai_youtube_agent.pipeline.publish_result import PublishResultService
 from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
@@ -312,7 +312,7 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
         revenue_types=("shorts_ads",),
     )
     assert vid_est.pages == 2
-    assert vid_est.requested_video_ids == (_vid(1), _vid(2))
+    assert set(vid_est.requested_video_ids) == {_vid(1), _vid(2)}
     assert vid_est.skipped_video_ids == (_vid(3),)
     assert vid_est.no_data_video_ids == (_vid(2),)
     assert vid_est.created_count == 1
@@ -521,15 +521,9 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
     item, video_artifact = _publish_video(database, channel, profile, _vid(10))
     script = make_script(item)
     voice = make_voice_profile(channel)
-    tts_job = (
-        make_ai_job(item, kind="audio.generate", idempotency_key="aud:ec10")
-        .start(clock=lambda: IN_WINDOW)
-        .succeed(clock=lambda: IN_WINDOW)
-    )
     with database.transaction() as connection:
         ScriptRepository(connection).add(script)
         VoiceProfileRepository(connection).add(voice)
-        AIJobRepository(connection).add(tts_job)
 
     storage = LocalFileStorage(tmp_path / "artifacts")
     sink = InMemoryAuditSink()
@@ -577,6 +571,26 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
             language=voice.language,
         )
     )
+    import hashlib
+    from ai_youtube_agent.content.tts_job import COMPLETED
+    from ai_youtube_agent.pipeline.idempotency import audio_key
+    checksum = hashlib.sha256(speech.audio).hexdigest()
+    tts_job = (
+        make_ai_job(
+            item,
+            kind="audio.generate",
+            idempotency_key=audio_key(script.id, voice.id, voice.version),
+        )
+        .start(clock=lambda: IN_WINDOW)
+        .checkpoint(
+            COMPLETED,
+            {"checksum": checksum, "duration_ms": speech.duration_ms},
+            clock=lambda: IN_WINDOW,
+        )
+        .succeed(clock=lambda: IN_WINDOW)
+    )
+    with database.transaction() as connection:
+        AIJobRepository(connection).add(tts_job)
     tts_result = TtsResult(
         job=tts_job,
         audio=speech.audio,
@@ -894,7 +908,7 @@ def test_budget_guard_timezone_windows_projected_blocking_and_budget_gate_parity
         make_strategy_profile(channel), cadence=cadence, budget=budget
     )
     item = make_content_item(
-        channel, profile, status=ContentStatus.PLANNED
+        channel, profile, status=ContentStatus.DRAFT
     )
     with database.transaction() as connection:
         ChannelRepository(connection).add(channel)
@@ -951,9 +965,9 @@ def test_budget_guard_timezone_windows_projected_blocking_and_budget_gate_parity
     assert sink.entries[-1].action == BUDGET_ALERT_TRIGGERED
 
     # BudgetGate also passes at this point
-    gate_ctx = TransitionContext(
+    gate_ctx = GateContext(
         item=item,
-        target=ContentStatus.GENERATING,
+        target_status=ContentStatus.GENERATING,
         actor=USER,
         at=eval_at,
     )

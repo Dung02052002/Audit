@@ -106,6 +106,10 @@ class AIStatusSummary:
     auto_reply_enabled: bool
     tone: BadgeTone
 
+    @property
+    def active_jobs(self) -> int:
+        return self.running_jobs + self.queued_jobs
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "state": self.state,
@@ -137,6 +141,14 @@ class ProductionSummary:
     today_longform_published: int
     today_longform_limit: int | None
     time_zone: str
+
+    @property
+    def total_shorts_count(self) -> int:
+        return self.shorts_in_progress + self.shorts_published_total
+
+    @property
+    def total_longform_count(self) -> int:
+        return self.longform_in_progress + self.longform_published_total
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -237,18 +249,23 @@ class HomeScreenService:
         self,
         database: Database,
         shell_service: DashboardShellService,
-        health_registry: HealthRegistry,
-        flags: FeatureFlags,
+        health_registry: HealthRegistry | None = None,
+        flags: FeatureFlags | None = None,
         budget_guard: BudgetGuard | None = None,
         *,
         clock: Clock | None = None,
     ) -> None:
         self._database = database
         self._shell = shell_service
-        self._health = health_registry
-        self._flags = flags
+        self._health = (
+            health_registry if health_registry is not None else HealthRegistry()
+        )
+        self._flags = flags if flags is not None else FeatureFlags()
         self._budget_guard = budget_guard
         self._clock = clock
+
+    def load(self, channel_id: str | None = None) -> HomeScreenView:
+        return self.build_view(channel_id=channel_id)
 
     def build_view(self, *, channel_id: str | None = None) -> HomeScreenView:
         now = self._now()
@@ -313,7 +330,7 @@ class HomeScreenService:
                 tone=health_tone,
             )
 
-            tz_name = strategy_time_zone(strategy)
+            tz_name = strategy_time_zone(strategy) if strategy is not None else "UTC"
             day_start, day_end = day_window(now, tz_name)
             usage = DailyUsageRepository(connection)
             production = _build_production_summary(
@@ -357,8 +374,14 @@ class HomeScreenService:
             shell=shell,
         )
 
-    def render_html(self, *, channel_id: str | None = None) -> str:
-        view = self.build_view(channel_id=channel_id)
+    def render_html(
+        self,
+        view: HomeScreenView | None = None,
+        *,
+        channel_id: str | None = None,
+    ) -> str:
+        if view is None:
+            view = self.build_view(channel_id=channel_id)
         if view.load_state is ViewLoadState.EMPTY or view.channel_health is None:
             return render_dashboard_shell_html(
                 view.shell, page_title="Home — YouTube Command Center"
@@ -665,7 +688,7 @@ def _render_home_body_html(view: HomeScreenView) -> str:
         or "<li>No active alerts</li>"
     )
 
-    return f"""<div class="cc-grid" data-screen="home">
+    return f"""<div class="cc-grid" data-screen="home" data-testid="home-screen">
   <section class="cc-card" data-widget="channel-health">
     <h3>Channel Health</h3>
     <p><strong>{html.escape(health.channel_title)}</strong> ({html.escape(health.channel_status)})</p>

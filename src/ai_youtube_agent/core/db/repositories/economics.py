@@ -101,7 +101,7 @@ class RevenueRecordRepository(Repository):
     ) -> list[RevenueRecord]:
         rows = self._all(
             "SELECT * FROM revenue_records WHERE scope = ? AND subject_id = ? "
-            "ORDER BY period_start, stage, retrieved_at, id",
+            "ORDER BY period_start, stage, retrieved_at, rowid",
             (scope.value, subject_id),
         )
         return [_revenue(row) for row in rows]

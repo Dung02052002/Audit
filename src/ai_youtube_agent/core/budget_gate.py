@@ -27,7 +27,7 @@ the budget guard (#180). The gate reads through ``StrategySource`` and
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 from ai_youtube_agent.content.cost import CostRecord
@@ -70,14 +70,32 @@ def month_window(moment: datetime, time_zone: str = "UTC") -> tuple[datetime, da
 class BudgetGate:
     name = GateName.BUDGET
 
-    def __init__(self, strategies: StrategySource, costs: CostSource) -> None:
-        self._strategies = strategies
-        self._costs = costs
+    def __init__(
+        self,
+        strategies: Any,
+        costs: CostSource | None = None,
+    ) -> None:
+        if costs is None and (hasattr(strategies, "connection") or hasattr(strategies, "connect")):
+            self._database = strategies
+            self._strategies = None
+            self._costs = None
+        else:
+            self._database = None
+            self._strategies = strategies
+            self._costs = costs
 
     def evaluate(self, context: GateContext) -> GateResult:
         if context.target_status is not ContentStatus.GENERATING:
             return GateResult.passed(self.name, context.at)
-        reasons = self._check(context.item.channel_id, context.at)
+        if self._database is not None:
+            from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
+            from ai_youtube_agent.core.db.repositories.economics import CostRecordRepository
+            with self._database.connection() as conn:
+                self._strategies = StrategyProfileRepository(conn)
+                self._costs = CostRecordRepository(conn)
+                reasons = self._check(context.item.channel_id, context.at)
+        else:
+            reasons = self._check(context.item.channel_id, context.at)
         if not reasons:
             return GateResult.passed(self.name, context.at)
         return GateResult.blocked(self.name, context.at, *reasons)

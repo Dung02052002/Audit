@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from ai_youtube_agent.content.analytics import MetricScope, MetricSnapshot
 from ai_youtube_agent.content.approval import ApprovalRequest, ApprovalStatus
+from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.channel import Channel, YouTubeIdentifiers
 from ai_youtube_agent.content.comment import (
     Comment,
@@ -25,6 +26,7 @@ from ai_youtube_agent.content.experiment import (
     ExperimentType,
     ExperimentVariant,
 )
+from ai_youtube_agent.content.provenance import Provenance
 from ai_youtube_agent.content.qc import QCCheck, QCResult, QCStatus
 from ai_youtube_agent.content.revenue import RevenueRecord, RevenueStage
 from ai_youtube_agent.content.rights import RightsRecord
@@ -60,8 +62,28 @@ AI = Actor(ActorKind.AI, "assistant")
 _counter = itertools.count(1)
 
 
-def at(moment: datetime = T0):
-    return lambda: moment
+class ClockMoment(datetime):
+    def __call__(self) -> "ClockMoment":
+        return self
+
+
+def at(moment: datetime | int | float = T0) -> ClockMoment:
+    if isinstance(moment, (int, float)):
+        dt = T0 + timedelta(seconds=moment)
+    elif isinstance(moment, datetime):
+        dt = moment
+    else:
+        dt = T0
+    return ClockMoment(
+        dt.year,
+        dt.month,
+        dt.day,
+        dt.hour,
+        dt.minute,
+        dt.second,
+        dt.microsecond,
+        tzinfo=dt.tzinfo,
+    )
 
 
 def _unique() -> int:
@@ -321,3 +343,29 @@ def make_experiment(
         clock=at(),
     )
     return dataclasses.replace(experiment, **overrides)
+
+
+def make_asset(channel: Channel, **overrides) -> Asset:
+    n = _unique()
+    asset = Asset.create(
+        channel.id,
+        AssetKind.IMAGE,
+        AssetCategory.LICENSED,
+        title=f"Stock Image {n}",
+        source="https://images.example.com/asset-1",
+        license_ref="CC-BY-4.0",
+        clock=at(),
+    )
+    return dataclasses.replace(asset, **overrides)
+
+
+def make_provenance(asset: Asset, **overrides) -> Provenance:
+    provenance = Provenance.create(
+        asset.id,
+        source_url="https://images.example.com/asset-1",
+        license_name="Creative Commons Attribution 4.0",
+        license_ref="CC-BY-4.0",
+        recorded_by=USER,
+        clock=at(),
+    )
+    return dataclasses.replace(provenance, **overrides)

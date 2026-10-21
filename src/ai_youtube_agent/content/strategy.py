@@ -37,7 +37,7 @@ a new profile.
 import re
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import InitVar, dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -122,6 +122,10 @@ class Market:
                 f"country {self.country!r} must be an ISO 3166-1 alpha-2 code "
                 "such as 'US'"
             )
+
+    @property
+    def country_code(self) -> str:
+        return self.country
 
 
 def canonical_language_tag(tag: str) -> str:
@@ -577,12 +581,15 @@ class Cadence:
     """
 
     shorts_per_day: int
-    longform_per_day: int
+    longform_per_day: int = 0
     time_zone: str = "UTC"
     shorts_schedule: PublishSchedule = PublishSchedule()
     longform_schedule: PublishSchedule = PublishSchedule()
+    longform_per_week: int | None = None
 
     def __post_init__(self) -> None:
+        if self.longform_per_week is not None and self.longform_per_day == 0:
+            object.__setattr__(self, "longform_per_day", max(1, self.longform_per_week))
         _check_whole("shorts_per_day", self.shorts_per_day, 0, MAX_SHORTS_PER_DAY)
         _check_whole("longform_per_day", self.longform_per_day, 0, MAX_LONGFORM_PER_DAY)
         if self.time_zone not in time_zones():
@@ -686,6 +693,13 @@ class RevenueGoal:
             _require_text("goal note", self.note)
             _check_length("goal note", self.note, MAX_GOAL_NOTE)
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "source": self.source.value,
+            "monthly_target": str(self.monthly_target) if self.monthly_target is not None else None,
+            "note": self.note,
+        }
+
 
 @dataclass(frozen=True)
 class Monetization:
@@ -776,6 +790,7 @@ class StrategyProfile:
     def create(
         cls,
         channel_id: str,
+        actor: Actor | None = None,
         *,
         market: Market | None = None,
         languages: LanguageSettings | None = None,
@@ -786,10 +801,13 @@ class StrategyProfile:
         cadence: Cadence | None = None,
         budget: Budget | None = None,
         monetization: Monetization | None = None,
-        actor: Actor,
         clock: Clock | None = None,
+        **kwargs: Any,
     ) -> "StrategyProfile":
-        _ensure_user(actor)
+        effective_actor = actor or kwargs.get("actor")
+        if effective_actor is None:
+            raise TypeError("actor is required")
+        _ensure_user(effective_actor)
         now = _now(clock)
         return cls(
             id=uuid.uuid4().hex,
@@ -804,7 +822,7 @@ class StrategyProfile:
             budget=budget,
             monetization=monetization,
             version=1,
-            updated_by=actor,
+            updated_by=effective_actor,
             created_at=now,
             updated_at=now,
         )

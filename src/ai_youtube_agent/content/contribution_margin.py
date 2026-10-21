@@ -117,6 +117,10 @@ class ContributionMarginReport:
     costs_by_category: dict[str, Decimal]
 
     @property
+    def margin(self) -> Decimal:
+        return self.contribution_margin
+
+    @property
     def metric_label(self) -> str:
         return METRIC_LABEL
 

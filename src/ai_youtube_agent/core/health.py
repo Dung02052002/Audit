@@ -151,6 +151,9 @@ class HealthRegistry:
             pool.shutdown(wait=False, cancel_futures=True)
         return HealthReport(overall_status(results), version, results)
 
+    def report(self, version: str = "0.1.0") -> HealthReport:
+        return self.run(version)
+
 
 def _result(check: HealthCheck, future: Future[object]) -> CheckResult:
     try:

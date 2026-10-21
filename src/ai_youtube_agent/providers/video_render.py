@@ -349,6 +349,35 @@ class RenderRequest:
         }
 
 
+def VideoRenderRequest(
+    duration_ms: int,
+    width: int = 1920,
+    height: int = 1080,
+    fps: int = 30,
+    *,
+    audio: RenderInput | None = None,
+    inputs: tuple[RenderInput, ...] = (),
+    layers: tuple[VisualLayer, ...] = (),
+    texts: tuple[TextLine, ...] = (),
+    background_color: str = "#000000",
+) -> RenderRequest:
+    """Convenience factory creating a RenderRequest with default audio if omitted."""
+    actual_audio = audio or RenderInput.of(
+        AUDIO_KEY, b"RIFF\x24\x00\x00\x00WAVEfmt ", "audio/wav"
+    )
+    return RenderRequest(
+        width=width,
+        height=height,
+        fps=fps,
+        duration_ms=duration_ms,
+        audio=actual_audio,
+        inputs=inputs,
+        layers=layers,
+        texts=texts,
+        background_color=background_color,
+    )
+
+
 @dataclass(frozen=True)
 class RenderedVideo:
     data: bytes = field(repr=False)

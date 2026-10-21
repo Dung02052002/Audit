@@ -164,6 +164,10 @@ class CommentsScreenView:
     reply_drafts: tuple[ReplyDraftViewItem, ...]
     empty_message: str | None = None
 
+    @property
+    def attention_comments_count(self) -> int:
+        return self.needs_attention_count
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "shell": self.shell.as_dict(),
@@ -243,7 +247,7 @@ class CommentsScreenService:
                     new_comments=(),
                     all_comments=(),
                     reply_drafts=(),
-                    empty_message="No channel configured yet. Create a channel to review comments and reply drafts.",
+                    empty_message="No comments found or channel configured yet. Create a channel to review comments and reply drafts.",
                 )
 
             comment_repo = CommentRepository(connection)
@@ -392,6 +396,22 @@ class CommentsScreenService:
         return self._reply_approval.discard(draft_id, actor=actor, reason=reason)
 
     def render_html(self, view: CommentsScreenView) -> str:
+        if view.load_state is ViewLoadState.EMPTY:
+            msg = html.escape(view.empty_message or "No comments found.")
+            body = (
+                '<section class="yt-card" data-testid="comments-empty-state">'
+                '<div class="yt-card__header">'
+                '<h2 class="yt-card__title">Comments</h2>'
+                "</div>"
+                f'<p class="yt-empty">{msg}</p>'
+                "</section>"
+            )
+            return render_dashboard_shell_html(
+                view.shell,
+                body_html=body,
+                page_title="Comments — YouTube Command Center",
+            )
+
         auto_reply_badge = (
             '<span class="yt-pill yt-pill--warning" data-testid="auto-reply-flag">AUTO_REPLY_ENABLED=true</span>'
             if view.auto_reply_enabled

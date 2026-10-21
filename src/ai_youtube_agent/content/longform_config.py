@@ -107,17 +107,17 @@ def _enum(kind: type[Enum], value: object, name: str) -> Any:
 
 @dataclass(frozen=True)
 class LongFormConfig:
-    min_seconds: int
-    max_seconds: int
-    resolution: Resolution
-    width: int
-    height: int
-    fps: int
-    captions: bool
-    chapters: bool
-    aspect_ratio: AspectRatio
-    safe_area: SafeArea
-    caption_rules: CaptionRules
+    min_seconds: int = 181
+    max_seconds: int = 900
+    resolution: Resolution = Resolution.FULL_HD_1080
+    width: int = 1920
+    height: int = 1080
+    fps: int = FPS
+    captions: bool = True
+    chapters: bool = True
+    aspect_ratio: AspectRatio = AspectRatio.HORIZONTAL
+    safe_area: SafeArea = DEFAULT_LONGFORM_SAFE_AREA
+    caption_rules: CaptionRules = DEFAULT_LONGFORM_CAPTION_RULES
 
     def __post_init__(self) -> None:
         _whole(
@@ -145,7 +145,7 @@ class LongFormConfig:
         if (self.width, self.height) != HORIZONTAL_SIZES[self.resolution]:
             width, height = HORIZONTAL_SIZES[self.resolution]
             raise ValueError(
-                f"a {self.resolution.value} LongForm canvas is {width}x{height}"
+                f"a LongForm canvas is 16:9 ({width}x{height} for {self.resolution.value})"
             )
         _whole("fps", self.fps, 1, MAX_FPS)
         if not isinstance(self.captions, bool):

@@ -185,7 +185,13 @@ class ApprovalRequest:
             created_at=clock() if clock else datetime.now(UTC),
         )
 
-    def approve(self, actor: Actor) -> "ApprovalRequest":
+    def approve(
+        self,
+        actor: Actor,
+        reason: str | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> "ApprovalRequest":
         """Return this request marked approved by an explicit human reviewer (#139)."""
         if not isinstance(actor, Actor):
             raise TypeError("actor must be an Actor")
@@ -200,7 +206,13 @@ class ApprovalRequest:
             )
         return replace(self, status=ApprovalStatus.APPROVED)
 
-    def reject(self, actor: Actor, reason: str) -> "ApprovalRequest":
+    def reject(
+        self,
+        actor: Actor,
+        reason: str,
+        *,
+        clock: Clock | None = None,
+    ) -> "ApprovalRequest":
         """Return this request marked rejected by a human reviewer with a reason (#140)."""
         if not isinstance(actor, Actor):
             raise TypeError("actor must be an Actor")
@@ -217,7 +229,13 @@ class ApprovalRequest:
             )
         return replace(self, status=ApprovalStatus.REJECTED)
 
-    def request_changes(self, actor: Actor, reason: str) -> "ApprovalRequest":
+    def request_changes(
+        self,
+        actor: Actor,
+        reason: str,
+        *,
+        clock: Clock | None = None,
+    ) -> "ApprovalRequest":
         """Return this request marked changes_requested by a human reviewer (#141)."""
         if not isinstance(actor, Actor):
             raise TypeError("actor must be an Actor")

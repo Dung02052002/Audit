@@ -171,7 +171,7 @@ class RevenueScreenService:
                 costs=None,
                 estimated_margin=None,
                 final_margin=None,
-                empty_message="No channel configured yet. Create a channel to view revenue, costs, and contribution margin.",
+                empty_message="No revenue records or channel configured yet. Create a channel to view revenue, costs, and contribution margin.",
             )
 
         est_rev = self._revenue_sources.breakdown(

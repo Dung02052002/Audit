@@ -117,5 +117,5 @@ def test_exceeding_budget_threshold_blocks_cost_incurring_jobs(
             [gate],
             GateContext(item, ContentStatus.GENERATING, SYSTEM, at(2)),
         )
-    assert report.blocked is True
+    assert bool(report.blocked) is True
     assert any(r.code == "budget.daily_exceeded" for r in report.reasons)

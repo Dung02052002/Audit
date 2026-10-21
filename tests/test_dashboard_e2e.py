@@ -38,7 +38,7 @@ from ai_youtube_agent.core.db.repositories.content import (
     ContentItemRepository,
 )
 from ai_youtube_agent.core.db.repositories.review import QCResultRepository
-from ai_youtube_agent.core.metrics import MetricScope
+from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.providers.mock_video_render import stub_mp4
 from factories import (
     SYSTEM,
@@ -117,7 +117,7 @@ def test_dashboard_e2e_reflects_live_pipeline_economics_and_approvals(
             shorts_item.id,
             [video_art, meta_art],
             [QCCheck("video.fps", QCStatus.PASS)],
-            clock=at(1),
+            clock=at(),
         )
         QCResultRepository(conn).add(qc)
 

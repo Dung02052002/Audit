@@ -821,11 +821,10 @@ def build_container(settings: Settings | None = None) -> Container:
         AutoReplyService,
         lambda c: AutoReplyService(
             c.resolve(Database),
-            c.resolve(CommentProvider),
-            c.resolve(YouTubeOAuthProvider),
+            c.resolve(ReplyDraftService),
+            c.resolve(ReplyApprovalService),
             c.resolve(AuditLog),
-            c.resolve(AutoReplyGuard),
-            duplicate_guard=c.resolve(DuplicateReplyGuard),
+            flags=c.resolve(FeatureFlags),
         ),
     )
     container.register(
@@ -1258,14 +1257,15 @@ def _build_audit_sink(container: Container) -> AuditSink:
     return SqliteAuditSink(container.resolve(Database))
 
 
-def prepare_database(settings: Settings) -> MigrationReport:
+def prepare_database(settings: Settings | Container) -> MigrationReport:
     """Bring the database up to date. Called once when the application starts."""
-    report = migrate(settings.database_path)
+    resolved_settings = settings.resolve(Settings) if isinstance(settings, Container) else settings
+    report = migrate(resolved_settings.database_path)
     logger.info(
         "database ready",
         extra={
             "fields": {
-                "database_path": str(settings.database_path),
+                "database_path": str(resolved_settings.database_path),
                 "version": report.current_version,
                 "applied": list(report.applied),
                 "backup_path": str(report.backup_path) if report.backup_path else None,

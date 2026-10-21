@@ -214,6 +214,7 @@ def _latest_tracked_artifact_ids(artifacts: Sequence[Artifact]) -> tuple[str, ..
 class TestGate:
     """Pipeline gate for ``GateName.TEST`` verifying video/artifact test checks."""
 
+    __test__ = False
     name = GateName.TEST
 
     def __init__(

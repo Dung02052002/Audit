@@ -8,7 +8,7 @@ navigation destinations, live badge calculation, and XSS-safe HTML app shell:
   ``content``, ``video_detail``, ``analytics``, ``revenue``, ``comments``,
   ``ai_center``, ``approvals``, ``settings``, ``alerts``).
 - ``ViewLoadState``: ``ready``, ``empty``, ``loading``, ``error``.
-- ``BadgeTone``: ``neutral``, ``accent``, ``success``, ``warning``, ``danger``.
+- ``BadgeTone``: ``neutral``, ``accent``, ``info``, ``success``, ``warning``, ``danger``.
 - ``DesignSystemTokens`` and ``DEFAULT_IOS_DESIGN_TOKENS``: SF Pro typography,
   frosted-glass blur, rounded card radii, semantic palette, and spacing scale.
 - ``NavDestination`` and ``DashboardShellState``: immutable navigation and channel
@@ -64,6 +64,7 @@ class ViewLoadState(StrEnum):
 class BadgeTone(StrEnum):
     NEUTRAL = "neutral"
     ACCENT = "accent"
+    INFO = "info"
     SUCCESS = "success"
     WARNING = "warning"
     DANGER = "danger"
@@ -268,6 +269,13 @@ class DashboardShellState:
     active_jobs_badge: int
     load_state: ViewLoadState
     design_system: DesignSystemTokens
+
+    @property
+    def active_channel(self) -> ChannelSwitcherItem | None:
+        for channel in self.channels:
+            if channel.selected:
+                return channel
+        return None
 
     @property
     def primary_tabs(self) -> tuple[NavDestination, ...]:
@@ -502,6 +510,7 @@ body.cc-body {{
 
 .cc-badge-neutral {{ background: rgba(108, 108, 112, 0.16); color: var(--cc-color-text-secondary); }}
 .cc-badge-accent {{ background: rgba(0, 122, 255, 0.16); color: var(--cc-color-accent-blue); }}
+.cc-badge-info {{ background: rgba(0, 122, 255, 0.16); color: var(--cc-color-accent-blue); }}
 .cc-badge-success {{ background: rgba(52, 199, 89, 0.16); color: var(--cc-color-semantic-green); }}
 .cc-badge-warning {{ background: rgba(255, 149, 0, 0.18); color: var(--cc-color-semantic-amber); }}
 .cc-badge-danger {{ background: rgba(255, 59, 48, 0.18); color: var(--cc-color-semantic-red); }}
@@ -607,7 +616,7 @@ def _render_default_shell_placeholder(shell: DashboardShellState) -> str:
     if shell.load_state is ViewLoadState.EMPTY:
         return (
             '<section class="cc-card" data-state="empty">'
-            "<h2>No Channels Configured</h2>"
+            "<h2>No channels configured</h2>"
             "<p>Create a channel in Settings to begin using the Command Center.</p>"
             "</section>"
         )
@@ -628,17 +637,19 @@ class DashboardShellService:
         self,
         database: Database,
         *,
+        clock: Any = None,
         app_title: str = "YouTube Command Center",
         design_tokens: DesignSystemTokens = DEFAULT_IOS_DESIGN_TOKENS,
     ) -> None:
         self._database = database
+        self._clock = clock
         self._app_title = app_title
         self._design_tokens = design_tokens
 
     def build_shell(
         self,
-        *,
         active_screen: DashboardScreenId = DashboardScreenId.HOME,
+        *,
         channel_id: str | None = None,
         alerts_count: int = 0,
     ) -> DashboardShellState:
@@ -707,8 +718,8 @@ class DashboardShellService:
 
     def render_html(
         self,
-        *,
         active_screen: DashboardScreenId = DashboardScreenId.HOME,
+        *,
         channel_id: str | None = None,
         body_html: str = "",
         page_title: str | None = None,

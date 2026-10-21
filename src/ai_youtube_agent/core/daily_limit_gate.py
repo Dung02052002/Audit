@@ -75,8 +75,10 @@ def day_window(moment: datetime, time_zone: str = "UTC") -> tuple[datetime, date
     )
 
 
-def strategy_time_zone(strategy: StrategyProfile) -> str:
+def strategy_time_zone(strategy: StrategyProfile | None) -> str:
     """The cadence time zone of a strategy, or UTC without a cadence (#051)."""
+    if strategy is None:
+        return "UTC"
     return strategy.cadence.time_zone if strategy.cadence else "UTC"
 
 

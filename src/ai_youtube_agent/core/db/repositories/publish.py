@@ -23,6 +23,10 @@ class PublishJobRepository(Repository):
         row = self._one("SELECT * FROM publish_jobs WHERE idempotency_key = ?", (key,))
         return _job(row) if row else None
 
+    def list_all(self) -> list[PublishJob]:
+        rows = self._all("SELECT * FROM publish_jobs ORDER BY created_at, id")
+        return [_job(row) for row in rows]
+
     def list_by_content_item(self, content_item_id: str) -> list[PublishJob]:
         rows = self._all(
             "SELECT * FROM publish_jobs WHERE content_item_id = ? "

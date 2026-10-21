@@ -24,7 +24,7 @@ auto-posting by default (#026, #183–#188):
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final, Protocol, runtime_checkable
@@ -170,8 +170,11 @@ class RemoteComment:
     text: str
     published_at: datetime
     parent_comment_id: str | None = None
+    parent_id: InitVar[str | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, parent_id: str | None = None) -> None:
+        if self.parent_comment_id is None and parent_id is not None:
+            object.__setattr__(self, "parent_comment_id", parent_id)
         if not isinstance(
             self.youtube_comment_id, str
         ) or not COMMENT_ID_PATTERN.match(self.youtube_comment_id):
@@ -210,6 +213,10 @@ class RemoteComment:
             if self.parent_comment_id == self.youtube_comment_id:
                 raise ValueError("a comment cannot be its own parent")
         _require_utc(self.published_at, "published_at")
+
+    @property
+    def parent_id(self) -> str | None:
+        return self.parent_comment_id
 
     @property
     def is_reply(self) -> bool:

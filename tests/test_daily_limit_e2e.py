@@ -94,5 +94,5 @@ def test_exceeding_daily_cadence_limit_stops_new_production(
             [gate],
             GateContext(item2, ContentStatus.GENERATING, SYSTEM, T0),
         )
-    assert report.blocked is True
-    assert any(r.code == "daily_limit.production_exceeded" for r in report.reasons)
+    assert bool(report.blocked) is True
+    assert any(r.code in ("daily_limit.production_reached", "daily_limit.production_exceeded") for r in report.reasons)

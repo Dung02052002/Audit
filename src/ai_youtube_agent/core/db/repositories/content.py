@@ -130,6 +130,8 @@ class ArtifactRepository(Repository):
         )
         return _artifact(row) if row else None
 
+    get_latest = latest
+
 
 class ScriptRepository(Repository):
     """Script versions, claims and evidence are immutable: add only."""

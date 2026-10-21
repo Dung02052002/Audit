@@ -163,6 +163,10 @@ class BudgetGuardStatus:
     blocking_reasons: tuple[GateReason, ...]
     alerts: tuple[BudgetAlert, ...]
 
+    @property
+    def blocked(self) -> bool:
+        return not self.allowed
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "channel_id": self.channel_id,

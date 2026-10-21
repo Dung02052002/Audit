@@ -150,6 +150,9 @@ class GateContext:
             )
 
 
+TransitionContext = GateContext
+
+
 @runtime_checkable
 class PipelineGate(Protocol):
     name: GateName
@@ -172,6 +175,10 @@ class GateReport:
     @property
     def is_passed(self) -> bool:
         return self.outcome is GateOutcome.PASS
+
+    @property
+    def passed(self) -> bool:
+        return self.is_passed
 
     @property
     def blocked(self) -> tuple[GateResult, ...]:

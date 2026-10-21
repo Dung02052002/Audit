@@ -9,7 +9,7 @@ import pytest
 
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
-from ai_youtube_agent.content.audio import AudioMetadata, VoiceProfile
+from ai_youtube_agent.content.channel import Channel, YouTubeIdentifiers
 from ai_youtube_agent.content.longform_audio_mix import (
     LongFormAudioMixer,
     LongFormMixError,
@@ -24,26 +24,25 @@ from ai_youtube_agent.content.shorts_timeline import (
     SceneAsset,
 )
 from ai_youtube_agent.content.strategy import (
-    AudienceSpec,
-    CadenceSpec,
-    ChannelFocus,
-    FormatPlan,
-    FormatSpec,
-    LanguageSpec,
+    Audience,
+    FormatSettings,
+    LongFormFormat,
+    Niche,
+    Pillar,
+    ShortsFormat,
     StrategyProfile,
-    ToneSpec,
 )
+from ai_youtube_agent.content.voice import AudioMetadata, VoiceProfile
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
-from ai_youtube_agent.core.channel import Channel
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import migrate
-from ai_youtube_agent.core.db.repositories.audio import VoiceProfileRepository
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
+    VoiceProfileRepository,
 )
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
@@ -90,20 +89,20 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
     audit = AuditLog(sink)
     flags = FeatureFlags(longform_enabled=True)
 
-    channel = Channel.create("LongForm Audio Channel", clock=clock)
+    channel = Channel.create(
+        "LongForm Audio Channel",
+        YouTubeIdentifiers("UC" + "2" * 22, "@audio"),
+        clock=clock,
+    )
     strategy = StrategyProfile.create(
         channel.id,
-        niche="Audio Engineering",
-        audience=AudienceSpec(summary="Engineers"),
-        tone=ToneSpec(style="clear"),
-        cadence=CadenceSpec(videos_per_week=1),
-        language=LanguageSpec(primary="en"),
-        format=FormatPlan(
-            focus=ChannelFocus.LONGFORM,
-            longform=FormatSpec(
-                min_seconds=180,
-                max_seconds=600,
-                pace="measured",
+        niche=Niche("Audio Engineering", (Pillar("audio"),)),
+        audience=Audience("Engineers"),
+        format=FormatSettings(
+            ShortsFormat(15, 60),
+            LongFormFormat(
+                181,
+                600,
                 captions=True,
                 chapters=False,
             ),
@@ -113,9 +112,10 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
     )
     item = ContentItem.create(
         channel.id,
-        "Mastering LongForm Audio",
+        strategy.id,
+        strategy.version,
         ContentType.LONGFORM,
-        actor=USER,
+        "Mastering LongForm Audio",
         clock=clock,
     )
     script = Script.create(
@@ -132,10 +132,9 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
     )
     profile = VoiceProfile.create(
         channel.id,
-        name="Host",
-        provider="mock",
+        provider="mock_tts",
         voice_id="en-host",
-        language="en",
+        language="en-US",
         actor=USER,
         clock=clock,
     )
@@ -149,18 +148,14 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
         uri=written_voice.uri,
         sha256=written_voice.sha256,
         size_bytes=written_voice.size_bytes,
+        media_type="audio/wav",
         clock=clock,
     )
     audio_meta = AudioMetadata.create(
-        voice_artifact.id,
-        script_id=script.id,
-        voice_profile_id=profile.id,
-        voice_profile_version=profile.version,
-        provider="mock",
+        voice_artifact,
+        script,
+        profile,
         duration_ms=10_000,
-        sample_rate_hz=24_000,
-        channels=1,
-        format="wav",
         clock=clock,
     )
     with database.transaction() as conn:

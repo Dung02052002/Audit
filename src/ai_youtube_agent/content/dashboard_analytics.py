@@ -400,7 +400,7 @@ class AnalyticsScreenService:
                     period_rows=(),
                     shorts=_empty_shorts_summary(),
                     longform=_empty_longform_summary(),
-                    empty_message="No channel configured yet. Create a channel to view analytics.",
+                    empty_message="No analytics data or channel configured yet. Create a channel to view analytics.",
                 )
 
             snapshot_repo = MetricSnapshotRepository(connection)
@@ -537,6 +537,22 @@ class AnalyticsScreenService:
         )
 
     def render_html(self, view: AnalyticsScreenView) -> str:
+        if view.load_state is ViewLoadState.EMPTY:
+            msg = html.escape(view.empty_message or "No analytics data available.")
+            body = (
+                '<section class="yt-card" data-testid="analytics-empty-state">'
+                '<div class="yt-card__header">'
+                '<h2 class="yt-card__title">Analytics</h2>'
+                "</div>"
+                f'<p class="yt-empty">{msg}</p>'
+                "</section>"
+            )
+            return render_dashboard_shell_html(
+                view.shell,
+                body_html=body,
+                page_title="Analytics — YouTube Command Center",
+            )
+
         vw = view.channel_views_watch_time
         subs = view.channel_subscribers
         sh = view.shorts

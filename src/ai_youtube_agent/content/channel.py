@@ -83,6 +83,10 @@ class Channel:
         if self.updated_at < self.created_at:
             raise ValueError("updated_at must not be earlier than created_at")
 
+    @property
+    def identifiers(self) -> YouTubeIdentifiers:
+        return self.youtube
+
     @classmethod
     def create(
         cls,

@@ -70,12 +70,50 @@ class MockYouTubeOAuthProvider:
         with self._lock:
             self._next_error = code
 
-    def seed_token(self, token: OAuthToken) -> None:
-        if not isinstance(token, OAuthToken):
-            raise TypeError("token must be an OAuthToken")
+    def seed_token(
+        self,
+        token_or_channel_id: OAuthToken | str,
+        *,
+        scopes: Iterable[OAuthScope] | None = None,
+        access_token: SecretStr | str | None = None,
+        refresh_token: SecretStr | str | None = None,
+        expires_at: datetime | None = None,
+    ) -> OAuthToken:
+        if isinstance(token_or_channel_id, OAuthToken):
+            token = token_or_channel_id
+        elif isinstance(token_or_channel_id, str):
+            channel_id = token_or_channel_id
+            now = self._now()
+            resolved_scopes = (
+                frozenset(scopes)
+                if scopes is not None
+                else self._default_scopes
+            )
+            raw_acc = (
+                access_token.get_secret_value()
+                if isinstance(access_token, SecretStr)
+                else (access_token or self._digest("access", channel_id, 0))
+            )
+            raw_ref = (
+                refresh_token.get_secret_value()
+                if isinstance(refresh_token, SecretStr)
+                else (refresh_token or self._digest("refresh", channel_id, 0))
+            )
+            token = OAuthToken(
+                channel_id=channel_id,
+                access_token=SecretStr(raw_acc),
+                refresh_token=SecretStr(raw_ref),
+                scopes=resolved_scopes,
+                issued_at=now,
+                expires_at=expires_at or (now + timedelta(hours=1)),
+            )
+        else:
+            raise TypeError("token must be an OAuthToken or str")
+
         with self._lock:
             self._revoked.discard(token.channel_id)
             self._tokens[token.channel_id] = token
+        return token
 
     def expire_channel_token(self, channel_id: str) -> OAuthToken:
         with self._lock:

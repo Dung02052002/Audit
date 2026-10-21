@@ -82,17 +82,23 @@ class Comment:
         text: str,
         published_at: datetime,
         parent_comment_id: str | None = None,
+        parent_id: str | None = None,
     ) -> "Comment":
+        resolved_parent = parent_comment_id if parent_comment_id is not None else parent_id
         return cls(
             id=_new_id(),
             channel_id=channel_id,
             youtube_comment_id=youtube_comment_id,
             youtube_video_id=youtube_video_id,
-            parent_comment_id=parent_comment_id,
+            parent_comment_id=resolved_parent,
             author_display_name=author_display_name,
             text=text,
             published_at=published_at,
         )
+
+    @property
+    def parent_id(self) -> str | None:
+        return self.parent_comment_id
 
     @property
     def is_reply(self) -> bool:

@@ -123,7 +123,7 @@ def test_orchestrator_end_to_end_lifecycle_concurrency_wait_retry_and_limits(
         ch.id, sp.id, sp.version, ContentType.SHORTS, "Short #1", clock=_FixedClock(t0)
     )
     item2 = ContentItem.create(
-        ch.id, sp.id, sp.version, ContentType.SHORTS, "Short #2", clock=_FixedClock(t0)
+        ch.id, sp.id, sp.version, ContentType.SHORTS, "Short #2", clock=_FixedClock(t0 + timedelta(seconds=1))
     )
     with database.transaction() as conn:
         ContentItemRepository(conn).add(item1)

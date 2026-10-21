@@ -196,7 +196,7 @@ class ApprovalCenterService:
                     pending_approvals=(),
                     historical_approvals=(),
                     all_approvals=(),
-                    empty_message="No channel configured yet. Create a channel to review approvals.",
+                    empty_message="No pending approvals or channel configured yet. Create a channel to review approvals.",
                 )
 
             items = ContentItemRepository(connection).list_by_channel(

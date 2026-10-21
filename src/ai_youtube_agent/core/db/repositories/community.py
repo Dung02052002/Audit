@@ -151,3 +151,28 @@ def _draft(row: sqlite3.Row) -> ReplyDraft:
         created_at=parse_dt(row["created_at"]),
         youtube_reply_id=row["youtube_reply_id"],
     )
+
+
+class CommentClassificationRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._repo = CommentRepository(connection)
+
+    def add(self, classification: CommentClassification) -> None:
+        self._repo.add_classification(classification)
+
+    def list_by_comment(self, comment_id: str) -> list[CommentClassification]:
+        return self._repo.list_classifications(comment_id)
+
+
+class ReplyDraftRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._repo = CommentRepository(connection)
+
+    def add(self, draft: ReplyDraft) -> None:
+        self._repo.add_reply_draft(draft)
+
+    def get(self, draft_id: str) -> ReplyDraft | None:
+        return self._repo.get_reply_draft(draft_id)
+
+    def list_by_comment(self, comment_id: str) -> list[ReplyDraft]:
+        return self._repo.list_reply_drafts(comment_id)

@@ -27,6 +27,8 @@ from ai_youtube_agent.content.approval import ApprovalRequest
 from ai_youtube_agent.content.dashboard_content import _STATUS_LABELS, _STATUS_TONES
 from ai_youtube_agent.content.dashboard_shell import (
     BadgeTone,
+    DashboardError,
+    DashboardErrorCode,
     DashboardScreenId,
     DashboardShellService,
     DashboardShellState,
@@ -58,7 +60,7 @@ from ai_youtube_agent.content.version_comparison import (
     VersionComparisonService,
 )
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
-from ai_youtube_agent.core.artifact_storage import ArtifactStorage
+from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.content_item import ContentItem
 from ai_youtube_agent.core.db.database import Database
@@ -141,8 +143,8 @@ class VideoDetailService:
     def __init__(
         self,
         database: Database,
-        storage: ArtifactStorage,
-        settings: Settings,
+        storage: ArtifactStorage | None = None,
+        settings: Settings | None = None,
         *,
         shell_service: DashboardShellService | None = None,
         artifact_service: PreviewArtifactService | None = None,
@@ -153,26 +155,30 @@ class VideoDetailService:
         clock: Clock | None = None,
     ) -> None:
         self._database = database
-        self._storage = storage
-        self._settings = settings
+        self._settings = settings if settings is not None else Settings()
+        self._storage = (
+            storage
+            if storage is not None
+            else LocalFileStorage(self._settings.artifact_dir)
+        )
         self._clock = clock
         self._shell_service = shell_service or DashboardShellService(
             database, clock=clock
         )
         self._artifact_service = artifact_service or PreviewArtifactService(
-            database, storage
+            database, self._storage
         )
         self._player_service = player_service or PreviewPlayerService(
-            database, storage, artifact_service=self._artifact_service
+            database, self._storage, artifact_service=self._artifact_service
         )
         self._metadata_service = metadata_service or PreviewMetadataService(
-            database, storage, artifact_service=self._artifact_service
+            database, self._storage, artifact_service=self._artifact_service
         )
         self._report_service = report_service or PreviewReportService(
-            database, storage, settings
+            database, self._storage, self._settings
         )
         self._comparison_service = comparison_service or VersionComparisonService(
-            database, storage
+            database, self._storage
         )
 
     def load(
@@ -185,9 +191,9 @@ class VideoDetailService:
         try:
             item = ContentItemRepository(connection).get(content_item_id)
             if item is None:
-                raise PreviewError(
-                    f"content item {content_item_id} not found",
-                    code=PreviewErrorCode.ITEM_NOT_FOUND,
+                raise DashboardError(
+                    DashboardErrorCode.CONTENT_NOT_FOUND,
+                    f"content item {content_item_id} was not found",
                 )
             raw_artifacts = ArtifactRepository(connection).list_by_content_item(
                 content_item_id

@@ -97,7 +97,12 @@ class Session:
     def is_active(self) -> bool:
         return self.status is SessionStatus.ACTIVE
 
-    def stop(self, *, clock: Clock | None = None) -> "Session":
+    def stop(
+        self,
+        actor: Actor | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> "Session":
         if not self.is_active:
             return self
         return replace(self, status=SessionStatus.STOPPED, stopped_at=_now(clock))

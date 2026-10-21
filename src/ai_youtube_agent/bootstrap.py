@@ -79,6 +79,7 @@ from ai_youtube_agent.content.dashboard_comments import CommentsScreenService
 from ai_youtube_agent.content.dashboard_content import ContentScreenService
 from ai_youtube_agent.content.dashboard_home import HomeScreenService
 from ai_youtube_agent.content.dashboard_revenue import RevenueScreenService
+from ai_youtube_agent.content.dashboard_settings import SettingsScreenService
 from ai_youtube_agent.content.dashboard_shell import DashboardShellService
 from ai_youtube_agent.content.dashboard_video_detail import VideoDetailService
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
@@ -929,6 +930,15 @@ def build_container(settings: Settings | None = None) -> Container:
             approval_service=c.resolve(ApprovalService),
             shell_service=c.resolve(DashboardShellService),
             ttl=timedelta(hours=c.resolve(Settings).approval_ttl_hours),
+        ),
+    )
+    container.register(
+        SettingsScreenService,
+        lambda c: SettingsScreenService(
+            c.resolve(Database),
+            settings=c.resolve(Settings),
+            flags=c.resolve(FeatureFlags),
+            shell_service=c.resolve(DashboardShellService),
         ),
     )
     return container

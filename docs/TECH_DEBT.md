@@ -125,6 +125,7 @@ needs its tests run in the later test phase; those tests are listed per task in
 | Q-198 Comments Screen | `tests/test_dashboard_comments.py` |
 | Q-199 AI Center | `tests/test_dashboard_ai_center.py` |
 | Q-200 Approval Center UI | `tests/test_dashboard_approvals.py`, `tests/test_bootstrap.py` |
+| Q-201 Settings Screen | `tests/test_dashboard_settings.py`, `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items

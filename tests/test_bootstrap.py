@@ -586,6 +586,7 @@ def test_container_resolves_the_command_center_dashboard_services(
     from ai_youtube_agent.content.dashboard_content import ContentScreenService
     from ai_youtube_agent.content.dashboard_home import HomeScreenService
     from ai_youtube_agent.content.dashboard_revenue import RevenueScreenService
+    from ai_youtube_agent.content.dashboard_settings import SettingsScreenService
     from ai_youtube_agent.content.dashboard_shell import DashboardShellService
     from ai_youtube_agent.content.dashboard_video_detail import VideoDetailService
 
@@ -617,5 +618,8 @@ def test_container_resolves_the_command_center_dashboard_services(
     )
     assert isinstance(
         container.resolve(ApprovalCenterService), ApprovalCenterService
+    )
+    assert isinstance(
+        container.resolve(SettingsScreenService), SettingsScreenService
     )
     assert not (tmp_path / "agent.db").exists()

@@ -135,6 +135,35 @@ needs its tests run in the later test phase; those tests are listed per task in
 | R-208 Retry Manager | `tests/test_retry_manager.py`, `tests/test_bootstrap.py` |
 | R-209 Session Manager | `tests/test_session_manager.py`, `tests/test_bootstrap.py` |
 | R-210 Daily Stop | `tests/test_daily_stop.py`, `tests/test_bootstrap.py` |
+| R-211 Crash Resume | `tests/test_crash_resume.py`, `tests/test_bootstrap.py` |
+| R-212 Graceful Shutdown | `tests/test_graceful_shutdown.py`, `tests/test_bootstrap.py` |
+| R-213 Kill Switch | `tests/test_kill_switch_service.py`, `tests/test_bootstrap.py` |
+| R-214 Orchestrator Audit | `tests/test_orchestrator_audit.py`, `tests/test_bootstrap.py` |
+| R-215 Orchestrator Tests | `tests/test_orchestrator_scenarios.py` |
+| S-216 Secret Boundary | `tests/test_secret_boundary.py`, `tests/test_bootstrap.py` |
+| S-217 Token Storage | `tests/test_token_storage.py`, `tests/test_bootstrap.py` |
+| S-218 Least Privilege | `tests/test_least_privilege.py`, `tests/test_bootstrap.py` |
+| S-219 Sensitive Logging | `tests/test_sensitive_logging.py`, `tests/test_log.py` |
+| S-220 Backup Plan | `tests/test_backup_plan.py`, `tests/test_bootstrap.py` |
+| S-221 Restore Test | `tests/test_restore_verification.py`, `tests/test_bootstrap.py` |
+| S-222 Failure Injection | `tests/test_failure_injection.py`, `tests/test_bootstrap.py` |
+| S-223 Security Audit | `tests/test_security_audit.py`, `tests/test_bootstrap.py` |
+| T-224 Core Integration | `tests/test_core_integration.py` |
+| T-225 Shorts E2E | `tests/test_shorts_e2e.py` |
+| T-226 LongForm E2E | `tests/test_longform_e2e.py` |
+| T-227 Dashboard E2E | `tests/test_dashboard_e2e.py` |
+| T-228 Email E2E | `tests/test_email_e2e.py` |
+| T-229 YouTube E2E | `tests/test_youtube_e2e.py` |
+| T-230 Duplicate Test | `tests/test_duplicate_publish_e2e.py` |
+| T-231 Stale Approval Test | `tests/test_stale_approval_e2e.py` |
+| T-232 Daily Limit Test | `tests/test_daily_limit_e2e.py` |
+| T-233 Budget Test | `tests/test_budget_e2e.py` |
+| T-234 Kill Switch Test | `tests/test_kill_switch_e2e.py` |
+| T-235 Recovery Test | `tests/test_recovery_e2e.py` |
+| T-236 Pilot Report | `tests/test_pilot_runner.py`, `tests/test_bootstrap.py` |
+| T-237 LongForm Unlock | `tests/test_longform_unlock.py`, `tests/test_bootstrap.py` |
+| T-238 Production Audit | `tests/test_production_audit.py`, `tests/test_bootstrap.py` |
+| STF-01..STF-11 Script-to-Film Engine | `tests/test_script_to_video.py`, `tests/test_bootstrap.py`, `tests/test_longform_render_scenarios.py`, `tests/test_qc_report.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -624,3 +653,34 @@ Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload
 ### R-206 Pipeline Runner
 
 - `PipelineRunner` advances content items one gate at a time and strictly enforces human approval in `AWAITING_APPROVAL`. Asynchronous long-running jobs (TTS, video rendering) transition to `TESTING` once their video artifact is committed. Handling job waiting state and resumption while waiting for approval belongs to `R-207`.
+
+### R-207..R-215 Orchestrator Runtime, Crash Recovery & Kill Switch
+
+- **Corrected during manual code inspection (2026-10-21):**
+  - Added `Database.connection()` read-only context manager in `core/db/database.py` (used by `JobScheduler`, `PipelineRunner`, `ApprovalWaitService`, `RetryManager`, `SessionManager`, `CrashResumeService`, and `GracefulShutdownService`).
+  - Moved `self._audit.record(...)` calls outside `with self._database.transaction():` blocks across `job_scheduler.py`, `pipeline_runner.py`, `approval_wait.py`, `retry_manager.py`, `session_manager.py`, and `daily_stop.py` so `SqliteAuditSink` never deadlocks on SQLite's single-writer lock in non-test environments.
+  - Fixed `AIJob.cancel()` in `pipeline/job.py` to clear `last_error=None`, `GateResult.blocked`/`passed` usage in `pipeline_runner.py`, and `AuditResult.DENIED` in `daily_stop.py`.
+- `KillSwitchService` holds emergency stop state in memory (`_state: EmergencyStop`) with thread-safe locking and optional SQLite queued-job cancellation; if cross-process persistence of emergency stop state is needed in a multi-worker deployment, add a dedicated `emergency_stop` table migration after the current migration test freeze.
+
+### S-216..S-223 Security & Recovery
+
+- `EncryptedFileTokenVault` uses Python stdlib `hashlib.pbkdf2_hmac` (`SHA-256`, 200,000 iterations) + CTR-mode keystream + `HMAC-SHA256` encrypt-then-MAC so no new third-party dependency is required while `uv.lock` is frozen.
+- `RestoreVerifier` validates SQLite `PRAGMA integrity_check`, `PRAGMA foreign_key_check`, table row counts, and every artifact file's SHA-256 digest in an isolated temporary directory without touching live database paths.
+
+### T-224..T-238 Integration, Shorts Pilot, LongForm Unlock & Production Readiness Audit
+
+- All 15 Phase T tasks (`T-224`..`T-238`) are implemented and manually inspected for API/signature parity, but in strict compliance with **Build-First Mode**, `pytest`, `ruff`, `mypy`, migration runners, and `uv build` have NOT been executed yet.
+- `ProductionReadinessAuditor` (`T-238`) defaults to `verification_passed=False` and returns `ReadinessVerdict.NOT_READY` with blocker `readiness.automated_verification_pending` until the full automated verification suite (`H-089`..`T-238`) is executed and passes.
+
+### STF-01..STF-11 Script-to-Film Engine Refactor
+
+- **Resolved pre-existing bugs during manual review (2026-10-21):**
+  - Fixed `BrollManager` (`src/ai_youtube_agent/content/broll_manager.py`): corrected `RightsRecord.status` -> `RightsRecord.resolution` (`RiskResolution.UNRESOLVED`), `ProvenanceRepository.get_latest_for_asset` -> `get_by_asset`, and `Provenance.status != APPROVED` -> `Provenance.license_status in {LicenseStatus.EXPIRED, LicenseStatus.UNKNOWN}`.
+  - Fixed `LongFormRenderService` (`src/ai_youtube_agent/content/longform_render.py`): aligned `ArtifactStorage.write(...)`, `AIJob.create` / `checkpoint(step, **data)` / `fail` / `succeed`, `LongFormAudioMixer.mix(...)`, `RenderLayer`/`CaptionCue`/`RenderRequest` construction, and `AuditLog.record(...)` with real domain contracts.
+  - Fixed `LongFormSubtitleRecorder` (`src/ai_youtube_agent/content/longform_subtitles.py`), `LongFormThumbnailService` (`src/ai_youtube_agent/content/longform_thumbnail.py`), `LongFormMetadataRecorder` (`src/ai_youtube_agent/content/longform_metadata.py`), and `LongFormBundleBuilder` (`src/ai_youtube_agent/content/longform_bundle.py`) to use the real `ArtifactStorage`, `VersionInvalidation.record_new_version`, `ProvenanceRepository.get_by_asset`, `DisclosureDecisionRepository.get_latest_by_content_item`, and `PolicyCheckResultRepository.get_latest_by_content_item` signatures.
+  - Fixed `QCReportBuilder` (`src/ai_youtube_agent/content/qc_report.py`) and `VideoArtifactTestHarness` (`src/ai_youtube_agent/content/qc_harness.py`) to inspect actual stored MP4/WAV/SRT/PNG/JSON artifact bytes so valid rendered videos pass all 9 `video.*` QC checks.
+  - Fixed `ShortsMetadataRecorder` and `ShortsBundleBuilder` constructor wiring in `src/ai_youtube_agent/bootstrap.py`.
+- **Provider availability & honest mode separation:**
+  - `VideoClipGenerator` defaults to `UnconfiguredVideoClipGenerator` (`available=False`) in `bootstrap.py`, so `ProductionMode.AI_FILM` honestly fails closed with `ScriptToVideoErrorCode.MODE_UNAVAILABLE` unless an available video clip generator (`MockVideoClipGenerator` or an external AI video provider) is configured.
+  - `ImageGenerator` defaults to `DeterministicSceneImageGenerator`, synthesizing valid 8-bit RGB PNG frames with consistent location color palettes and character/shot composition.
+  - No database migration was added (`LATEST` remains `28`) so existing migration tests are unaffected; `VideoProjectManifest` is persisted as a JSON file in `{artifact_dir}/manifests/{content_item_id}_manifest.json` alongside `AIJob` checkpoints in SQLite.

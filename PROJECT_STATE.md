@@ -1,24 +1,24 @@
 # Project State
 
-Last updated: 2026-10-20 (BUILD-FIRST: up to Q-200 implemented, untested)
+Last updated: 2026-10-21 (BUILD-FIRST: all 251 tasks through T-238 + Script-to-Film Engine Refactor STF-01..STF-11 implemented; H-089..T-238 and STF-01..STF-11 untested)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
 ## Current state
 
 ```
-PROJECT_STATE      = READY_FOR_PHASE_A
+PROJECT_STATE      = ALL_TASKS_AND_SCRIPT_TO_FILM_IMPLEMENTED_PENDING_VERIFICATION
 BASELINE_COMMIT    = 3b41416
 CURRENT_CHECKPOINT = 7c64291
 BASELINE_STATUS    = CLEAN
-TEST_STATUS        = PASS at 8b41c0b; DEFERRED for the BUILD-FIRST work
-LINT_STATUS        = PASS
-BUILD_STATUS       = PASS
+TEST_STATUS        = PASS at 8b41c0b; DEFERRED for the BUILD-FIRST work (H-089..T-238, STF-01..STF-11)
+LINT_STATUS        = PASS at 8b41c0b; DEFERRED for the BUILD-FIRST work
+BUILD_STATUS       = PASS at 8b41c0b; DEFERRED for the BUILD-FIRST work
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-BUILD_MODE         = BUILD-FIRST (user order 2026-10-16: no tests, lint, format or build until the user asks)
-UNTESTED_TASKS     = H-089, H-090, H-091, H-092 (STATIC_REVIEWED_UNTESTED), H-093, I-094, I-095, I-096, I-097, I-098, I-099, I-100 (IMPLEMENTED_UNTESTED), I-101, I-102, I-103, I-104, J-105, J-106, J-107, J-108, J-109, J-110, J-111, J-112, J-113, J-114, J-115, K-116, K-117, K-118, K-119, K-120, K-121, K-122, K-123, K-124, K-125, K-126, K-127, K-128, K-129, K-130, L-131, L-132, L-133, L-134, L-135, L-136, L-137, L-138, L-139, L-140, L-141, L-142, L-143, L-144 (STATIC_REVIEWED_UNTESTED), M-145, M-146, M-147, M-148, M-149, M-150 (IMPLEMENTED_UNTESTED, downgraded 2026-10-20 after API errors were found and fixed), M-151 (IMPLEMENTED_UNTESTED), M-152 (IMPLEMENTED_UNTESTED), M-153 (IMPLEMENTED_UNTESTED), M-154 (IMPLEMENTED_UNTESTED), M-155 (IMPLEMENTED_UNTESTED), M-156 (IMPLEMENTED_UNTESTED), M-157 (IMPLEMENTED_UNTESTED), N-158 (IMPLEMENTED_UNTESTED), N-159 (IMPLEMENTED_UNTESTED), N-160 (IMPLEMENTED_UNTESTED), N-161 (IMPLEMENTED_UNTESTED), N-162 (IMPLEMENTED_UNTESTED), N-163 (IMPLEMENTED_UNTESTED), N-164 (IMPLEMENTED_UNTESTED), N-165 (IMPLEMENTED_UNTESTED), N-166 (IMPLEMENTED_UNTESTED), N-167 (IMPLEMENTED_UNTESTED), N-168 (IMPLEMENTED_UNTESTED), N-169 (IMPLEMENTED_UNTESTED), O-170 (IMPLEMENTED_UNTESTED), O-171 (IMPLEMENTED_UNTESTED), O-172 (IMPLEMENTED_UNTESTED), O-173 (IMPLEMENTED_UNTESTED), O-174 (IMPLEMENTED_UNTESTED), O-175 (IMPLEMENTED_UNTESTED), O-176 (IMPLEMENTED_UNTESTED), O-177 (IMPLEMENTED_UNTESTED), O-178 (IMPLEMENTED_UNTESTED), O-179 (IMPLEMENTED_UNTESTED), O-180 (IMPLEMENTED_UNTESTED), O-181 (IMPLEMENTED_UNTESTED), P-182 (IMPLEMENTED_UNTESTED), P-183 (IMPLEMENTED_UNTESTED), P-184 (IMPLEMENTED_UNTESTED), P-185 (IMPLEMENTED_UNTESTED), P-186 (IMPLEMENTED_UNTESTED), P-187 (IMPLEMENTED_UNTESTED), P-188 (IMPLEMENTED_UNTESTED), P-189 (IMPLEMENTED_UNTESTED), P-190 (IMPLEMENTED_UNTESTED), Q-191 (IMPLEMENTED_UNTESTED), Q-192 (IMPLEMENTED_UNTESTED), Q-193 (IMPLEMENTED_UNTESTED), Q-194 (IMPLEMENTED_UNTESTED), Q-195 (IMPLEMENTED_UNTESTED), Q-196 (IMPLEMENTED_UNTESTED), Q-197 (IMPLEMENTED_UNTESTED), Q-198 (IMPLEMENTED_UNTESTED), Q-199 (IMPLEMENTED_UNTESTED), Q-200 (IMPLEMENTED_UNTESTED), Q-201 (IMPLEMENTED_UNTESTED), Q-202 (IMPLEMENTED_UNTESTED), Q-203 (IMPLEMENTED_UNTESTED), R-204 (IMPLEMENTED_UNTESTED), R-205 (IMPLEMENTED_UNTESTED), R-206 (IMPLEMENTED_UNTESTED), R-207 (IMPLEMENTED_UNTESTED), R-208 (IMPLEMENTED_UNTESTED), R-209 (IMPLEMENTED_UNTESTED), R-210 (IMPLEMENTED_UNTESTED)
-NEXT_TASK          = R-211 Crash Resume
+BUILD_MODE         = BUILD-FIRST (user order: no tests, lint, format or build during development run)
+UNTESTED_TASKS     = H-089..L-144 (56 tasks STATIC_REVIEWED_UNTESTED), M-145..T-238 (94 tasks IMPLEMENTED_UNTESTED), STF-01..STF-11 (Script-to-Film Engine Refactor STATIC_REVIEWED_UNTESTED)
+NEXT_TASK          = NONE (All 251 Prompt Pack v8 tasks + Script-to-Film Engine Refactor implemented; ready for deferred test/verification phase)
 ```
 
 ## Next task
@@ -151,7 +151,54 @@ Q-202 Alerts is IMPLEMENTED_UNTESTED. Added `src/ai_youtube_agent/content/dashbo
 
 Q-203 Dashboard Tests is IMPLEMENTED_UNTESTED. Added `tests/test_dashboard_scenarios.py` verifying mocked data rendering across all 11 Command Center screens, empty states when no channels exist, dynamic badge calculations across pending approvals, attention comments, and active jobs, error states, and XSS escaping. Phase Q is complete.
 
-Next: **R-204 Job Queue**.
+R-204..R-215 (Phase R: Orchestrator & Session Runtime) are IMPLEMENTED_UNTESTED:
+- `R-204 Job Queue`: `pipeline/job_queue.py` (`JobQueue`, `SqliteJobQueue`, `InMemoryJobQueue`), `tests/test_job_queue.py`.
+- `R-205 Job Scheduler`: `pipeline/job_scheduler.py` (`JobScheduler`), `tests/test_job_scheduler.py`.
+- `R-206 Pipeline Runner`: `pipeline/pipeline_runner.py` (`PipelineRunner`), `tests/test_pipeline_runner.py`.
+- `R-207 Approval Wait`: `pipeline/approval_wait.py` (`ApprovalWaitService`), `tests/test_approval_wait.py`.
+- `R-208 Retry Manager`: `pipeline/retry_manager.py` (`JobRetryPolicy`, `RetryManager`), `tests/test_retry_manager.py`.
+- `R-209 Session Manager`: `pipeline/session_manager.py` (`SessionManager`), `tests/test_session_manager.py`.
+- `R-210 Daily Stop`: `pipeline/daily_stop.py` (`DailyStopService`), `tests/test_daily_stop.py`.
+- `R-211 Crash Resume`: `pipeline/crash_resume.py` (`CrashResumeService`), `tests/test_crash_resume.py`.
+- `R-212 Graceful Shutdown`: `pipeline/graceful_shutdown.py` (`GracefulShutdownService`), `tests/test_graceful_shutdown.py`.
+- `R-213 Kill Switch`: `pipeline/kill_switch_service.py` (`KillSwitchService` implementing `KillSwitchSource`), `tests/test_kill_switch_service.py`.
+- `R-214 Orchestrator Audit`: `pipeline/orchestrator_audit.py` (`OrchestratorAuditRecorder`, `OrchestratorAuditService`), `tests/test_orchestrator_audit.py`.
+- `R-215 Orchestrator Tests`: `tests/test_orchestrator_scenarios.py`.
+
+S-216..S-223 (Phase S: Security & Recovery) are IMPLEMENTED_UNTESTED:
+- `S-216 Secret Boundary`: `core/secret_boundary.py` (`SecretBoundaryValidator`), `.gitignore`, `tests/test_secret_boundary.py`.
+- `S-217 Token Storage`: `core/token_storage.py` (`EncryptedFileTokenVault`, `InMemoryTokenVault`, `ManagedTokenStore`), `tests/test_token_storage.py`.
+- `S-218 Least Privilege`: `core/least_privilege.py` (`LeastPrivilegePolicy`), `docs/SECURITY_SCOPES.md`, `tests/test_least_privilege.py`.
+- `S-219 Sensitive Logging`: `core/log_redaction.py` (`SensitiveLogFilter`, `redact_string`, `redact_mapping`), wired into `core/log.py`, `tests/test_sensitive_logging.py`.
+- `S-220 Backup Plan`: `core/backup_plan.py` (`BackupManager`, `BackupManifest`), `docs/BACKUP_PLAN.md`, `tests/test_backup_plan.py`.
+- `S-221 Restore Test`: `core/restore_verifier.py` (`RestoreVerifier`), `tests/test_restore_verification.py`.
+- `S-222 Failure Injection`: `core/failure_injection.py` (`FailureInjector`, `FaultTarget`), `tests/test_failure_injection.py`.
+- `S-223 Security Audit`: `core/security_audit.py` (`SecurityAuditor`), `docs/SECURITY_AUDIT.md`, `tests/test_security_audit.py`.
+
+T-224..T-238 (Phase T: Integration & Production Readiness) are IMPLEMENTED_UNTESTED:
+- `T-224 Core Integration`: `tests/test_core_integration.py`.
+- `T-225 Shorts E2E`: `tests/test_shorts_e2e.py`.
+- `T-226 LongForm E2E`: `tests/test_longform_e2e.py`.
+- `T-227 Dashboard E2E`: `tests/test_dashboard_e2e.py`.
+- `T-228 Email E2E`: `tests/test_email_e2e.py`.
+- `T-229 YouTube E2E`: `tests/test_youtube_e2e.py`.
+- `T-230 Duplicate Test`: `tests/test_duplicate_publish_e2e.py`.
+- `T-231 Stale Approval Test`: `tests/test_stale_approval_e2e.py`.
+- `T-232 Daily Limit Test`: `tests/test_daily_limit_e2e.py`.
+- `T-233 Budget Test`: `tests/test_budget_e2e.py`.
+- `T-234 Kill Switch Test`: `tests/test_kill_switch_e2e.py`.
+- `T-235 Recovery Test`: `tests/test_recovery_e2e.py`.
+- `T-236 Pilot Report`: `pipeline/pilot_runner.py` (`ShortsPilotRunner`, `ShortsPilotReport`), `docs/T-236_PILOT_REPORT.md`, `tests/test_pilot_runner.py`.
+- `T-237 LongForm Unlock`: `pipeline/longform_unlock.py` (`LongFormUnlockService`), `tests/test_longform_unlock.py`.
+- `T-238 Production Audit`: `pipeline/production_audit.py` (`ProductionReadinessAuditor`), `docs/T-238_PRODUCTION_AUDIT.md`, `tests/test_production_audit.py`.
+
+STF-01..STF-11 (Script-to-Film Engine Refactor) are STATIC_REVIEWED_UNTESTED:
+- `STF-01 Audit`: `docs/SCRIPT_TO_FILM_AUDIT.md`.
+- `STF-02..STF-09 Unified Script-to-Video Pipeline`: `content/story_bible.py` (`StoryBible`, `ScriptAnalyzer`), `content/scene_planner.py` (`SceneBreakdownPlan`, `SceneBreakdownPlanner`), `providers/image_generation.py` + `providers/mock_image_generation.py` (`ImageGenerator`, `DeterministicSceneImageGenerator`), `providers/video_generation.py` + `providers/mock_video_generation.py` (`VideoClipGenerator`, `UnconfiguredVideoClipGenerator`, `MockVideoClipGenerator`), `pipeline/script_to_video.py` (`ScriptToVideoService`, `VideoProjectManifest`), `content/script_to_video_api.py` (FastAPI endpoints), wired in `bootstrap.py` and `main.py`, plus pre-existing bug fixes across LongForm (`broll_manager.py`, `longform_render.py`, `longform_subtitles.py`, `longform_thumbnail.py`, `longform_metadata.py`, `longform_bundle.py`) and QC (`qc_report.py`, `qc_harness.py`).
+- `STF-10 Tests`: `tests/test_script_to_video.py`.
+- `STF-11 Architecture Doc`: `docs/SCRIPT_TO_FILM_ARCHITECTURE.md`.
+
+All 251 tasks in Prompt Pack v8 (`000–011` and `A-001`..`T-238`) plus the Script-to-Film Engine Refactor (`STF-01`..`STF-11`) are implemented. Next step when requested by the user: execute the deferred automated verification suite (`pytest`, `ruff`, `mypy`, migration runner, `uv build`).
 
 H-088 TTS Job has PASSED (pack #088; scope confirmed by the user on 2026-10-16 after a read-only survey). User decisions: one chunk per `ScriptSection`, a section over 5000 characters split at sentence ends, then whitespace, then a hard cut; chunk audio in a `ChunkStore` Protocol with `InMemoryChunkStore`; one merged PCM WAV (formats must match); reuse `AIJob` (kind `audio.generate`, key `audio_key(script id, voice profile id, version)` added to `pipeline/idempotency.py`), no migration; a stuck RUNNING job is recovered only by `run(..., take_over=True)` (waiting is always refused); no audit events; a succeeded rerun rebuilds from checkpoints and the store with no provider call or write (`domain.tts_result_unavailable` if chunks are gone); total duration is the sum of chunk durations. New `content/tts_job.py`: the provider name, item and channel are checked before anything is stored; scalar checkpoints `audio.planned`, `audio.chunk_done` (index, hashes, duration, format) and `audio.completed` (saved with `succeed`); `store.put` before the checkpoint; a chunk is reused only when its newest checkpoint, text hash, bytes hash and format match; a `SpeechSynthesisError` or `TtsJobError` fails the attempt with the code only and is re-raised (no retry, #091); other errors and `ConcurrencyError` leave the job running; no script text in checkpoints, `last_error` or errors. Routing: NORMAL (score 7) re-routed to COMPLEX (score 12, Opus trigger reasoning risk) on the planner's evidence; planner sonnet/medium, coder and reviewer opus/high. Review PASS: 0 blocking, 0 should-fix, 5 minor (permanent failure after a provider format change, no store fence on take-over, reused + synthesized counts can exceed chunks, the pinned clock can repeat `updated_at`, a raw `IntegrityError` on two concurrent first runs; no test for "no audit" or an exact 5000-character chunk). Tests: `tests/test_tts_job.py` 53 new; affected 900 passed (job, repositories, speech_synthesis, voice, script, idempotency_gate, gate_matrix, publishing_blocker, folder_structure); full suite RUN once at the checkpoint, 6069 passed (justified: checkpoint and a new shared pipeline key); migration chain NOT RUN (no schema change); ruff and `uv build` pass. Agent cost: about 323k tokens over 3 runs.
 

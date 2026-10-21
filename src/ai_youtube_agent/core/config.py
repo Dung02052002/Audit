@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     # the base of the exponential wait in seconds (0 means no wait).
     upload_max_attempts: int = Field(default=3, ge=1, le=5)
     upload_retry_base_delay_seconds: int = Field(default=2, ge=0, le=60)
+    # Pipeline job retries (#208): bounded retries with exponential backoff and jitter.
+    job_max_attempts: int = Field(default=3, ge=1, le=10)
+    job_retry_base_delay_seconds: int = Field(default=2, ge=0, le=300)
+    job_retry_max_delay_seconds: int = Field(default=300, ge=0, le=3600)
 
     @field_validator("approval_ttl_hours", mode="before")
     @classmethod
@@ -148,12 +152,17 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "upload_max_attempts", "upload_retry_base_delay_seconds", mode="before"
+        "upload_max_attempts",
+        "upload_retry_base_delay_seconds",
+        "job_max_attempts",
+        "job_retry_base_delay_seconds",
+        "job_retry_max_delay_seconds",
+        mode="before",
     )
     @classmethod
     def _refuse_bool_upload_retry(cls, value: Any) -> Any:
         if isinstance(value, bool):
-            raise ValueError("upload retry settings must be integers, not bools")
+            raise ValueError("retry settings must be integers, not bools")
         return value
 
     @field_validator("tts_price_per_1k_characters", mode="before")

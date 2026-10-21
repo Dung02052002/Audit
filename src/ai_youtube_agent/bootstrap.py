@@ -173,6 +173,7 @@ from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
 from ai_youtube_agent.pipeline.pipeline_runner import PipelineRunner
 from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
+from ai_youtube_agent.pipeline.retry_manager import JobRetryPolicy, RetryManager
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
 from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
 from ai_youtube_agent.pipeline.publish_result import PublishResultService
@@ -987,6 +988,19 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda c: ApprovalWaitService(
             c.resolve(Database),
             c.resolve(AuditLog),
+            queue=c.resolve(JobQueue),
+        ),
+    )
+    container.register(
+        RetryManager,
+        lambda c: RetryManager(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            policy=JobRetryPolicy(
+                max_attempts=c.resolve(Settings).job_max_attempts,
+                base_delay_seconds=float(c.resolve(Settings).job_retry_base_delay_seconds),
+                max_delay_seconds=float(c.resolve(Settings).job_retry_max_delay_seconds),
+            ),
             queue=c.resolve(JobQueue),
         ),
     )

@@ -1,0 +1,174 @@
+"""Tests for RetryManager and JobRetryPolicy (Prompt Pack v8, task R-208)."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from ai_youtube_agent.core.audit import AuditLog
+from ai_youtube_agent.core.content_item import ContentItem, ContentType
+from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
+from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
+from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
+from ai_youtube_agent.pipeline.job_queue import InMemoryJobQueue
+from ai_youtube_agent.pipeline.retry_manager import (
+    JobRetryPolicy,
+    RetryManager,
+    RetryManagerError,
+)
+from ai_youtube_agent.pipeline.stages import PipelineStage
+
+T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+
+def _fixed_clock(dt: datetime):
+    return lambda: dt
+
+
+@pytest.fixture
+def db(tmp_path):
+    database = Database(str(tmp_path / "test.db"))
+    database.run_migrations()
+    return database
+
+
+@pytest.fixture
+def audit_log(db):
+    return AuditLog(db)
+
+
+@pytest.fixture
+def sample_item(db):
+    item = ContentItem.create(
+        title="Test Item",
+        content_type=ContentType.SHORTS,
+        clock=_fixed_clock(T0),
+    )
+    with db.transaction() as conn:
+        ContentItemRepository(conn).add(item)
+    return item
+
+
+@pytest.fixture
+def sample_job(db, sample_item):
+    job = AIJob.create(
+        content_item_id=sample_item.id,
+        pipeline_stage=PipelineStage.PRODUCTION,
+        clock=_fixed_clock(T0),
+    ).start(clock=_fixed_clock(T0))
+    with db.transaction() as conn:
+        AIJobRepository(conn).add(job)
+    return job
+
+
+def test_retry_policy_exponential_backoff_calculation():
+    policy = JobRetryPolicy(
+        max_attempts=4,
+        base_delay_seconds=2.0,
+        max_delay_seconds=30.0,
+        backoff_multiplier=2.0,
+        jitter=False,
+    )
+    assert policy.delay_after(1) == 2.0
+    assert policy.delay_after(2) == 4.0
+    assert policy.delay_after(3) == 8.0
+    assert policy.delay_after(4) == 16.0
+    assert policy.delay_after(5) == 30.0  # capped at max_delay_seconds
+
+
+def test_retry_policy_validation():
+    with pytest.raises(ValueError, match="max_attempts"):
+        JobRetryPolicy(max_attempts=0)
+    with pytest.raises(ValueError, match="max_attempts"):
+        JobRetryPolicy(max_attempts=11)
+    with pytest.raises(ValueError, match="base_delay_seconds"):
+        JobRetryPolicy(base_delay_seconds=-1)
+    with pytest.raises(ValueError, match="max_delay_seconds"):
+        JobRetryPolicy(base_delay_seconds=10.0, max_delay_seconds=5.0)
+
+
+def test_retry_policy_error_classification():
+    policy = JobRetryPolicy()
+    assert policy.is_retryable_error("Connection timeout connecting to provider") is True
+    assert policy.is_retryable_error("HTTP 503 Service Unavailable") is True
+    assert policy.is_retryable_error("Policy_Violation: prohibited term") is False
+    assert policy.is_retryable_error("Copyright_Infringement detected") is False
+    assert policy.is_retryable_error("Validation_Error in metadata") is False
+
+
+def test_evaluate_retry_success(db, audit_log, sample_job):
+    manager = RetryManager(db, audit_log, clock=_fixed_clock(T0))
+    eval_res = manager.evaluate_retry(sample_job.id, "Network glitch", jitter_factor=0.5)
+
+    assert eval_res.should_retry is True
+    assert eval_res.attempt == 1
+    assert eval_res.max_attempts == 3
+    assert eval_res.delay_seconds > 0
+    assert eval_res.next_eligible_at is not None
+    assert eval_res.is_terminal is False
+
+
+def test_schedule_retry_running_job(db, audit_log, sample_job):
+    queue = InMemoryJobQueue(clock=_fixed_clock(T0))
+    manager = RetryManager(db, audit_log, queue=queue, clock=_fixed_clock(T0 + timedelta(seconds=5)))
+    res = manager.schedule_retry(sample_job.id, "Provider timeout", jitter_factor=0.5)
+
+    assert res.should_retry is True
+    assert queue.depth() == 1
+
+    with db.transaction() as conn:
+        persisted = AIJobRepository(conn).get(sample_job.id)
+        assert persisted is not None
+        assert persisted.status is AIJobStatus.FAILED
+        assert persisted.checkpoints[-1].step == "retry.scheduled"
+        assert persisted.checkpoints[-1].data["error"] == "Provider timeout"
+
+
+def test_schedule_retry_exhausted_attempts(db, audit_log, sample_job):
+    policy = JobRetryPolicy(max_attempts=1)
+    manager = RetryManager(db, audit_log, policy=policy, clock=_fixed_clock(T0))
+
+    # Job already has attempts = 1
+    res = manager.schedule_retry(sample_job.id, "Persistent error")
+
+    assert res.should_retry is False
+    assert res.is_terminal is True
+    assert "Exceeded max retry attempts" in res.reason
+
+    with db.transaction() as conn:
+        persisted = AIJobRepository(conn).get(sample_job.id)
+        assert persisted is not None
+        assert persisted.checkpoints[-1].step == "retry.terminal"
+
+
+def test_schedule_retry_non_retryable_error(db, audit_log, sample_job):
+    manager = RetryManager(db, audit_log, clock=_fixed_clock(T0))
+    res = manager.schedule_retry(sample_job.id, "Fatal Policy_Violation in script")
+
+    assert res.should_retry is False
+    assert res.is_terminal is True
+    assert "Non-retryable error" in res.reason
+
+
+def test_execute_retry(db, audit_log, sample_job):
+    manager = RetryManager(db, audit_log, clock=_fixed_clock(T0))
+    manager.schedule_retry(sample_job.id, "Transient network drop")
+
+    restarted = manager.execute_retry(sample_job.id)
+    assert restarted.status is AIJobStatus.RUNNING
+    assert restarted.attempts == 2
+
+    with db.transaction() as conn:
+        persisted = AIJobRepository(conn).get(sample_job.id)
+        assert persisted is not None
+        assert persisted.status is AIJobStatus.RUNNING
+        assert persisted.attempts == 2
+
+
+def test_list_retriable_jobs(db, audit_log, sample_job):
+    manager = RetryManager(db, audit_log, clock=_fixed_clock(T0))
+    manager.schedule_retry(sample_job.id, "Temporary 503 error")
+
+    retriable = manager.list_retriable_jobs()
+    assert len(retriable) == 1
+    assert retriable[0].id == sample_job.id

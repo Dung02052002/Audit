@@ -170,6 +170,7 @@ from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
 from ai_youtube_agent.pipeline.job_queue import JobQueue, SqliteJobQueue
 from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
+from ai_youtube_agent.pipeline.pipeline_runner import PipelineRunner
 from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
 from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
@@ -965,6 +966,19 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(AuditLog),
             budget_guard=c.resolve(BudgetGuard),
             flags=c.resolve(FeatureFlags),
+        ),
+    )
+    container.register(
+        PipelineRunner,
+        lambda c: PipelineRunner(
+            c.resolve(Database),
+            c.resolve(Settings),
+            c.resolve(AuditLog),
+            flags=c.resolve(FeatureFlags),
+            publish_gate=c.resolve(PublishGate),
+            qc_builder=c.resolve(QCReportBuilder),
+            shorts_publisher=c.resolve(ShortsPublisher),
+            longform_publisher=c.resolve(LongFormPublisher),
         ),
     )
     return container

@@ -650,4 +650,10 @@ def test_container_resolves_orchestrator_job_queue(
     scheduler = container.resolve(JobScheduler)
     assert isinstance(scheduler, JobScheduler)
     assert container.resolve(JobScheduler) is scheduler
+
+    from ai_youtube_agent.pipeline.pipeline_runner import PipelineRunner
+
+    runner = container.resolve(PipelineRunner)
+    assert isinstance(runner, PipelineRunner)
+    assert container.resolve(PipelineRunner) is runner
     assert not (tmp_path / "agent.db").exists()

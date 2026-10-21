@@ -130,6 +130,7 @@ needs its tests run in the later test phase; those tests are listed per task in
 | Q-203 Dashboard Tests | `tests/test_dashboard_scenarios.py` |
 | R-204 Job Queue | `tests/test_job_queue.py`, `tests/test_bootstrap.py` |
 | R-205 Job Scheduler | `tests/test_job_scheduler.py`, `tests/test_bootstrap.py` |
+| R-206 Pipeline Runner | `tests/test_pipeline_runner.py`, `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -615,3 +616,7 @@ Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload
 ### R-205 Job Scheduler
 
 - `JobScheduler` calculates production capacity based on calendar days in `strategy.cadence.time_zone` and verifies channel status, feature flags, emergency stop (`KillSwitchGate`), and `BudgetGuard` before enqueuing jobs. Real-time background scheduling daemon / cron runner will be wired in pipeline runner (`#206`).
+
+### R-206 Pipeline Runner
+
+- `PipelineRunner` advances content items one gate at a time and strictly enforces human approval in `AWAITING_APPROVAL`. Asynchronous long-running jobs (TTS, video rendering) transition to `TESTING` once their video artifact is committed. Handling job waiting state and resumption while waiting for approval belongs to `R-207`.

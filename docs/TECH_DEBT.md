@@ -129,6 +129,7 @@ needs its tests run in the later test phase; those tests are listed per task in
 | Q-202 Alerts | `tests/test_dashboard_alerts.py`, `tests/test_bootstrap.py` |
 | Q-203 Dashboard Tests | `tests/test_dashboard_scenarios.py` |
 | R-204 Job Queue | `tests/test_job_queue.py`, `tests/test_bootstrap.py` |
+| R-205 Job Scheduler | `tests/test_job_scheduler.py`, `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items
@@ -610,3 +611,7 @@ Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload
 ### R-204 Job Queue
 
 - `SqliteJobQueue` tracks worker leases via append-only `job_checkpoints` (`queue.leased` step) without requiring a new database schema migration. Expired leases are reclaimed on dequeue or explicit `reclaim_expired_leases` calls; background lease heartbeats will be managed by the scheduler/runner (`#205`/`#206`).
+
+### R-205 Job Scheduler
+
+- `JobScheduler` calculates production capacity based on calendar days in `strategy.cadence.time_zone` and verifies channel status, feature flags, emergency stop (`KillSwitchGate`), and `BudgetGuard` before enqueuing jobs. Real-time background scheduling daemon / cron runner will be wired in pipeline runner (`#206`).

@@ -644,4 +644,10 @@ def test_container_resolves_orchestrator_job_queue(
     queue = container.resolve(JobQueue)
     assert isinstance(queue, SqliteJobQueue)
     assert container.resolve(JobQueue) is queue
+
+    from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
+
+    scheduler = container.resolve(JobScheduler)
+    assert isinstance(scheduler, JobScheduler)
+    assert container.resolve(JobScheduler) is scheduler
     assert not (tmp_path / "agent.db").exists()

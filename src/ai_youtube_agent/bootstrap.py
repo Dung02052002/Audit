@@ -168,6 +168,7 @@ from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
 from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
 from ai_youtube_agent.pipeline.job_queue import JobQueue, SqliteJobQueue
+from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
 from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
@@ -955,6 +956,16 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         JobQueue,
         lambda c: SqliteJobQueue(c.resolve(Database)),
+    )
+    container.register(
+        JobScheduler,
+        lambda c: JobScheduler(
+            c.resolve(Database),
+            c.resolve(JobQueue),
+            c.resolve(AuditLog),
+            budget_guard=c.resolve(BudgetGuard),
+            flags=c.resolve(FeatureFlags),
+        ),
     )
     return container
 

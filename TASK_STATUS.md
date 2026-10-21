@@ -343,6 +343,7 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | Task | Name | Dependency | Status |
 |---|---|---|---|
 | R-204 | Job Queue | Q-13 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-21; manual review only). Implemented `src/ai_youtube_agent/pipeline/job_queue.py` (`JobQueue` Protocol, `QueuedJobLease`, `QueueEnqueueResult`, `JobQueueError`, `SqliteJobQueue` backed by SQLite `Database` and `AIJobRepository` with worker lease checkpoints and crash recovery, and `InMemoryJobQueue`), registered in `src/ai_youtube_agent/bootstrap.py`, and added `tests/test_job_queue.py` and `tests/test_bootstrap.py`. Tests NOT RUN: `tests/test_job_queue.py`, `tests/test_bootstrap.py` |
+| R-205 | Job Scheduler | R-1 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-21; manual review only). Implemented `src/ai_youtube_agent/pipeline/job_scheduler.py` (`JobScheduler`, `ScheduleEligibility`, `ScheduleDecision`, `JobSchedulerError`), scheduling eligible pipeline jobs across active channels without exceeding cadence limits, daily production starts, or budget constraints; transitions draft items to generating via `start_production` and enqueues jobs into `JobQueue`; registered in `src/ai_youtube_agent/bootstrap.py`, and added `tests/test_job_scheduler.py` and `tests/test_bootstrap.py`. Tests NOT RUN: `tests/test_job_scheduler.py`, `tests/test_bootstrap.py` |
 
 ## Current
 
@@ -363,5 +364,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - Batch 10 (`O-171 Estimated Revenue`, `O-172 Final Revenue`, `O-173 Revenue Sources`, `O-174 Cost Ledger`, `O-175 LLM Cost`, `O-176 TTS Cost`, `O-177 Render Cost`, `O-178 Storage/API Cost`, `O-179 Contribution Margin`, `O-180 Budget Guard`) is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`; no tests, lint, format or build run).
 - Batch 11 (`O-181 Economics Tests`, `P-182 Comment Provider`, `P-183 Comment Sync`, `P-184 Comment Classification`, `P-185 Reply Draft`, `P-186 Reply Approval`, `P-187 Duplicate Reply Guard`, `P-188 AUTO_REPLY Flag`, `P-189 Comment Audit`, `P-190 Comment Tests`) is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`; no tests, lint, format or build run). Phase O and Phase P are complete.
 - Phase Q (Q-191..Q-203) is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`).
-- R-204 Job Queue is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`).
-- Next task: **R-205 Job Scheduler**.
+- R-204 Job Queue and R-205 Job Scheduler are implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`).
+- Next task: **R-206 Pipeline Runner**.

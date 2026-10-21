@@ -127,6 +127,7 @@ needs its tests run in the later test phase; those tests are listed per task in
 | Q-200 Approval Center UI | `tests/test_dashboard_approvals.py`, `tests/test_bootstrap.py` |
 | Q-201 Settings Screen | `tests/test_dashboard_settings.py`, `tests/test_bootstrap.py` |
 | Q-202 Alerts | `tests/test_dashboard_alerts.py`, `tests/test_bootstrap.py` |
+| Q-203 Dashboard Tests | `tests/test_dashboard_scenarios.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items

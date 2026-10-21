@@ -674,4 +674,10 @@ def test_container_resolves_orchestrator_job_queue(
     session_mgr = container.resolve(SessionManager)
     assert isinstance(session_mgr, SessionManager)
     assert container.resolve(SessionManager) is session_mgr
+
+    from ai_youtube_agent.pipeline.daily_stop import DailyStopService
+
+    daily_stop = container.resolve(DailyStopService)
+    assert isinstance(daily_stop, DailyStopService)
+    assert container.resolve(DailyStopService) is daily_stop
     assert not (tmp_path / "agent.db").exists()

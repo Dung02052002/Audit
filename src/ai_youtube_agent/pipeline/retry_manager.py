@@ -18,6 +18,7 @@ from ai_youtube_agent.core.audit import (
 )
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
+from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
 from ai_youtube_agent.pipeline.job_queue import JobQueue
 
@@ -36,8 +37,11 @@ DEFAULT_NON_RETRYABLE_PATTERNS: Final[frozenset[str]] = frozenset({
 })
 
 
-class RetryManagerError(RuntimeError):
+class RetryManagerError(DomainError):
     """Raised when retry management cannot proceed."""
+
+    default_code = "domain.retry_manager_error"
+    default_user_message = "Could not evaluate or schedule a retry for this job."
 
 
 @dataclass(frozen=True)
@@ -76,12 +80,7 @@ class JobRetryPolicy:
             raise ValueError("backoff_multiplier must be >= 1.0")
 
     def delay_after(self, attempt: int, *, jitter_factor: float | None = None) -> float:
-        """Computes exponential backoff delay in seconds after a given attempt count.
-
-        Args:
-            attempt: Number of attempts completed so far (1 is first failure).
-            jitter_factor: Optional deterministic jitter scale (0.0 to 1.0).
-        """
+        """Computes exponential backoff delay in seconds after a given attempt count."""
         if isinstance(attempt, bool) or attempt < 1:
             raise ValueError("attempt must be an integer >= 1")
 
@@ -91,12 +90,10 @@ class JobRetryPolicy:
         if not self.jitter:
             return float(capped_delay)
 
-        # Apply deterministic jitter if specified, or mid-range (1.0) by default
         scale = 1.0
         if jitter_factor is not None:
             if not 0.0 <= jitter_factor <= 1.0:
                 raise ValueError("jitter_factor must be between 0.0 and 1.0")
-            # Maps 0..1 to 0.8..1.2
             scale = 0.8 + 0.4 * jitter_factor
 
         return float(min(self.max_delay_seconds, capped_delay * scale))
@@ -160,6 +157,58 @@ class RetryManager:
     def _now(self) -> datetime:
         return self._clock() if self._clock else datetime.now(UTC)
 
+    def _evaluate_job(
+        self,
+        job: AIJob,
+        error_message: str | None = None,
+        *,
+        jitter_factor: float | None = None,
+    ) -> RetryEvaluation:
+        err = error_message or job.last_error or ""
+        current_attempts = job.attempts
+        max_attempts = self._policy.max_attempts
+
+        if current_attempts >= max_attempts:
+            return RetryEvaluation(
+                job_id=job.id,
+                should_retry=False,
+                attempt=current_attempts,
+                max_attempts=max_attempts,
+                delay_seconds=0.0,
+                next_eligible_at=None,
+                reason=f"Exceeded max retry attempts ({current_attempts}/{max_attempts})",
+                is_terminal=True,
+            )
+
+        if not self._policy.is_retryable_error(err):
+            return RetryEvaluation(
+                job_id=job.id,
+                should_retry=False,
+                attempt=current_attempts,
+                max_attempts=max_attempts,
+                delay_seconds=0.0,
+                next_eligible_at=None,
+                reason=f"Non-retryable error: {err}",
+                is_terminal=True,
+            )
+
+        delay = self._policy.delay_after(
+            max(1, current_attempts), jitter_factor=jitter_factor
+        )
+        now = self._now()
+        next_eligible = now + timedelta(seconds=delay)
+
+        return RetryEvaluation(
+            job_id=job.id,
+            should_retry=True,
+            attempt=current_attempts,
+            max_attempts=max_attempts,
+            delay_seconds=delay,
+            next_eligible_at=next_eligible,
+            reason=f"Eligible for retry (attempt {current_attempts + 1}/{max_attempts}) after {delay:.1f}s",
+            is_terminal=False,
+        )
+
     def evaluate_retry(
         self,
         job_id: str,
@@ -168,54 +217,12 @@ class RetryManager:
         jitter_factor: float | None = None,
     ) -> RetryEvaluation:
         """Evaluates whether a job can be retried without modifying its state."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             job = AIJobRepository(conn).get(job_id)
             if job is None:
                 raise RetryManagerError(f"Job {job_id} not found")
-
-            err = error_message or job.last_error or ""
-            current_attempts = job.attempts
-            max_attempts = self._policy.max_attempts
-
-            if current_attempts >= max_attempts:
-                return RetryEvaluation(
-                    job_id=job.id,
-                    should_retry=False,
-                    attempt=current_attempts,
-                    max_attempts=max_attempts,
-                    delay_seconds=0.0,
-                    next_eligible_at=None,
-                    reason=f"Exceeded max retry attempts ({current_attempts}/{max_attempts})",
-                    is_terminal=True,
-                )
-
-            if not self._policy.is_retryable_error(err):
-                return RetryEvaluation(
-                    job_id=job.id,
-                    should_retry=False,
-                    attempt=current_attempts,
-                    max_attempts=max_attempts,
-                    delay_seconds=0.0,
-                    next_eligible_at=None,
-                    reason=f"Non-retryable error: {err}",
-                    is_terminal=True,
-                )
-
-            delay = self._policy.delay_after(
-                max(1, current_attempts), jitter_factor=jitter_factor
-            )
-            now = self._now()
-            next_eligible = now + timedelta(seconds=delay)
-
-            return RetryEvaluation(
-                job_id=job.id,
-                should_retry=True,
-                attempt=current_attempts,
-                max_attempts=max_attempts,
-                delay_seconds=delay,
-                next_eligible_at=next_eligible,
-                reason=f"Eligible for retry (attempt {current_attempts + 1}/{max_attempts}) after {delay:.1f}s",
-                is_terminal=False,
+            return self._evaluate_job(
+                job, error_message, jitter_factor=jitter_factor
             )
 
     def schedule_retry(
@@ -226,6 +233,7 @@ class RetryManager:
         jitter_factor: float | None = None,
     ) -> RetryEvaluation:
         """Transitions job to FAILED (if running), computes retry backoff, and records checkpoint."""
+        updated_job: AIJob
         with self._database.transaction() as conn:
             repo = AIJobRepository(conn)
             job = repo.get(job_id)
@@ -234,18 +242,16 @@ class RetryManager:
 
             old_updated_at = job.updated_at
 
-            # If job was RUNNING, mark it FAILED first
             if job.status is AIJobStatus.RUNNING:
                 job = job.fail(error_message, clock=self._clock)
-                repo.update(job, expected_updated_at=old_updated_at)
-                old_updated_at = job.updated_at
             elif job.status is not AIJobStatus.FAILED:
                 raise RetryManagerError(
-                    f"Job {job_id} must be in RUNNING or FAILED status to schedule retry, but was {job.status.value}"
+                    f"Job {job_id} must be in RUNNING or FAILED status to schedule retry, "
+                    f"but was {job.status.value}"
                 )
 
-            evaluation = self.evaluate_retry(
-                job_id, error_message, jitter_factor=jitter_factor
+            evaluation = self._evaluate_job(
+                job, error_message, jitter_factor=jitter_factor
             )
 
             if evaluation.should_retry:
@@ -260,29 +266,8 @@ class RetryManager:
                     ),
                     "error": error_message,
                 }
-                job = job.checkpoint(
+                updated_job = job.record_checkpoint(
                     "retry.scheduled", checkpoint_data, clock=self._clock
-                )
-                repo.update(job, expected_updated_at=old_updated_at)
-
-                if self._queue is not None:
-                    self._queue.enqueue(
-                        job_id=job.id,
-                        content_item_id=job.content_item_id,
-                        pipeline_stage=job.pipeline_stage.value,
-                    )
-
-                self._audit.record(
-                    actor=RETRY_ACTOR,
-                    action="job.retry_scheduled",
-                    result=AuditResult.SUCCESS,
-                    entity=EntityRef("ai_jobs", job.id),
-                    metadata={
-                        "attempt": evaluation.attempt,
-                        "max_attempts": evaluation.max_attempts,
-                        "delay_seconds": evaluation.delay_seconds,
-                        "error": error_message,
-                    },
                 )
             else:
                 checkpoint_data = {
@@ -291,25 +276,42 @@ class RetryManager:
                     "reason": evaluation.reason,
                     "error": error_message,
                 }
-                job = job.checkpoint(
+                updated_job = job.record_checkpoint(
                     "retry.terminal", checkpoint_data, clock=self._clock
                 )
-                repo.update(job, expected_updated_at=old_updated_at)
 
-                self._audit.record(
-                    actor=RETRY_ACTOR,
-                    action="job.retry_exhausted" if evaluation.is_terminal else "job.retry_rejected",
-                    result=AuditResult.FAILURE,
-                    entity=EntityRef("ai_jobs", job.id),
-                    metadata={
-                        "attempt": evaluation.attempt,
-                        "max_attempts": evaluation.max_attempts,
-                        "reason": evaluation.reason,
-                        "error": error_message,
-                    },
-                )
+            repo.update(updated_job, expected_updated_at=old_updated_at)
 
-            return evaluation
+        if evaluation.should_retry:
+            if self._queue is not None:
+                self._queue.enqueue(updated_job)
+            self._audit.record(
+                action="job.retry_scheduled",
+                actor=RETRY_ACTOR,
+                entity=EntityRef("ai_jobs", updated_job.id),
+                result=AuditResult.SUCCESS,
+                metadata={
+                    "attempt": evaluation.attempt,
+                    "max_attempts": evaluation.max_attempts,
+                    "delay_seconds": evaluation.delay_seconds,
+                    "error": error_message,
+                },
+            )
+        else:
+            self._audit.record(
+                action="job.retry_exhausted" if evaluation.is_terminal else "job.retry_rejected",
+                actor=RETRY_ACTOR,
+                entity=EntityRef("ai_jobs", updated_job.id),
+                result=AuditResult.FAILURE,
+                metadata={
+                    "attempt": evaluation.attempt,
+                    "max_attempts": evaluation.max_attempts,
+                    "reason": evaluation.reason,
+                    "error": error_message,
+                },
+            )
+
+        return evaluation
 
     def execute_retry(self, job_id: str) -> AIJob:
         """Restarts a FAILED job back to RUNNING, incrementing its attempt counter."""
@@ -321,33 +323,35 @@ class RetryManager:
 
             if job.status is not AIJobStatus.FAILED:
                 raise RetryManagerError(
-                    f"Job {job_id} must be in FAILED status to execute retry, but was {job.status.value}"
+                    f"Job {job_id} must be in FAILED status to execute retry, "
+                    f"but was {job.status.value}"
                 )
 
             if job.attempts >= self._policy.max_attempts:
                 raise RetryManagerError(
-                    f"Job {job_id} cannot be retried: reached max attempts ({job.attempts}/{self._policy.max_attempts})"
+                    f"Job {job_id} cannot be retried: reached max attempts "
+                    f"({job.attempts}/{self._policy.max_attempts})"
                 )
 
             old_updated_at = job.updated_at
             restarted_job = job.start(clock=self._clock)
             repo.update(restarted_job, expected_updated_at=old_updated_at)
 
-            self._audit.record(
-                actor=RETRY_ACTOR,
-                action="job.retry_started",
-                result=AuditResult.SUCCESS,
-                entity=EntityRef("ai_jobs", job.id),
-                metadata={
-                    "attempt": restarted_job.attempts,
-                    "max_attempts": self._policy.max_attempts,
-                },
-            )
-            return restarted_job
+        self._audit.record(
+            action="job.retry_started",
+            actor=RETRY_ACTOR,
+            entity=EntityRef("ai_jobs", restarted_job.id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "attempt": restarted_job.attempts,
+                "max_attempts": self._policy.max_attempts,
+            },
+        )
+        return restarted_job
 
     def list_retriable_jobs(self) -> list[AIJob]:
         """Returns all FAILED jobs whose attempt count has not reached max_attempts."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             repo = AIJobRepository(conn)
             all_jobs = repo.list_all()
             return [

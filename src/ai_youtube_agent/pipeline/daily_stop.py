@@ -231,10 +231,10 @@ class DailyStopService:
     ) -> None:
         """Audits that a daily stop threshold has been reached."""
         self._audit.record(
-            actor=DAILY_STOP_ACTOR,
             action="orchestrator.daily_stop_triggered",
-            result=AuditResult.BLOCKED,
+            actor=DAILY_STOP_ACTOR,
             entity=EntityRef("channels", channel_id),
+            result=AuditResult.DENIED,
             metadata={
                 "content_type": content_type.value,
                 "used_today": evaluation.used_today,

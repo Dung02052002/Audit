@@ -212,7 +212,11 @@ def test_evaluate_eligibility_refuses_when_kill_switch_active(database: Database
         updated_at=now,
     )
 
-    stop = EmergencyStop.activated(by=Actor(ActorKind.USER, "admin"), reason="Security incident", at=now)
+    stop = EmergencyStop.activated(
+        by=Actor(ActorKind.USER, "admin"),
+        reason="Security incident",
+        clock=lambda: now,
+    )
     scheduler = JobScheduler(
         database=database,
         job_queue=InMemoryJobQueue(),

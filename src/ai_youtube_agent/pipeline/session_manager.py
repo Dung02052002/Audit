@@ -86,19 +86,18 @@ class SessionManager:
         auto_stop_existing: bool = False,
     ) -> Session:
         """Starts a new working session. Only a human user may start a session."""
-        if actor.kind is not ActorKind.USER:
+        if not isinstance(actor, Actor) or actor.kind is not ActorKind.USER:
             raise SessionNotAllowedError("Only a user can start a session.")
 
+        auto_stopped: Session | None = None
         with self._database.transaction() as conn:
             repo = SessionRepository(conn)
-            active = self.get_active_session()
+            sessions = repo.list_all()
+            active = next((s for s in reversed(sessions) if s.is_active), None)
             if active is not None:
                 if auto_stop_existing:
-                    self.stop_session(
-                        active.id,
-                        actor=actor,
-                        reason="Auto-stopped by start of new session",
-                    )
+                    auto_stopped = active.stop(clock=self._clock)
+                    repo.update(auto_stopped, expected_status=SessionStatus.ACTIVE)
                 else:
                     raise SessionConflictError(
                         f"An active session ({active.id}) is already in progress."
@@ -107,17 +106,35 @@ class SessionManager:
             session = Session.start(actor=actor, clock=self._clock)
             repo.add(session)
 
+        if auto_stopped is not None:
             self._audit.record(
+                action="session.stopped",
                 actor=actor,
-                action="session.started",
+                entity=EntityRef("sessions", auto_stopped.id),
                 result=AuditResult.SUCCESS,
-                entity=EntityRef("sessions", session.id),
                 metadata={
-                    "started_by": actor.id,
-                    "started_at": session.started_at.isoformat(),
+                    "stopped_by": actor.id,
+                    "reason": "Auto-stopped by start of new session",
+                    "started_at": auto_stopped.started_at.isoformat(),
+                    "stopped_at": (
+                        auto_stopped.stopped_at.isoformat()
+                        if auto_stopped.stopped_at
+                        else None
+                    ),
                 },
             )
-            return session
+
+        self._audit.record(
+            action="session.started",
+            actor=actor,
+            entity=EntityRef("sessions", session.id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "started_by": actor.id,
+                "started_at": session.started_at.isoformat(),
+            },
+        )
+        return session
 
     def stop_session(
         self,
@@ -139,32 +156,32 @@ class SessionManager:
             stopped = session.stop(clock=self._clock)
             repo.update(stopped, expected_status=SessionStatus.ACTIVE)
 
-            self._audit.record(
-                actor=actor,
-                action="session.stopped",
-                result=AuditResult.SUCCESS,
-                entity=EntityRef("sessions", session.id),
-                metadata={
-                    "stopped_by": actor.id,
-                    "reason": reason,
-                    "started_at": session.started_at.isoformat(),
-                    "stopped_at": (
-                        stopped.stopped_at.isoformat()
-                        if stopped.stopped_at
-                        else None
-                    ),
-                },
-            )
-            return stopped
+        self._audit.record(
+            action="session.stopped",
+            actor=actor,
+            entity=EntityRef("sessions", session.id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "stopped_by": actor.id,
+                "reason": reason,
+                "started_at": session.started_at.isoformat(),
+                "stopped_at": (
+                    stopped.stopped_at.isoformat()
+                    if stopped.stopped_at
+                    else None
+                ),
+            },
+        )
+        return stopped
 
     def get_session(self, session_id: str) -> Session | None:
         """Retrieves a session by ID."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             return SessionRepository(conn).get(session_id)
 
     def get_active_session(self) -> Session | None:
         """Retrieves the current active session if one exists."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             sessions = SessionRepository(conn).list_all()
             for s in reversed(sessions):
                 if s.is_active:
@@ -173,17 +190,17 @@ class SessionManager:
 
     def list_sessions(self) -> list[Session]:
         """Lists all recorded sessions ordered by start time."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             return SessionRepository(conn).list_all()
 
     def get_session_jobs(self, session_id: str) -> list[AIJob]:
         """Retrieves all AIJobs initiated within a given session."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             return AIJobRepository(conn).list_by_session(session_id)
 
     def get_session_summary(self, session_id: str) -> SessionSummary:
         """Computes summary metrics for a given session."""
-        with self._database.transaction() as conn:
+        with self._database.connection() as conn:
             session = SessionRepository(conn).get(session_id)
             if session is None:
                 raise SessionNotFoundError(f"Session {session_id} not found")

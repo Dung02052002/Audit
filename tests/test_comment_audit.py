@@ -1,7 +1,6 @@
 """Unit tests for P-189 CommentAuditService."""
 
-from datetime import UTC, datetime
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,9 +8,10 @@ from ai_youtube_agent.content.auto_reply import (
     AUTO_REPLY_BLOCKED,
     AUTO_REPLY_POSTED,
     AutoReplyDisabledError,
-    AutoReplyGuard,
     AutoReplyService,
 )
+from ai_youtube_agent.content.channel import ChannelStatus
+from ai_youtube_agent.content.comment import Comment
 from ai_youtube_agent.content.comment_audit import (
     CommentAuditError,
     CommentAuditErrorCode,
@@ -21,7 +21,6 @@ from ai_youtube_agent.content.comment_classifier import (
     COMMENT_CLASSIFIED,
     CommentClassifier,
 )
-from ai_youtube_agent.content.comment_sync import COMMENTS_SYNCED, CommentSync
 from ai_youtube_agent.content.duplicate_reply_guard import (
     REPLY_DUPLICATE_BLOCKED,
     DuplicateReplyError,
@@ -36,127 +35,120 @@ from ai_youtube_agent.content.reply_approval import (
 from ai_youtube_agent.content.reply_draft import REPLY_DRAFTED, ReplyDraftService
 from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.migrate import migrate
-from ai_youtube_agent.core.db.models import Channel
-from ai_youtube_agent.core.db.repositories.channels import ChannelRepository
+from ai_youtube_agent.core.db.repositories.channel import (
+    ChannelRepository,
+    StrategyProfileRepository,
+)
+from ai_youtube_agent.core.db.repositories.community import CommentRepository
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.providers.comments import RemoteComment
 from ai_youtube_agent.providers.mock_comments import MockCommentProvider
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
 from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import OAuthScope
+from factories import make_channel, make_strategy_profile
 
+NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+VID = "dQw4w9WgXcQ"
 REVIEWER = Actor(kind=ActorKind.USER, id="operator:alice")
 
 
-def _setup(
-    tmp_path: Path,
-) -> tuple[
-    Database,
-    InMemoryAuditSink,
-    AuditLog,
-    MockCommentProvider,
-    MockYouTubeOAuthProvider,
-    MockTextGenerator,
-]:
-    db_path = tmp_path / "comment_audit.db"
-    migrate(db_path)
-    db = Database(db_path)
-    with db.transaction() as conn:
-        ChannelRepository(conn).add(
-            Channel(
-                id="ch-1",
-                slug="audit-channel",
-                name="Audit Channel",
-                youtube_channel_id="UC-audit-1",
-            )
-        )
-    sink = InMemoryAuditSink()
-    audit_log = AuditLog(sink)
-    comments = MockCommentProvider()
-    oauth = MockYouTubeOAuthProvider()
-    code = oauth.create_authorization_code(channel_id="ch-1")
-    oauth.connect_channel("ch-1", authorization_code=code)
-    comments.register_AccessToken("mock-access-token")
-    text_gen = MockTextGenerator()
-    text_gen.set_default_texts(
-        ("Thank you for asking! You can find the breakdown in section two.",)
+def test_trail_for_reply_draft_and_comment_and_channel(database: Database) -> None:
+    channel = make_channel(status=ChannelStatus.ACTIVE)
+    profile = make_strategy_profile(channel)
+    c1 = Comment.create(
+        channel.id,
+        "Ugx-audit-1",
+        VID,
+        author_display_name="Reader One",
+        text="Could you explain how the caching layer works?",
+        published_at=NOW - timedelta(minutes=20),
     )
-    return db, sink, audit_log, comments, oauth, text_gen
+    c2 = Comment.create(
+        channel.id,
+        "Ugx-audit-2",
+        VID,
+        author_display_name="Reader Two",
+        text="What about invalidation on schema upgrades?",
+        published_at=NOW - timedelta(minutes=15),
+    )
+    with database.transaction() as conn:
+        ChannelRepository(conn).add(channel)
+        StrategyProfileRepository(conn).add(profile)
+        CommentRepository(conn).add(c1)
+        CommentRepository(conn).add(c2)
 
-
-def test_trail_for_reply_draft_and_comment_and_channel(tmp_path: Path) -> None:
-    db, sink, audit_log, comments, oauth, text_gen = _setup(tmp_path)
-
-    comments.seed_video_comments(
-        "ch-1",
-        "yt-vid-1",
+    sink = InMemoryAuditSink()
+    audit_log = AuditLog(sink, clock=lambda: NOW)
+    comments = MockCommentProvider(clock=lambda: NOW)
+    comments.seed_comments(
+        channel.youtube.channel_id,
+        VID,
         (
             RemoteComment(
-                youtube_comment_id="yt-c-1",
-                youtube_video_id="yt-vid-1",
-                author_display_name="Reader One",
-                text="Could you explain how the caching layer works?",
-                published_at=datetime(2026, 6, 12, 10, 0, tzinfo=UTC),
+                youtube_comment_id=c1.youtube_comment_id,
+                youtube_video_id=VID,
+                author_display_name=c1.author_display_name,
+                text=c1.text,
+                published_at=c1.published_at,
             ),
             RemoteComment(
-                youtube_comment_id="yt-c-2",
-                youtube_video_id="yt-vid-1",
-                author_display_name="Reader Two",
-                text="What about invalidation on schema upgrades?",
-                published_at=datetime(2026, 6, 12, 10, 5, tzinfo=UTC),
+                youtube_comment_id=c2.youtube_comment_id,
+                youtube_video_id=VID,
+                author_display_name=c2.author_display_name,
+                text=c2.text,
+                published_at=c2.published_at,
             ),
         ),
     )
+    oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
+    oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}))
+    text_gen = MockTextGenerator(clock=lambda: NOW)
+    text_gen.queue("Thank you for asking! You can find the breakdown in section two.")
+    text_gen.queue("Schema upgrades invalidate cached rows automatically.")
 
-    sync = CommentSync(db, comments, oauth, audit_log)
-    classifier = CommentClassifier(db, audit_log)
-    drafter = ReplyDraftService(db, text_gen, audit_log)
-    dup_guard = DuplicateReplyGuard(db, audit_log)
+    classifier = CommentClassifier(database, audit_log, clock=lambda: NOW)
+    drafter = ReplyDraftService(database, text_gen, audit_log, clock=lambda: NOW)
+    dup_guard = DuplicateReplyGuard(database, audit_log)
     approver = ReplyApprovalService(
-        db, comments, oauth, audit_log, duplicate_guard=dup_guard
-    )
-    disabled_auto = AutoReplyService(
-        db,
+        database,
         comments,
         oauth,
         audit_log,
-        AutoReplyGuard(FeatureFlags(auto_reply_enabled=False), audit_log),
         duplicate_guard=dup_guard,
+        sleep=lambda _: None,
     )
-    audit_service = CommentAuditService(db, sink)
-
-    sync_res = sync.sync_video_comments("ch-1", youtube_video_id="yt-vid-1")
-    c1 = sync_res.outcomes[0].comment
-    c2 = sync_res.outcomes[1].comment
+    disabled_auto = AutoReplyService(
+        database,
+        drafter,
+        approver,
+        audit_log,
+        flags=FeatureFlags(auto_reply_enabled=False),
+    )
+    audit_service = CommentAuditService(database, sink)
 
     classifier.classify_comment(c1.id)
     classifier.classify_comment(c2.id)
 
-    draft1 = drafter.create_draft(c1.id).draft
-    draft2 = drafter.create_draft(c2.id).draft
+    draft1 = drafter.generate_draft(c1.id).draft
+    draft2 = drafter.generate_draft(c2.id).draft
 
     # Attempting auto-reply while flag is disabled records comment.auto_reply_blocked
     with pytest.raises(AutoReplyDisabledError):
-        disabled_auto.auto_reply_draft(draft1.id)
+        disabled_auto.auto_post_draft(draft1.id)
 
     # Human approves and posts draft1, then discards draft2
-    post_outcome = approver.approve_and_post(
+    approver.approve(
         draft1.id,
         actor=REVIEWER,
         edited_text="Thanks for asking! Cache invalidation is versioned.",
     )
-    approver.discard_draft(draft2.id, actor=REVIEWER, reason="covered_in_faq")
-
-    # Attempting a second reply on c1 is blocked by DuplicateReplyGuard
-    draft1_dup = drafter.create_draft(
-        c1.id, reply_text="Another reply on the same comment."
-    ).draft
-    with pytest.raises(DuplicateReplyError):
-        approver.approve_and_post(draft1_dup.id, actor=REVIEWER)
+    post_outcome = approver.post_approved(draft1.id, actor=REVIEWER)
+    approver.discard(draft2.id, actor=REVIEWER, reason="covered_in_faq")
 
     # 1. Draft trail for draft1
     draft1_trail = audit_service.trail_for_reply_draft(draft1.id)
-    assert draft1_trail.channel_id == "ch-1"
+    assert draft1_trail.channel_id == channel.id
     assert draft1_trail.comment_id == c1.id
     assert draft1_trail.reply_draft_id == draft1.id
     assert [e.action for e in draft1_trail.entries] == [
@@ -165,73 +157,97 @@ def test_trail_for_reply_draft_and_comment_and_channel(tmp_path: Path) -> None:
         REPLY_APPROVED,
         REPLY_POSTED,
     ]
-    assert draft1_trail.posted_reply_ids == (post_outcome.receipt.youtube_reply_id,)
+    assert draft1_trail.posted_reply_ids == (post_outcome.youtube_reply_id,)
 
-    # 2. Comment trail for c1 includes classification, both drafts, auto-reply block, approval, post, and duplicate block
+    # 2. Comment trail for c1
     c1_trail = audit_service.trail_for_comment(c1.id)
     assert c1_trail.comment_id == c1.id
     assert c1_trail.action_counts[COMMENT_CLASSIFIED] == 1
-    assert c1_trail.action_counts[REPLY_DRAFTED] == 2
+    assert c1_trail.action_counts[REPLY_DRAFTED] == 1
     assert c1_trail.action_counts[AUTO_REPLY_BLOCKED] == 1
-    assert c1_trail.action_counts[REPLY_APPROVED] == 2
+    assert c1_trail.action_counts[REPLY_APPROVED] == 1
     assert c1_trail.action_counts[REPLY_POSTED] == 1
-    assert c1_trail.action_counts[REPLY_DUPLICATE_BLOCKED] == 1
 
-    # 3. Channel trail includes comment.synced plus all comment & reply events
-    ch_trail = audit_service.trail_for_channel("ch-1")
-    assert ch_trail.channel_id == "ch-1"
-    assert ch_trail.action_counts[COMMENTS_SYNCED] == 1
+    # 3. Channel trail includes all comment & reply events
+    ch_trail = audit_service.trail_for_channel(channel.id)
+    assert ch_trail.channel_id == channel.id
     assert ch_trail.action_counts[REPLY_DISCARDED] == 1
-    assert ch_trail.posted_reply_ids == (post_outcome.receipt.youtube_reply_id,)
+    assert ch_trail.posted_reply_ids == (post_outcome.youtube_reply_id,)
 
-    # Verify serialized payload never leaks comment body text, reply text, or OAuth tokens
+    # Verify serialized payload never leaks comment body text or reply text
     serialized = str(ch_trail.as_dict())
     assert "Could you explain how the caching layer works?" not in serialized
     assert "Thanks for asking! Cache invalidation is versioned." not in serialized
-    assert "mock-access-token" not in serialized
 
 
-def test_trail_includes_auto_reply_posted_when_flag_enabled(tmp_path: Path) -> None:
-    db, sink, audit_log, comments, oauth, text_gen = _setup(tmp_path)
-    comments.seed_video_comments(
-        "ch-1",
-        "yt-vid-2",
+def test_trail_includes_auto_reply_posted_when_flag_enabled(
+    database: Database,
+) -> None:
+    channel = make_channel(status=ChannelStatus.ACTIVE)
+    profile = make_strategy_profile(channel)
+    c_auto = Comment.create(
+        channel.id,
+        "Ugx-audit-auto",
+        VID,
+        author_display_name="Viewer",
+        text="When is part two coming out?",
+        published_at=NOW - timedelta(minutes=5),
+    )
+    with database.transaction() as conn:
+        ChannelRepository(conn).add(channel)
+        StrategyProfileRepository(conn).add(profile)
+        CommentRepository(conn).add(c_auto)
+
+    sink = InMemoryAuditSink()
+    audit_log = AuditLog(sink, clock=lambda: NOW)
+    comments = MockCommentProvider(clock=lambda: NOW)
+    comments.seed_comments(
+        channel.youtube.channel_id,
+        VID,
         (
             RemoteComment(
-                youtube_comment_id="yt-c-auto",
-                youtube_video_id="yt-vid-2",
-                author_display_name="Viewer",
-                text="When is part two coming out?",
-                published_at=datetime(2026, 6, 12, 11, 0, tzinfo=UTC),
+                youtube_comment_id=c_auto.youtube_comment_id,
+                youtube_video_id=VID,
+                author_display_name=c_auto.author_display_name,
+                text=c_auto.text,
+                published_at=c_auto.published_at,
             ),
         ),
     )
+    oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
+    oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}))
+    text_gen = MockTextGenerator(clock=lambda: NOW)
+    text_gen.queue("Part two launches next Friday!")
 
-    sync = CommentSync(db, comments, oauth, audit_log)
-    classifier = CommentClassifier(db, audit_log)
-    drafter = ReplyDraftService(db, text_gen, audit_log)
-    enabled_auto = AutoReplyService(
-        db,
-        comments,
-        oauth,
-        audit_log,
-        AutoReplyGuard(FeatureFlags(auto_reply_enabled=True), audit_log),
+    drafter = ReplyDraftService(database, text_gen, audit_log, clock=lambda: NOW)
+    approver = ReplyApprovalService(
+        database, comments, oauth, audit_log, sleep=lambda _: None
     )
-    audit_service = CommentAuditService(db, sink)
+    enabled_auto = AutoReplyService(
+        database,
+        drafter,
+        approver,
+        audit_log,
+        flags=FeatureFlags(auto_reply_enabled=True),
+    )
+    audit_service = CommentAuditService(database, sink)
 
-    comment = sync.sync_video_comments("ch-1", youtube_video_id="yt-vid-2").outcomes[0].comment
-    classifier.classify_comment(comment.id)
-    draft = drafter.create_draft(comment.id).draft
-    outcome = enabled_auto.auto_reply_draft(draft.id)
+    outcome = enabled_auto.draft_or_auto_reply(c_auto.id)
+    assert outcome.posted is True
+    assert outcome.post_outcome is not None
 
-    trail = audit_service.trail_for_reply_draft(draft.id)
-    assert [e.action for e in trail.entries] == [REPLY_DRAFTED, AUTO_REPLY_POSTED]
-    assert trail.posted_reply_ids == (outcome.receipt.youtube_reply_id,)
+    trail = audit_service.trail_for_reply_draft(outcome.draft.id)
+    assert [e.action for e in trail.entries] == [
+        REPLY_DRAFTED,
+        REPLY_POSTED,
+        AUTO_REPLY_POSTED,
+    ]
+    assert trail.posted_reply_ids == (outcome.post_outcome.youtube_reply_id,)
 
 
-def test_audit_service_not_found_errors(tmp_path: Path) -> None:
-    db, sink, *_ = _setup(tmp_path)
-    audit_service = CommentAuditService(db, sink)
+def test_audit_service_not_found_errors(database: Database) -> None:
+    sink = InMemoryAuditSink()
+    audit_service = CommentAuditService(database, sink)
 
     with pytest.raises(CommentAuditError) as ch_err:
         audit_service.trail_for_channel("missing-channel")

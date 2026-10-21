@@ -40,7 +40,7 @@ from ai_youtube_agent.core.audit import (
     MetadataValue,
 )
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.channels import ChannelRepository
+from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from ai_youtube_agent.core.db.repositories.community import CommentRepository
 from ai_youtube_agent.core.errors import DomainError
 
@@ -102,9 +102,9 @@ class CommentAuditError(DomainError):
         super().__init__(
             message,
             code=f"domain.comment_audit.{reason.value}",
-            details=merged,
         )
         self.reason = reason
+        self.details = merged
 
 
 @dataclass(frozen=True)

@@ -272,18 +272,44 @@ class AIJob:
             raise self._state_error("cancel")
         now = _now(clock)
         checkpoints = self.checkpoints
-        if reason:
+        if reason and reason.strip():
             saved = JobCheckpoint(
-                len(checkpoints) + 1, "cancelled", now, {"reason": reason}
+                len(checkpoints) + 1,
+                "job.cancelled",
+                now,
+                {"reason": reason.strip()},
             )
             checkpoints = (*checkpoints, saved)
         return replace(
             self,
             status=AIJobStatus.CANCELLED,
             checkpoints=checkpoints,
-            last_error=reason,
+            last_error=None,
             updated_at=now,
         )
+
+    @property
+    def cancellation_reason(self) -> str | None:
+        for cp in reversed(self.checkpoints):
+            if cp.step in ("job.cancelled", "cancelled"):
+                reason = cp.data.get("reason")
+                if isinstance(reason, str):
+                    return reason
+        return None
+
+    def record_checkpoint(
+        self,
+        step: str,
+        data: Mapping[str, MetadataValue] | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> "AIJob":
+        """Append an orchestrator checkpoint on a non-final job (running, waiting, or failed)."""
+        if self.is_final:
+            raise self._state_error("checkpoint")
+        now = max(_now(clock), self.updated_at)
+        saved = JobCheckpoint(len(self.checkpoints) + 1, step, now, data or {})
+        return replace(self, checkpoints=(*self.checkpoints, saved), updated_at=now)
 
     def wait_for_approval(
         self,
@@ -293,7 +319,7 @@ class AIJob:
     ) -> "AIJob":
         if self.status is not AIJobStatus.RUNNING:
             raise self._state_error("wait")
-        now = _now(clock)
+        now = max(_now(clock), self.updated_at)
         checkpoint_data: dict[str, MetadataValue] = {}
         if approval_request_id:
             checkpoint_data["approval_request_id"] = approval_request_id
@@ -308,7 +334,7 @@ class AIJob:
     def resume_from_wait(self, *, clock: Clock | None = None) -> "AIJob":
         if self.status is not AIJobStatus.WAITING:
             raise self._state_error("resume")
-        now = _now(clock)
+        now = max(_now(clock), self.updated_at)
         saved = JobCheckpoint(len(self.checkpoints) + 1, "approval.resumed", now, {})
         return replace(
             self,

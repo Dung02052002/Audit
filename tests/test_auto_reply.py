@@ -111,8 +111,8 @@ class TestAutoReplyFlagEnforcement:
         with pytest.raises(AutoReplyDisabledError) as exc_off:
             auto_svc.auto_post_draft(outcome.draft.id)
         assert exc_off.value.auto_reply_code is AutoReplyErrorCode.DISABLED
-        assert sink.entries[-1].action == AUTO_REPLY_BLOCKED
-        assert sink.entries[-1].result is AuditResult.DENIED
+        assert sink.events()[-1].action == AUTO_REPLY_BLOCKED
+        assert sink.events()[-1].result is AuditResult.DENIED
         assert provider.post_calls == 0
 
         # 3. When AUTO_REPLY_ENABLED=True is explicitly configured, auto_post_draft posts
@@ -126,7 +126,7 @@ class TestAutoReplyFlagEnforcement:
         posted = enabled_svc.auto_post_draft(outcome.draft.id)
         assert posted.draft.status is ReplyStatus.POSTED
         assert posted.draft.youtube_reply_id is not None
-        assert sink.entries[-1].action == AUTO_REPLY_POSTED
+        assert sink.events()[-1].action == AUTO_REPLY_POSTED
         assert provider.post_calls == 1
 
     def test_moderation_comment_is_never_auto_replied_even_when_flag_enabled(

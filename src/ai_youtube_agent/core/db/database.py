@@ -42,6 +42,14 @@ class Database:
         return connect(self.path)
 
     @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self.connect()
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         connection = self.connect()
         try:

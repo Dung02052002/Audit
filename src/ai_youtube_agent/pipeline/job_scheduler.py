@@ -142,7 +142,6 @@ class JobScheduler:
             ContentStatus.PUBLISHED,
             ContentStatus.REJECTED,
             ContentStatus.FAILED,
-            ContentStatus.CANCELLED,
         }:
             return ScheduleEligibility(
                 False,
@@ -345,6 +344,9 @@ class JobScheduler:
                 content_item_id=moved.id,
                 session_id=session_id,
                 status=AIJobStatus.QUEUED,
+                attempts=0,
+                last_error=None,
+                checkpoints=(),
                 created_at=now,
                 updated_at=now,
             )

@@ -232,7 +232,7 @@ def test_advance_preview_ready_creates_approval_and_halts_at_approval_gate(
         reqs = app_repo.list_by_content_item(item.id)
         assert len(reqs) == 1
         req = reqs[0]
-        approved_req = req.approve(by=Actor(ActorKind.USER, "human_reviewer"), clock=lambda: now)
+        approved_req = req.approve(Actor(ActorKind.USER, "human_reviewer"))
         app_repo.update(approved_req, expected_status=ApprovalStatus.PENDING)
 
     # 4. Advance now transitions to APPROVED

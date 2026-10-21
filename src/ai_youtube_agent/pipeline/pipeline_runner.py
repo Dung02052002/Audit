@@ -71,6 +71,7 @@ from ai_youtube_agent.core.gates import (
     GateName,
     GateReason,
     GateReport,
+    GateResult,
     PipelineGate,
     evaluate_gates,
 )
@@ -119,7 +120,7 @@ class PipelineStepResult:
             "waiting_for_approval": self.waiting_for_approval,
             "error": self.error,
             "reason": self.reason,
-            "gate_blocked": self.gate_report.blocked if self.gate_report else False,
+            "gate_blocked": bool(self.gate_report.blocked) if self.gate_report else False,
             "details": self.details,
         }
 
@@ -191,13 +192,11 @@ class PipelineRunner:
         """Evaluate applicable gates for transitioning an item to target_status."""
         now = at or self._now()
         eval_actor = actor or RUNNER_ACTOR
-        context = GateContext(item=item, target_status=target_status, actor=eval_actor, at=now)
 
         if not can_transition(item.status, target_status):
             return GateReport(
-                context=context,
                 results=(
-                    from_res := GateReport.blocked_result(
+                    GateResult.blocked(
                         GateName.TEST,
                         now,
                         GateReason(
@@ -207,6 +206,8 @@ class PipelineRunner:
                     ),
                 ),
             )
+
+        context = GateContext(item=item, target_status=target_status, actor=eval_actor, at=now)
 
         if target_status is ContentStatus.GENERATING:
             with self._database.connection() as conn:
@@ -248,8 +249,7 @@ class PipelineRunner:
 
         # For other transitions without multi-gate contracts, evaluate transition allowance
         return GateReport(
-            context=context,
-            results=(GateReport.passed_result(GateName.TEST, now),),
+            results=(GateResult.passed(GateName.TEST, now),),
         )
 
     def advance(
@@ -367,7 +367,7 @@ class PipelineRunner:
                         ):
                             latest_by_kind[a.kind] = a
                     bindings = tuple(
-                        ArtifactBinding.from_artifact(a) for a in latest_by_kind.values()
+                        ArtifactBinding.of(a) for a in latest_by_kind.values()
                     )
                     req = ApprovalRequest(
                         id=str(uuid.uuid4()),
@@ -375,6 +375,7 @@ class PipelineRunner:
                         artifacts=bindings,
                         status=ApprovalStatus.PENDING,
                         requested_by=eval_actor,
+                        qc_result_id=None,
                         created_at=now,
                     )
                     app_repo.add(req)

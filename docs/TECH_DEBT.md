@@ -133,6 +133,7 @@ needs its tests run in the later test phase; those tests are listed per task in
 | R-206 Pipeline Runner | `tests/test_pipeline_runner.py`, `tests/test_bootstrap.py` |
 | R-207 Approval Wait | `tests/test_approval_wait.py`, `tests/test_bootstrap.py` |
 | R-208 Retry Manager | `tests/test_retry_manager.py`, `tests/test_bootstrap.py` |
+| R-209 Session Manager | `tests/test_session_manager.py`, `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items

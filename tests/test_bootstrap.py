@@ -668,4 +668,10 @@ def test_container_resolves_orchestrator_job_queue(
     retry_mgr = container.resolve(RetryManager)
     assert isinstance(retry_mgr, RetryManager)
     assert container.resolve(RetryManager) is retry_mgr
+
+    from ai_youtube_agent.pipeline.session_manager import SessionManager
+
+    session_mgr = container.resolve(SessionManager)
+    assert isinstance(session_mgr, SessionManager)
+    assert container.resolve(SessionManager) is session_mgr
     assert not (tmp_path / "agent.db").exists()

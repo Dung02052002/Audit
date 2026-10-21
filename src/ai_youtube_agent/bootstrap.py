@@ -177,6 +177,7 @@ from ai_youtube_agent.pipeline.retry_manager import JobRetryPolicy, RetryManager
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
 from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
 from ai_youtube_agent.pipeline.publish_result import PublishResultService
+from ai_youtube_agent.pipeline.session_manager import SessionManager
 from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
 from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
 from ai_youtube_agent.providers.analytics import AnalyticsProvider
@@ -1002,6 +1003,13 @@ def build_container(settings: Settings | None = None) -> Container:
                 max_delay_seconds=float(c.resolve(Settings).job_retry_max_delay_seconds),
             ),
             queue=c.resolve(JobQueue),
+        ),
+    )
+    container.register(
+        SessionManager,
+        lambda c: SessionManager(
+            c.resolve(Database),
+            c.resolve(AuditLog),
         ),
     )
     return container

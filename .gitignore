@@ -19,7 +19,12 @@ htmlcov/
 # Local SQLite database and its backups (#029)
 data/
 
-# Local environment
+# Local environment and secret files (#005, #216)
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*client_secret*.json
+*.tokens.enc

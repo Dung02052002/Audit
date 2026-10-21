@@ -680,4 +680,90 @@ def test_container_resolves_orchestrator_job_queue(
     daily_stop = container.resolve(DailyStopService)
     assert isinstance(daily_stop, DailyStopService)
     assert container.resolve(DailyStopService) is daily_stop
+
+    from ai_youtube_agent.pipeline.crash_resume import CrashResumeService
+
+    crash_resume = container.resolve(CrashResumeService)
+    assert isinstance(crash_resume, CrashResumeService)
+    assert container.resolve(CrashResumeService) is crash_resume
+
+    from ai_youtube_agent.pipeline.graceful_shutdown import GracefulShutdownService
+    from ai_youtube_agent.pipeline.kill_switch_service import KillSwitchService
+    from ai_youtube_agent.pipeline.orchestrator_audit import (
+        OrchestratorAuditRecorder,
+        OrchestratorAuditService,
+    )
+
+    shutdown_svc = container.resolve(GracefulShutdownService)
+    assert isinstance(shutdown_svc, GracefulShutdownService)
+    assert container.resolve(GracefulShutdownService) is shutdown_svc
+
+    kill_switch_svc = container.resolve(KillSwitchService)
+    assert isinstance(kill_switch_svc, KillSwitchService)
+    assert container.resolve(KillSwitchService) is kill_switch_svc
+
+    orch_recorder = container.resolve(OrchestratorAuditRecorder)
+    assert isinstance(orch_recorder, OrchestratorAuditRecorder)
+
+    orch_audit = container.resolve(OrchestratorAuditService)
+    assert isinstance(orch_audit, OrchestratorAuditService)
+    assert not (tmp_path / "agent.db").exists()
+
+
+def test_container_resolves_security_and_recovery_services(
+    tmp_path: Path,
+) -> None:
+    from ai_youtube_agent.core.backup_plan import BackupManager
+    from ai_youtube_agent.core.failure_injection import FailureInjector
+    from ai_youtube_agent.core.least_privilege import LeastPrivilegePolicy
+    from ai_youtube_agent.core.restore_verifier import RestoreVerifier
+    from ai_youtube_agent.core.secret_boundary import SecretBoundaryValidator
+    from ai_youtube_agent.core.security_audit import SecurityAuditor
+    from ai_youtube_agent.core.token_storage import (
+        InMemoryTokenVault,
+        ManagedTokenStore,
+        TokenVault,
+    )
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    assert isinstance(
+        container.resolve(SecretBoundaryValidator), SecretBoundaryValidator
+    )
+    assert isinstance(container.resolve(TokenVault), InMemoryTokenVault)
+    assert isinstance(container.resolve(ManagedTokenStore), ManagedTokenStore)
+    assert isinstance(container.resolve(LeastPrivilegePolicy), LeastPrivilegePolicy)
+    assert isinstance(container.resolve(BackupManager), BackupManager)
+    assert isinstance(container.resolve(RestoreVerifier), RestoreVerifier)
+    assert isinstance(container.resolve(FailureInjector), FailureInjector)
+    assert isinstance(container.resolve(SecurityAuditor), SecurityAuditor)
+    assert not (tmp_path / "agent.db").exists()
+
+
+def test_container_resolves_pilot_unlock_and_production_readiness_services(
+    tmp_path: Path,
+) -> None:
+    from ai_youtube_agent.pipeline.longform_unlock import LongFormUnlockService
+    from ai_youtube_agent.pipeline.pilot_runner import ShortsPilotRunner
+    from ai_youtube_agent.pipeline.production_audit import ProductionReadinessAuditor
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    assert isinstance(container.resolve(ShortsPilotRunner), ShortsPilotRunner)
+    assert isinstance(
+        container.resolve(LongFormUnlockService), LongFormUnlockService
+    )
+    assert isinstance(
+        container.resolve(ProductionReadinessAuditor), ProductionReadinessAuditor
+    )
     assert not (tmp_path / "agent.db").exists()

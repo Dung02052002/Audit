@@ -125,6 +125,7 @@ from ai_youtube_agent.content.revenue_sources import (
 )
 from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.rights_risk_engine import RightsRiskEngine
+from ai_youtube_agent.content.scene_planner import SceneBreakdownPlanner
 from ai_youtube_agent.content.script_validator import ScriptValidator
 from ai_youtube_agent.content.script_versioner import ScriptVersioner
 from ai_youtube_agent.content.shorts_audio_mix import ShortsAudioMixer
@@ -139,6 +140,7 @@ from ai_youtube_agent.content.shorts_thumbnail import ShortsThumbnailRecorder
 from ai_youtube_agent.content.source_collector import SourceCollector
 from ai_youtube_agent.content.source_dedup import SourceDeduplicator
 from ai_youtube_agent.content.storage_api_cost import StorageApiCostRecorder
+from ai_youtube_agent.content.story_bible import ScriptAnalyzer
 from ai_youtube_agent.content.strategy_settings import StrategySettings
 from ai_youtube_agent.content.subscriber_change import SubscriberChangeService
 from ai_youtube_agent.content.topic_extractor import TopicExtractor
@@ -149,6 +151,7 @@ from ai_youtube_agent.content.video_metrics import VideoMetricsSync
 from ai_youtube_agent.content.watch_time import WatchTimeService
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, AuditSink, InMemoryAuditSink
+from ai_youtube_agent.core.backup_plan import BackupManager
 from ai_youtube_agent.core.config import (
     Environment,
     RenderProviderKind,
@@ -162,22 +165,43 @@ from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import MigrationReport, migrate
 from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
 from ai_youtube_agent.core.di import Container
+from ai_youtube_agent.core.failure_injection import FailureInjector
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
+from ai_youtube_agent.core.least_privilege import LeastPrivilegePolicy
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
+from ai_youtube_agent.core.restore_verifier import RestoreVerifier
+from ai_youtube_agent.core.secret_boundary import SecretBoundaryValidator
+from ai_youtube_agent.core.security_audit import SecurityAuditor
+from ai_youtube_agent.core.token_storage import (
+    InMemoryTokenVault,
+    ManagedTokenStore,
+    TokenVault,
+)
 from ai_youtube_agent.pipeline.approval_wait import ApprovalWaitService
+from ai_youtube_agent.pipeline.crash_resume import CrashResumeService
 from ai_youtube_agent.pipeline.daily_stop import DailyStopService
 from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
+from ai_youtube_agent.pipeline.graceful_shutdown import GracefulShutdownService
 from ai_youtube_agent.pipeline.job_queue import JobQueue, SqliteJobQueue
 from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
+from ai_youtube_agent.pipeline.kill_switch_service import KillSwitchService
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
+from ai_youtube_agent.pipeline.longform_unlock import LongFormUnlockService
+from ai_youtube_agent.pipeline.orchestrator_audit import (
+    OrchestratorAuditRecorder,
+    OrchestratorAuditService,
+)
+from ai_youtube_agent.pipeline.pilot_runner import ShortsPilotRunner
 from ai_youtube_agent.pipeline.pipeline_runner import PipelineRunner
+from ai_youtube_agent.pipeline.production_audit import ProductionReadinessAuditor
 from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
 from ai_youtube_agent.pipeline.retry_manager import JobRetryPolicy, RetryManager
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
 from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
 from ai_youtube_agent.pipeline.publish_result import PublishResultService
+from ai_youtube_agent.pipeline.script_to_video import ScriptToVideoService
 from ai_youtube_agent.pipeline.session_manager import SessionManager
 from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
 from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
@@ -186,13 +210,20 @@ from ai_youtube_agent.providers.analytics_cache import AnalyticsCache
 from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
 from ai_youtube_agent.providers.comments import CommentProvider
 from ai_youtube_agent.providers.ffmpeg_video_render import FfmpegVideoRenderer
+from ai_youtube_agent.providers.image_generation import ImageGenerator
 from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
 from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
 from ai_youtube_agent.providers.mock_comments import MockCommentProvider
+from ai_youtube_agent.providers.mock_image_generation import (
+    DeterministicSceneImageGenerator,
+)
 from ai_youtube_agent.providers.mock_research import MockResearchProvider
 from ai_youtube_agent.providers.mock_revenue import MockRevenueProvider
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.mock_text_generation import MockTextGenerator
+from ai_youtube_agent.providers.mock_video_generation import (
+    UnconfiguredVideoClipGenerator,
+)
 from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer
 from ai_youtube_agent.providers.mock_youtube_channel import MockYouTubeChannelProvider
 from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvider
@@ -202,6 +233,7 @@ from ai_youtube_agent.providers.research_cache import ResearchCache
 from ai_youtube_agent.providers.revenue import RevenueProvider
 from ai_youtube_agent.providers.speech_synthesis import SpeechSynthesizer
 from ai_youtube_agent.providers.text_generation import TextGenerator
+from ai_youtube_agent.providers.video_generation import VideoClipGenerator
 from ai_youtube_agent.providers.video_render import VideoRenderer
 from ai_youtube_agent.providers.youtube_channel import YouTubeChannelProvider
 from ai_youtube_agent.providers.youtube_oauth import YouTubeOAuthProvider
@@ -386,7 +418,6 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(Database),
             c.resolve(ArtifactStorage),
             c.resolve(AuditLog),
-            c.resolve(Settings),
         ),
     )
     container.register(
@@ -394,9 +425,9 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda c: ShortsBundleBuilder(
             c.resolve(Database),
             c.resolve(ArtifactStorage),
-            c.resolve(AuditLog),
-            c.resolve(Settings),
             c.resolve(RightsReporter),
+            c.resolve(PolicyReporter),
+            c.resolve(AuditLog),
         ),
     )
     container.register(
@@ -959,6 +990,13 @@ def build_container(settings: Settings | None = None) -> Container:
         ),
     )
     container.register(
+        KillSwitchService,
+        lambda c: KillSwitchService(
+            c.resolve(AuditLog),
+            database=c.resolve(Database),
+        ),
+    )
+    container.register(
         JobQueue,
         lambda c: SqliteJobQueue(c.resolve(Database)),
     )
@@ -969,6 +1007,7 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(JobQueue),
             c.resolve(AuditLog),
             budget_guard=c.resolve(BudgetGuard),
+            kill_switch=c.resolve(KillSwitchService),
             flags=c.resolve(FeatureFlags),
         ),
     )
@@ -983,6 +1022,7 @@ def build_container(settings: Settings | None = None) -> Container:
             qc_builder=c.resolve(QCReportBuilder),
             shorts_publisher=c.resolve(ShortsPublisher),
             longform_publisher=c.resolve(LongFormPublisher),
+            kill_switch=c.resolve(KillSwitchService),
         ),
     )
     container.register(
@@ -1018,6 +1058,156 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda c: DailyStopService(
             c.resolve(Database),
             c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        CrashResumeService,
+        lambda c: CrashResumeService(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            queue=c.resolve(JobQueue),
+            max_attempts=c.resolve(Settings).job_max_attempts,
+        ),
+    )
+    container.register(
+        GracefulShutdownService,
+        lambda c: GracefulShutdownService(
+            c.resolve(Database),
+            c.resolve(JobQueue),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        OrchestratorAuditRecorder,
+        lambda c: OrchestratorAuditRecorder(c.resolve(AuditLog)),
+    )
+    container.register(
+        OrchestratorAuditService,
+        lambda c: OrchestratorAuditService(
+            c.resolve(Database),
+            c.resolve(AuditSink),
+        ),
+    )
+    container.register(
+        SecretBoundaryValidator,
+        lambda _c: SecretBoundaryValidator(),
+    )
+    container.register(
+        TokenVault,
+        lambda _c: InMemoryTokenVault(),
+    )
+    container.register(
+        ManagedTokenStore,
+        lambda c: ManagedTokenStore(
+            c.resolve(TokenVault),
+            c.resolve(YouTubeOAuthProvider),
+            c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        LeastPrivilegePolicy,
+        lambda _c: LeastPrivilegePolicy(),
+    )
+    container.register(
+        BackupManager,
+        lambda c: BackupManager(
+            c.resolve(Settings).database_path,
+            c.resolve(Settings).artifact_dir,
+            c.resolve(Settings).database_path.parent / "backups",
+            audit=c.resolve(AuditLog),
+        ),
+    )
+    container.register(
+        RestoreVerifier,
+        lambda c: RestoreVerifier(audit=c.resolve(AuditLog)),
+    )
+    container.register(
+        FailureInjector,
+        lambda _c: FailureInjector(),
+    )
+    container.register(
+        SecurityAuditor,
+        lambda _c: SecurityAuditor(),
+    )
+    container.register(
+        ShortsPilotRunner,
+        lambda c: ShortsPilotRunner(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            shorts_publisher=c.resolve(ShortsPublisher),
+        ),
+    )
+    container.register(
+        LongFormUnlockService,
+        lambda c: LongFormUnlockService(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            pilot_runner=c.resolve(ShortsPilotRunner),
+            kill_switch=c.resolve(KillSwitchService),
+            security_auditor=c.resolve(SecurityAuditor),
+            settings=c.resolve(Settings),
+        ),
+    )
+    container.register(
+        ProductionReadinessAuditor,
+        lambda c: ProductionReadinessAuditor(
+            c.resolve(Settings),
+            audit_log=c.resolve(AuditLog),
+            security_auditor=c.resolve(SecurityAuditor),
+            health_registry=c.resolve(HealthRegistry),
+            kill_switch=c.resolve(KillSwitchService),
+        ),
+    )
+    container.register(
+        ImageGenerator,
+        lambda _c: DeterministicSceneImageGenerator(),
+    )
+    container.register(
+        VideoClipGenerator,
+        lambda _c: UnconfiguredVideoClipGenerator(),
+    )
+    container.register(
+        ScriptAnalyzer,
+        lambda _c: ScriptAnalyzer(),
+    )
+    container.register(
+        SceneBreakdownPlanner,
+        lambda _c: SceneBreakdownPlanner(),
+    )
+    container.register(
+        ScriptToVideoService,
+        lambda c: ScriptToVideoService(
+            c.resolve(Database),
+            c.resolve(ArtifactStorage),
+            c.resolve(AuditLog),
+            speech_synthesizer=c.resolve(SpeechSynthesizer),
+            image_generator=c.resolve(ImageGenerator),
+            video_clip_generator=c.resolve(VideoClipGenerator),
+            video_renderer=c.resolve(VideoRenderer),
+            script_analyzer=c.resolve(ScriptAnalyzer),
+            scene_planner=c.resolve(SceneBreakdownPlanner),
+            asset_registry=c.resolve(AssetRegistry),
+            provenance_recorder=c.resolve(ProvenanceRecorder),
+            rights_engine=c.resolve(RightsRiskEngine),
+            disclosure_decider=c.resolve(DisclosureDecider),
+            audio_recorder=c.resolve(AudioArtifactRecorder),
+            audio_validator=c.resolve(AudioValidator),
+            broll_manager=c.resolve(BrollManager),
+            shorts_service=c.resolve(ShortsProjectService),
+            shorts_subtitles=c.resolve(ShortsSubtitleRecorder),
+            shorts_thumbnail=c.resolve(ShortsThumbnailRecorder),
+            shorts_metadata=c.resolve(ShortsMetadataRecorder),
+            shorts_render=c.resolve(ShortsRenderService),
+            shorts_bundle=c.resolve(ShortsBundleBuilder),
+            longform_service=c.resolve(LongFormProjectService),
+            longform_subtitles=c.resolve(LongFormSubtitleRecorder),
+            longform_thumbnail=c.resolve(LongFormThumbnailRecorder),
+            longform_metadata=c.resolve(LongFormMetadataRecorder),
+            longform_render=c.resolve(LongFormRenderService),
+            longform_bundle=c.resolve(LongFormBundleBuilder),
+            qc_builder=c.resolve(QCReportBuilder),
+            preview_service=c.resolve(PreviewArtifactService),
+            approval_service=c.resolve(ApprovalService),
         ),
     )
     return container

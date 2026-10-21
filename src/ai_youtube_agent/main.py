@@ -10,6 +10,9 @@ from ai_youtube_agent.bootstrap import build_container, prepare_database
 from ai_youtube_agent.content.approval_api import router as approval_router
 from ai_youtube_agent.content.channel_api import router as channel_router
 from ai_youtube_agent.content.preview_api import router as preview_router
+from ai_youtube_agent.content.script_to_video_api import (
+    router as script_to_video_router,
+)
 from ai_youtube_agent.content.strategy_api import router as strategy_router
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.di import Container
@@ -48,6 +51,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(approval_router)
     app.include_router(publish_router)
     app.include_router(publish_audit_router)
+    app.include_router(script_to_video_router)
     return app
 
 

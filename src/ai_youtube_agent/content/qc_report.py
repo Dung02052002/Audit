@@ -226,7 +226,7 @@ class TestGate:
 
     def evaluate(self, context: GateContext) -> GateResult:
         if context.target_status not in (
-            ContentStatus.READY_FOR_REVIEW,
+            ContentStatus.PREVIEW_READY,
             ContentStatus.PUBLISHING,
         ):
             return GateResult.passed(self.name, context.at)
@@ -290,7 +290,7 @@ class QCGate:
 
     def evaluate(self, context: GateContext) -> GateResult:
         if context.target_status not in (
-            ContentStatus.READY_FOR_REVIEW,
+            ContentStatus.PREVIEW_READY,
             ContentStatus.PUBLISHING,
         ):
             return GateResult.passed(self.name, context.at)

@@ -284,21 +284,21 @@ def _text_lines(
             lines_out.append(
                 TextLine(
                     text=line,
-                    box=PixelRect(
+                    start_ms=caption.start_ms,
+                    end_ms=caption.end_ms,
+                    rect=PixelRect(
                         box.x,
                         box.y + index * line_height,
                         box.width,
                         line_height,
                     ),
-                    start_ms=caption.start_ms,
-                    end_ms=caption.end_ms,
-                    font_size=style.font_size,
-                    font_key=font_key,
-                    text_colour=style.text_colour,
-                    stroke_colour=style.stroke_colour,
-                    stroke_width=style.stroke_width,
-                    background_colour=style.background_colour,
                     align=TextAlign(style.align.value),
+                    size_px=style.size_px,
+                    color=style.color,
+                    stroke_color=style.stroke_color,
+                    stroke_px=style.stroke_px,
+                    background=style.background,
+                    font_key=font_key,
                 )
             )
     return lines_out
@@ -314,7 +314,7 @@ def build_longform_render_request(
     config = project.config
     width, height = config.width, config.height
     inputs: list[RenderInput] = [
-        RenderInput(AUDIO_KEY, mix.audio, AUDIO_INPUT_MEDIA_TYPE, mix.sha256)
+        RenderInput(AUDIO_KEY, mix.wav, AUDIO_INPUT_MEDIA_TYPE, mix.sha256)
     ]
     layers: list[VisualLayer] = []
     asset_keys: dict[str, str] = {}
@@ -330,14 +330,17 @@ def build_longform_render_request(
     for scene, placed in visual_placements(timeline):
         file = visual_files[placed.asset_id]
         key = _get_key(placed.asset_id, file)
+        video = file.media_type in VIDEO_MEDIA_TYPES
+        end_ms = scene.duration_ms if placed.end_ms is None else placed.end_ms
         layers.append(
             VisualLayer(
                 input_key=key,
-                box=_rect(placed.box, width, height),
-                start_ms=scene.start_ms,
-                end_ms=scene.end_ms,
+                start_ms=scene.start_ms + placed.start_ms,
+                end_ms=scene.start_ms + end_ms,
+                rect=_rect(placed.box, width, height),
                 fit=LayerFit(placed.fit.value),
-                opacity=placed.opacity,
+                source_in_ms=placed.source_in_ms if video else None,
+                source_out_ms=placed.source_out_ms if video else None,
             )
         )
 
@@ -359,9 +362,9 @@ def build_longform_render_request(
         fps=config.fps,
         duration_ms=timeline.duration_ms,
         audio=inputs[0],
-        inputs=inputs[1:],
-        layers=layers,
-        texts=texts,
+        inputs=tuple(inputs[1:]),
+        layers=tuple(layers),
+        texts=tuple(texts),
     )
 
 
@@ -543,8 +546,9 @@ class LongFormRenderService:
                         code=LongFormRenderErrorCode.IN_PROGRESS,
                     )
                 if job.status == AIJobStatus.RUNNING and take_over:
-                    job = job.fail(detail="take_over", clock=self._clock)
-                    jobs.update(job)
+                    prev_updated = job.updated_at
+                    job = job.fail("take_over", clock=self._clock)
+                    jobs.update(job, expected_updated_at=prev_updated)
 
             # Start or resume job
             if job is None:
@@ -557,8 +561,9 @@ class LongFormRenderService:
                 job = job.start(clock=self._clock)
                 jobs.add(job)
             else:
+                prev_updated = job.updated_at
                 job = job.start(clock=self._clock)
-                jobs.update(job)
+                jobs.update(job, expected_updated_at=prev_updated)
 
         # Step 6: Render MP4 outside transaction
         try:
@@ -568,7 +573,11 @@ class LongFormRenderService:
                 jobs = AIJobRepository(connection)
                 j = jobs.get(job.id)
                 if j is not None and j.status == AIJobStatus.RUNNING:
-                    jobs.update(j.fail(detail=error.code, clock=self._clock))
+                    prev_updated = j.updated_at
+                    jobs.update(
+                        j.fail(error.code, clock=self._clock),
+                        expected_updated_at=prev_updated,
+                    )
             self._audit.record(
                 RENDER_FAILED,
                 actor,
@@ -605,15 +614,15 @@ class LongFormRenderService:
         # Step 8: Store MP4 and record artifact in write transaction
         video_sha256 = hashlib.sha256(rendered.data).hexdigest()
         written_file: StoredFile | None = None
-        invalidations: list[InvalidationResult] = []
+        invalidation: InvalidationResult | None = None
 
         try:
             written_file = self._storage.write(
-                rendered.data,
                 item.id,
                 ArtifactKind.VIDEO,
                 next_version,
-                MP4_MEDIA_TYPE,
+                rendered.data,
+                media_type=MP4_MEDIA_TYPE,
             )
 
             with self._database.transaction() as connection:
@@ -638,27 +647,36 @@ class LongFormRenderService:
                         code=LongFormRenderErrorCode.CONFLICT,
                     )
 
-                artifact = Artifact.create(
-                    item.id,
-                    ArtifactKind.VIDEO,
-                    next_version,
-                    written_file.uri,
-                    video_sha256,
-                    len(rendered.data),
-                    MP4_MEDIA_TYPE,
-                    clock=self._clock,
-                )
+                if curr_video is None:
+                    artifact = Artifact.create(
+                        item.id,
+                        ArtifactKind.VIDEO,
+                        uri=written_file.uri,
+                        sha256=video_sha256,
+                        size_bytes=len(rendered.data),
+                        media_type=MP4_MEDIA_TYPE,
+                        clock=self._clock,
+                    )
+                else:
+                    artifact = curr_video.next_version(
+                        uri=written_file.uri,
+                        sha256=video_sha256,
+                        size_bytes=len(rendered.data),
+                        media_type=MP4_MEDIA_TYPE,
+                        clock=self._clock,
+                    )
                 artifacts.add(artifact)
 
                 # Invalidate stale approvals (#035)
-                invalidations = invalidate_stale_approvals(
-                    connection, item.id, artifact, actor=actor, clock=self._clock
+                invalidation = invalidate_stale_approvals(
+                    connection, item.id, clock=self._clock
                 )
 
                 # Checkpoint & succeed AIJob
                 jobs = AIJobRepository(connection)
                 j = jobs.get(job.id)
                 if j is not None and j.status == AIJobStatus.RUNNING:
+                    prev_updated = j.updated_at
                     j = j.checkpoint(
                         RENDERED_STEP,
                         {
@@ -671,7 +689,7 @@ class LongFormRenderService:
                         clock=self._clock,
                     )
                     j = j.succeed(clock=self._clock)
-                    jobs.update(j)
+                    jobs.update(j, expected_updated_at=prev_updated)
 
         except Exception:
             if written_file is not None:
@@ -679,7 +697,8 @@ class LongFormRenderService:
             raise
 
         # Post-commit audit
-        record_invalidations(self._audit, invalidations)
+        if invalidation is not None:
+            record_invalidations(self._audit, invalidation)
         self._audit.record(
             RENDERED,
             actor,

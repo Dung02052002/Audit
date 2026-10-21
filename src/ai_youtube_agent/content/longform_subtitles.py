@@ -255,7 +255,9 @@ class LongFormSubtitleRecorder:
                         f"stored: {error}",
                         code=LongFormSubtitleErrorCode.STORAGE_FAILED,
                     ) from error
-                artifact = _artifact(latest, item_id, written, self._clock)
+                artifact = _artifact(
+                    latest, item_id, written, media_type, self._clock
+                )
                 artifacts.add(artifact)
                 invalidation = invalidate_stale_approvals(
                     connection, item_id, clock=self._clock
@@ -333,12 +335,14 @@ def _artifact(
     latest: Artifact | None,
     content_item_id: str,
     written: StoredFile,
+    media_type: str,
     clock: Clock | None,
 ) -> Artifact:
     kwargs: dict[str, object] = {
         "uri": written.uri,
         "sha256": written.sha256,
         "size_bytes": written.size_bytes,
+        "media_type": media_type,
         "clock": clock,
     }
     if latest is None:

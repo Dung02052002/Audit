@@ -393,7 +393,7 @@ class VideoArtifactTestHarness:
                 render_job_status = latest_job.status.value
                 for cp in reversed(latest_job.checkpoints):
                     if cp.step == "video.rendered":
-                        v_sha = cp.data.get("video_sha256")
+                        v_sha = cp.data.get("video_sha256") or cp.data.get("sha256")
                         t_sha = cp.data.get("timeline_sha256")
                         if isinstance(v_sha, str):
                             render_job_video_sha256 = v_sha

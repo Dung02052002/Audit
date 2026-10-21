@@ -539,15 +539,15 @@ class LongFormThumbnailRecorder:
             next_version = 1 if latest_thumb is None else latest_thumb.version + 1
 
         written_file: StoredFile | None = None
-        invalidations: list[InvalidationResult] = []
+        invalidation: InvalidationResult | None = None
 
         try:
             written_file = self._storage.write(
-                raw_data,
                 item.id,
                 ArtifactKind.THUMBNAIL,
                 next_version,
-                image_info.media_type,
+                raw_data,
+                media_type=image_info.media_type,
             )
 
             with self._database.transaction() as connection:
@@ -572,21 +572,29 @@ class LongFormThumbnailRecorder:
                         code=LongFormThumbnailErrorCode.CONFLICT,
                     )
 
-                artifact = Artifact.create(
-                    item.id,
-                    ArtifactKind.THUMBNAIL,
-                    next_version,
-                    written_file.uri,
-                    sha256,
-                    len(raw_data),
-                    image_info.media_type,
-                    clock=self._clock,
-                )
+                if curr_thumb is None:
+                    artifact = Artifact.create(
+                        item.id,
+                        ArtifactKind.THUMBNAIL,
+                        uri=written_file.uri,
+                        sha256=sha256,
+                        size_bytes=len(raw_data),
+                        media_type=image_info.media_type,
+                        clock=self._clock,
+                    )
+                else:
+                    artifact = curr_thumb.next_version(
+                        uri=written_file.uri,
+                        sha256=sha256,
+                        size_bytes=len(raw_data),
+                        media_type=image_info.media_type,
+                        clock=self._clock,
+                    )
                 artifacts_repo.add(artifact)
 
                 # Invalidate stale approvals (#035)
-                invalidations = invalidate_stale_approvals(
-                    connection, item.id, artifact, actor=actor, clock=self._clock
+                invalidation = invalidate_stale_approvals(
+                    connection, item.id, clock=self._clock
                 )
 
         except Exception:
@@ -594,7 +602,8 @@ class LongFormThumbnailRecorder:
                 self._storage.delete(written_file.uri)
             raise
 
-        record_invalidations(self._audit, invalidations)
+        if invalidation is not None:
+            record_invalidations(self._audit, invalidation)
         self._audit.record(
             THUMBNAIL_RECORDED,
             actor,
@@ -618,5 +627,5 @@ class LongFormThumbnailRecorder:
             source_kind=source_kind,
             image_info=image_info,
             created=True,
-            invalidation=invalidations[0] if invalidations else None,
+            invalidation=invalidation,
         )

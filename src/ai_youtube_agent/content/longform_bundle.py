@@ -257,10 +257,10 @@ class LongFormBundleBuilder:
         self._audit = audit
         self._settings = settings
         self._rights_reporter = rights_reporter or RightsReporter(
-            database, audit, settings, clock=clock
+            database, settings, clock=clock
         )
         self._policy_reporter = policy_reporter or PolicyReporter(
-            database, audit, settings, clock=clock
+            database, clock=clock
         )
         self._flags = (
             flags if flags is not None else FeatureFlags(longform_enabled=True)
@@ -431,7 +431,7 @@ class LongFormBundleBuilder:
             )
 
         # Evaluate RightsReport and PolicyReport
-        rights_report = self._rights_reporter.report(item.id, actor=actor)
+        rights_report = self._rights_reporter.report(item.id)
         if rights_report.gate.blocks:
             raise LongFormBundleError(
                 "rights gate blocks this LongForm bundle",
@@ -440,7 +440,8 @@ class LongFormBundleBuilder:
 
         if (
             rights_report.disclosure is None
-            or rights_report.disclosure.id != parsed_meta.disclosure_decision_id
+            or rights_report.disclosure.decision_id
+            != parsed_meta.disclosure_decision_id
         ):
             raise LongFormBundleError(
                 "AI disclosure decision drifted from metadata",
@@ -449,10 +450,12 @@ class LongFormBundleBuilder:
 
         policy_report = self._policy_reporter.report(
             item.id,
-            title=parsed_meta.title,
+            rule_set=RuleSet(
+                parsed_meta.policy_rule_set_id,
+                parsed_meta.policy_rule_set_version,
+            ),
             description=parsed_meta.description,
             tags=parsed_meta.tags,
-            actor=actor,
         )
         if policy_report.blocks:
             raise LongFormBundleError(
@@ -466,7 +469,7 @@ class LongFormBundleBuilder:
             "project_id": project.id,
             "project_version": project.version,
             "content_item_id": item.id,
-            "channel_id": project.channel_id,
+            "channel_id": item.channel_id,
             "artifacts": {
                 "audio": {"id": audio.id, "version": audio.version, "sha256": audio.sha256},
                 "video": {"id": video.id, "version": video.version, "sha256": video.sha256},

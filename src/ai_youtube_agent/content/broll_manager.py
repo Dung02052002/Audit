@@ -51,12 +51,15 @@ from ai_youtube_agent.content.longform_service import (
 from ai_youtube_agent.content.rights import RiskLevel, RiskResolution
 from ai_youtube_agent.content.shorts_timeline import (
     ROLE_KINDS,
+    AssetFit,
     AssetRole,
     Box,
-    CropMode,
     Scene,
     SceneAsset,
 )
+
+# Backwards-compatible alias for callers referring to CropMode.
+CropMode = AssetFit
 from ai_youtube_agent.core.audit import (
     Actor,
     AuditLog,
@@ -149,7 +152,7 @@ class BrollAssignment:
     role: AssetRole = AssetRole.BACKGROUND
     crop: CropMode = CropMode.COVER
     box: Box | None = None
-    gain_db: float = 0.0
+    gain_db: float | None = None
     provenance_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -163,16 +166,21 @@ class BrollAssignment:
             raise ValueError("asset_id must not be empty")
         if not isinstance(self.role, AssetRole) or self.role is AssetRole.MUSIC:
             raise ValueError(
-                "role must be a scene asset role (background, overlay or sfx)"
+                "role must be a scene asset role (background, b_roll, overlay or sfx)"
             )
 
     def to_scene_asset(self, provenance_id: str | None) -> SceneAsset:
+        effective_gain = (
+            (0.0 if self.gain_db is None else self.gain_db)
+            if self.role is AssetRole.SFX
+            else None
+        )
         return SceneAsset(
             asset_id=self.asset_id,
             role=self.role,
-            crop=self.crop,
+            fit=self.crop,
             box=self.box,
-            gain_db=self.gain_db,
+            gain_db=effective_gain,
             provenance_id=provenance_id,
         )
 
@@ -316,7 +324,7 @@ class BrollManager:
                 placed = SceneAsset(
                     asset_id=chosen.id,
                     role=AssetRole.BACKGROUND,
-                    crop=crop,
+                    fit=crop,
                     provenance_id=provenance_by_asset[chosen.id],
                 )
                 scenes.append(_apply_to_scene(scene, placed, replace_role=True))

@@ -455,10 +455,12 @@ class LongFormMetadataRecorder:
                     code=LongFormMetadataErrorCode.PROJECT_NOT_FOUND,
                 )
 
-            strategy = StrategyProfileRepository(connection).get(project.channel_id)
+            strategy = StrategyProfileRepository(connection).get_by_channel(
+                item.channel_id
+            )
             if strategy is None:
                 raise LongFormMetadataError(
-                    f"channel {project.channel_id} has no strategy profile",
+                    f"channel {item.channel_id} has no strategy profile",
                     code=LongFormMetadataErrorCode.STRATEGY_MISSING,
                 )
 
@@ -545,7 +547,7 @@ class LongFormMetadataRecorder:
                 project_id=project.id,
                 project_version=project.version,
                 content_item_id=item.id,
-                channel_id=project.channel_id,
+                channel_id=item.channel_id,
                 script_id=project.script_id,
                 script_version=project.script_version,
                 strategy_version=project.strategy_version,
@@ -578,15 +580,15 @@ class LongFormMetadataRecorder:
 
         # Write metadata file outside transaction
         written_file: StoredFile | None = None
-        invalidations: list[InvalidationResult] = []
+        invalidation: InvalidationResult | None = None
 
         try:
             written_file = self._storage.write(
-                raw_bytes,
                 item.id,
                 ArtifactKind.METADATA,
                 next_version,
-                METADATA_MEDIA_TYPE,
+                raw_bytes,
+                media_type=METADATA_MEDIA_TYPE,
             )
 
             with self._database.transaction() as connection:
@@ -611,21 +613,29 @@ class LongFormMetadataRecorder:
                         code=LongFormMetadataErrorCode.CONFLICT,
                     )
 
-                artifact = Artifact.create(
-                    item.id,
-                    ArtifactKind.METADATA,
-                    next_version,
-                    written_file.uri,
-                    sha256,
-                    len(raw_bytes),
-                    METADATA_MEDIA_TYPE,
-                    clock=self._clock,
-                )
+                if curr_meta is None:
+                    artifact = Artifact.create(
+                        item.id,
+                        ArtifactKind.METADATA,
+                        uri=written_file.uri,
+                        sha256=sha256,
+                        size_bytes=len(raw_bytes),
+                        media_type=METADATA_MEDIA_TYPE,
+                        clock=self._clock,
+                    )
+                else:
+                    artifact = curr_meta.next_version(
+                        uri=written_file.uri,
+                        sha256=sha256,
+                        size_bytes=len(raw_bytes),
+                        media_type=METADATA_MEDIA_TYPE,
+                        clock=self._clock,
+                    )
                 artifacts_repo.add(artifact)
 
                 # Invalidate stale approvals (#035)
-                invalidations = invalidate_stale_approvals(
-                    connection, item.id, artifact, actor=actor, clock=self._clock
+                invalidation = invalidate_stale_approvals(
+                    connection, item.id, clock=self._clock
                 )
 
         except Exception:
@@ -633,7 +643,8 @@ class LongFormMetadataRecorder:
                 self._storage.delete(written_file.uri)
             raise
 
-        record_invalidations(self._audit, invalidations)
+        if invalidation is not None:
+            record_invalidations(self._audit, invalidation)
         self._audit.record(
             METADATA_RECORDED,
             actor,
@@ -656,5 +667,5 @@ class LongFormMetadataRecorder:
             artifact=artifact,
             metadata=metadata,
             created=True,
-            invalidation=invalidations[0] if invalidations else None,
+            invalidation=invalidation,
         )

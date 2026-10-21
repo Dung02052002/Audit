@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, TextIO
 
+from ai_youtube_agent.core.log_redaction import redact_mapping, redact_string
+
 
 class Severity(StrEnum):
     DEBUG = "DEBUG"
@@ -84,14 +86,18 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "severity": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_string(record.getMessage()),
             **current_context(),
         }
         fields = getattr(record, "fields", None)
         if fields:
-            payload["fields"] = fields
+            payload["fields"] = (
+                redact_mapping(fields) if isinstance(fields, dict) else fields
+            )
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = redact_string(
+                self.formatException(record.exc_info)
+            )
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 

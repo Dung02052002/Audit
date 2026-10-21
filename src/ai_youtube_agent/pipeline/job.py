@@ -262,14 +262,59 @@ class AIJob:
             raise self._state_error("succeed")
         return replace(self, status=AIJobStatus.SUCCEEDED, updated_at=_now(clock))
 
-    def cancel(self, *, clock: Clock | None = None) -> "AIJob":
+    def cancel(
+        self,
+        reason: str | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> "AIJob":
         if self.is_final:
             raise self._state_error("cancel")
+        now = _now(clock)
+        checkpoints = self.checkpoints
+        if reason:
+            saved = JobCheckpoint(
+                len(checkpoints) + 1, "cancelled", now, {"reason": reason}
+            )
+            checkpoints = (*checkpoints, saved)
         return replace(
             self,
             status=AIJobStatus.CANCELLED,
-            last_error=None,
-            updated_at=_now(clock),
+            checkpoints=checkpoints,
+            last_error=reason,
+            updated_at=now,
+        )
+
+    def wait_for_approval(
+        self,
+        approval_request_id: str | None = None,
+        *,
+        clock: Clock | None = None,
+    ) -> "AIJob":
+        if self.status is not AIJobStatus.RUNNING:
+            raise self._state_error("wait")
+        now = _now(clock)
+        checkpoint_data: dict[str, MetadataValue] = {}
+        if approval_request_id:
+            checkpoint_data["approval_request_id"] = approval_request_id
+        saved = JobCheckpoint(len(self.checkpoints) + 1, "approval.wait", now, checkpoint_data)
+        return replace(
+            self,
+            status=AIJobStatus.WAITING,
+            checkpoints=(*self.checkpoints, saved),
+            updated_at=now,
+        )
+
+    def resume_from_wait(self, *, clock: Clock | None = None) -> "AIJob":
+        if self.status is not AIJobStatus.WAITING:
+            raise self._state_error("resume")
+        now = _now(clock)
+        saved = JobCheckpoint(len(self.checkpoints) + 1, "approval.resumed", now, {})
+        return replace(
+            self,
+            status=AIJobStatus.RUNNING,
+            checkpoints=(*self.checkpoints, saved),
+            updated_at=now,
         )
 
     def as_dict(self) -> dict[str, Any]:

@@ -166,6 +166,7 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
+from ai_youtube_agent.pipeline.approval_wait import ApprovalWaitService
 from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
 from ai_youtube_agent.pipeline.job_queue import JobQueue, SqliteJobQueue
 from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
@@ -979,6 +980,14 @@ def build_container(settings: Settings | None = None) -> Container:
             qc_builder=c.resolve(QCReportBuilder),
             shorts_publisher=c.resolve(ShortsPublisher),
             longform_publisher=c.resolve(LongFormPublisher),
+        ),
+    )
+    container.register(
+        ApprovalWaitService,
+        lambda c: ApprovalWaitService(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            queue=c.resolve(JobQueue),
         ),
     )
     return container

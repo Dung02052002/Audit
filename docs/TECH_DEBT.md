@@ -131,6 +131,7 @@ needs its tests run in the later test phase; those tests are listed per task in
 | R-204 Job Queue | `tests/test_job_queue.py`, `tests/test_bootstrap.py` |
 | R-205 Job Scheduler | `tests/test_job_scheduler.py`, `tests/test_bootstrap.py` |
 | R-206 Pipeline Runner | `tests/test_pipeline_runner.py`, `tests/test_bootstrap.py` |
+| R-207 Approval Wait | `tests/test_approval_wait.py`, `tests/test_bootstrap.py` |
 | Whole batch | full suite once (Settings, bootstrap, shared core changed); `ruff check .`, `ruff format --check .`, `uv build`; then commit per task |
 
 ## Open items

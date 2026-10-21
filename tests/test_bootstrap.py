@@ -656,4 +656,10 @@ def test_container_resolves_orchestrator_job_queue(
     runner = container.resolve(PipelineRunner)
     assert isinstance(runner, PipelineRunner)
     assert container.resolve(PipelineRunner) is runner
+
+    from ai_youtube_agent.pipeline.approval_wait import ApprovalWaitService
+
+    wait_service = container.resolve(ApprovalWaitService)
+    assert isinstance(wait_service, ApprovalWaitService)
+    assert container.resolve(ApprovalWaitService) is wait_service
     assert not (tmp_path / "agent.db").exists()

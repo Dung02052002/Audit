@@ -336,6 +336,14 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 | Q-202 | Alerts | Q-11 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-21; manual review only). implemented `src/ai_youtube_agent/content/dashboard_alerts.py` (`ActionableAlertCard`, `AlertCategory`, `AlertSeverity`, `AlertsScreenView`, `AlertsScreenService`), registered `AlertsScreenService` in `src/ai_youtube_agent/bootstrap.py`, and added `tests/test_dashboard_alerts.py` and `tests/test_bootstrap.py`. Tests NOT RUN: `tests/test_dashboard_alerts.py`, `tests/test_bootstrap.py` |
 | Q-203 | Dashboard Tests | Q-12 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-21; manual review only). Test-only. Added `tests/test_dashboard_scenarios.py` verifying mocked data rendering across all 11 Command Center screens, empty states when no channels exist, dynamic badge calculations across pending approvals, attention comments, and active jobs, error states, and XSS escaping. Phase Q is complete. Tests NOT RUN: `tests/test_dashboard_scenarios.py`; then the whole Phase Q test suite (`tests/test_dashboard_shell.py`, `tests/test_dashboard_home.py`, `tests/test_dashboard_channel.py`, `tests/test_dashboard_content.py`, `tests/test_dashboard_video_detail.py`, `tests/test_dashboard_analytics.py`, `tests/test_dashboard_revenue.py`, `tests/test_dashboard_comments.py`, `tests/test_dashboard_ai_center.py`, `tests/test_dashboard_approvals.py`, `tests/test_dashboard_settings.py`, `tests/test_dashboard_alerts.py`, `tests/test_dashboard_scenarios.py`) |
 
+## Phase R: Orchestrator & Session Runtime (Prompt Pack v8, prompts 204-215)
+
+Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs/REQUIREMENTS.md`.
+
+| Task | Name | Dependency | Status |
+|---|---|---|---|
+| R-204 | Job Queue | Q-13 | IMPLEMENTED_UNTESTED (BUILD-FIRST, 2026-10-21; manual review only). Implemented `src/ai_youtube_agent/pipeline/job_queue.py` (`JobQueue` Protocol, `QueuedJobLease`, `QueueEnqueueResult`, `JobQueueError`, `SqliteJobQueue` backed by SQLite `Database` and `AIJobRepository` with worker lease checkpoints and crash recovery, and `InMemoryJobQueue`), registered in `src/ai_youtube_agent/bootstrap.py`, and added `tests/test_job_queue.py` and `tests/test_bootstrap.py`. Tests NOT RUN: `tests/test_job_queue.py`, `tests/test_bootstrap.py` |
+
 ## Current
 
 - `PROJECT_STATE = READY_FOR_PHASE_A`
@@ -355,4 +363,5 @@ Source: `AI_YouTube_Autonomous_Agent_PROMPT_PACK_v8_BASELINE_SAFE.pdf` and `docs
 - Batch 10 (`O-171 Estimated Revenue`, `O-172 Final Revenue`, `O-173 Revenue Sources`, `O-174 Cost Ledger`, `O-175 LLM Cost`, `O-176 TTS Cost`, `O-177 Render Cost`, `O-178 Storage/API Cost`, `O-179 Contribution Margin`, `O-180 Budget Guard`) is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`; no tests, lint, format or build run).
 - Batch 11 (`O-181 Economics Tests`, `P-182 Comment Provider`, `P-183 Comment Sync`, `P-184 Comment Classification`, `P-185 Reply Draft`, `P-186 Reply Approval`, `P-187 Duplicate Reply Guard`, `P-188 AUTO_REPLY Flag`, `P-189 Comment Audit`, `P-190 Comment Tests`) is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`; no tests, lint, format or build run). Phase O and Phase P are complete.
 - Phase Q (Q-191..Q-203) is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`).
-- Next task: **R-204 Job Queue**.
+- R-204 Job Queue is implemented in BUILD-FIRST mode (`IMPLEMENTED_UNTESTED`).
+- Next task: **R-205 Job Scheduler**.

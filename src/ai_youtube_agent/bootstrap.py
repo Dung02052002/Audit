@@ -167,6 +167,7 @@ from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.publish_gate import PublishGate
 from ai_youtube_agent.pipeline.duplicate_guard import PublishDuplicateGuard
+from ai_youtube_agent.pipeline.job_queue import JobQueue, SqliteJobQueue
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
 from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
@@ -950,6 +951,10 @@ def build_container(settings: Settings | None = None) -> Container:
             health_registry=c.resolve(HealthRegistry),
             shell_service=c.resolve(DashboardShellService),
         ),
+    )
+    container.register(
+        JobQueue,
+        lambda c: SqliteJobQueue(c.resolve(Database)),
     )
     return container
 

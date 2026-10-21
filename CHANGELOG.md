@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `PROJECT_STATE.md`, `TASK_STATUS.md` and `CHANGELOG.md` to track the project state and task results.
+- R-204 Job Queue: durable queue abstraction `JobQueue` (`src/ai_youtube_agent/pipeline/job_queue.py`), `SqliteJobQueue` backed by SQLite and `AIJobRepository` with worker lease checkpoints and crash recovery, `InMemoryJobQueue`, tests in `tests/test_job_queue.py`, and container registration in `src/ai_youtube_agent/bootstrap.py`.
 
 ### Changed
 

@@ -627,3 +627,21 @@ def test_container_resolves_the_command_center_dashboard_services(
         container.resolve(AlertsScreenService), AlertsScreenService
     )
     assert not (tmp_path / "agent.db").exists()
+
+
+def test_container_resolves_orchestrator_job_queue(
+    tmp_path: Path,
+) -> None:
+    from ai_youtube_agent.pipeline.job_queue import JobQueue, SqliteJobQueue
+
+    settings = Settings(
+        environment=Environment.TEST,
+        database_path=tmp_path / "agent.db",
+        artifact_dir=tmp_path / "artifacts",
+    )
+    container = build_container(settings)
+
+    queue = container.resolve(JobQueue)
+    assert isinstance(queue, SqliteJobQueue)
+    assert container.resolve(JobQueue) is queue
+    assert not (tmp_path / "agent.db").exists()

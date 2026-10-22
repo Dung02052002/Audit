@@ -28,16 +28,18 @@ from ai_youtube_agent.pipeline.job_queue import LEASE_STEP_NAME, JobQueue
 Clock = Callable[[], datetime]
 CRASH_RESUME_ACTOR: Final[Actor] = Actor(ActorKind.SYSTEM, "crash_resume_service")
 
-ADMINISTRATIVE_CHECKPOINT_STEPS: Final[frozenset[str]] = frozenset({
-    LEASE_STEP_NAME,
-    "approval.wait",
-    "approval.resumed",
-    "retry.scheduled",
-    "retry.terminal",
-    "crash.recovered",
-    "job.cancelled",
-    "cancelled",
-})
+ADMINISTRATIVE_CHECKPOINT_STEPS: Final[frozenset[str]] = frozenset(
+    {
+        LEASE_STEP_NAME,
+        "approval.wait",
+        "approval.resumed",
+        "retry.scheduled",
+        "retry.terminal",
+        "crash.recovered",
+        "job.cancelled",
+        "cancelled",
+    }
+)
 
 
 class CrashResumeError(DomainError):
@@ -119,11 +121,11 @@ class CrashRecoveryReport:
 
 
 def extract_safe_checkpoint(job: AIJob) -> SafeCheckpointState:
-    """Inspects a job's checkpoint history and returns the last safe domain checkpoint."""
+    """Inspects a job's checkpoint history and returns the last safe domain
+    checkpoint.
+    """
     domain_checkpoints: list[JobCheckpoint] = [
-        cp
-        for cp in job.checkpoints
-        if cp.step not in ADMINISTRATIVE_CHECKPOINT_STEPS
+        cp for cp in job.checkpoints if cp.step not in ADMINISTRATIVE_CHECKPOINT_STEPS
     ]
     last_cp = domain_checkpoints[-1] if domain_checkpoints else None
     return SafeCheckpointState(
@@ -140,7 +142,9 @@ def extract_safe_checkpoint(job: AIJob) -> SafeCheckpointState:
 
 
 class CrashResumeService:
-    """Recovers interrupted AI jobs after a crash and resumes from their last safe checkpoint."""
+    """Recovers interrupted AI jobs after a crash and resumes from their last safe
+    checkpoint.
+    """
 
     def __init__(
         self,
@@ -177,7 +181,9 @@ class CrashResumeService:
         force_reclaim: bool = False,
         actor: Actor | None = None,
     ) -> RecoveredJobPlan:
-        """Recovers a single interrupted RUNNING or FAILED job from its last safe checkpoint."""
+        """Recovers a single interrupted RUNNING or FAILED job from its last safe
+        checkpoint.
+        """
         now = self._now()
         audit_actor = actor or CRASH_RESUME_ACTOR
         resumed_flag = False
@@ -191,24 +197,32 @@ class CrashResumeService:
 
             if job.is_final:
                 raise CrashResumeError(
-                    f"Job {job.id} is in terminal status {job.status.value} and cannot be resumed"
+                    f"Job {job.id} is in terminal status {job.status.value} and cannot "
+                    "be resumed"
                 )
             if job.status is AIJobStatus.WAITING:
                 raise CrashResumeError(
-                    f"Job {job.id} is WAITING for human approval and cannot be crash-resumed"
+                    f"Job {job.id} is WAITING for human approval and cannot be "
+                    "crash-resumed"
                 )
 
-            if job.status is AIJobStatus.RUNNING and not force_reclaim:
-                if self._has_live_lease(job, now):
-                    raise CrashResumeError(
-                        f"Job {job.id} has an active worker lease; pass force_reclaim=True to take over"
-                    )
+            if (
+                job.status is AIJobStatus.RUNNING
+                and not force_reclaim
+                and self._has_live_lease(job, now)
+            ):
+                raise CrashResumeError(
+                    f"Job {job.id} has an active worker lease; pass force_reclaim=True "
+                    "to take over"
+                )
 
             state = extract_safe_checkpoint(job)
             old_updated_at = job.updated_at
 
             if job.status is AIJobStatus.RUNNING:
-                job = job.fail("Interrupted by crash or expired lease", clock=self._clock)
+                job = job.fail(
+                    "Interrupted by crash or expired lease", clock=self._clock
+                )
 
             if job.attempts >= self._max_attempts:
                 exhausted = job.record_checkpoint(
@@ -226,7 +240,9 @@ class CrashResumeService:
                     job=exhausted,
                     checkpoint_state=state,
                     resumed=False,
-                    reason=f"Max attempts reached ({job.attempts}/{self._max_attempts})",
+                    reason=(
+                        f"Max attempts reached ({job.attempts}/{self._max_attempts})"
+                    ),
                 )
             else:
                 if job.status in (AIJobStatus.QUEUED, AIJobStatus.FAILED):
@@ -249,7 +265,8 @@ class CrashResumeService:
                     checkpoint_state=extract_safe_checkpoint(recovered),
                     resumed=True,
                     reason=(
-                        f"Resumed from checkpoint '{state.last_safe_step}' (seq {state.last_safe_sequence})"
+                        f"Resumed from checkpoint '{state.last_safe_step}' (seq "
+                        f"{state.last_safe_sequence})"
                         if state.last_safe_step
                         else "Resumed from beginning (no prior domain checkpoint)"
                     ),
@@ -280,7 +297,9 @@ class CrashResumeService:
         force_reclaim: bool = False,
         actor: Actor | None = None,
     ) -> CrashRecoveryReport:
-        """Scans all RUNNING jobs and recovers those that crashed or lost their lease."""
+        """Scans all RUNNING jobs and recovers those that crashed or lost their
+        lease.
+        """
         now = self._now()
         audit_actor = actor or CRASH_RESUME_ACTOR
 

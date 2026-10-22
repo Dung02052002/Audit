@@ -119,9 +119,9 @@ class MockRevenueProvider:
         checked = _checked(amounts, currency)
         with self._lock:
             self._known_channels.add(youtube_channel_id)
-            self._videos.setdefault(
-                (youtube_channel_id, video_id, stage), {}
-            ).update(checked)
+            self._videos.setdefault((youtube_channel_id, video_id, stage), {}).update(
+                checked
+            )
 
     def query(
         self, query: RevenueQuery, *, token: OAuthToken | None = None
@@ -230,9 +230,7 @@ class MockRevenueProvider:
                 (query.youtube_channel_id, video_id, query.stage), {}
             )
             rows.extend(
-                _rows_for_subject(
-                    video_id, query.stage, seeded, query.revenue_types
-                )
+                _rows_for_subject(video_id, query.stage, seeded, query.revenue_types)
             )
         end = offset + query.page_size
         next_token = f"o{end}" if end < len(query.video_ids) else None

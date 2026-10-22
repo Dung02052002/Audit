@@ -88,7 +88,6 @@ from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.errors import DomainError
-from ai_youtube_agent.pipeline.job import AIJob
 from ai_youtube_agent.pipeline.idempotency import AUDIO_KIND, audio_key
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus, JobCheckpoint
 from ai_youtube_agent.providers.speech_synthesis import (

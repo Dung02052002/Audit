@@ -104,9 +104,7 @@ class AnalyticsFreshnessPolicy:
 
     def max_age_for(self, scope: MetricScope, *, is_complete: bool) -> timedelta:
         base = (
-            self.channel_max_age
-            if scope is MetricScope.CHANNEL
-            else self.video_max_age
+            self.channel_max_age if scope is MetricScope.CHANNEL else self.video_max_age
         )
         if is_complete and self.settled_period_max_age > base:
             return self.settled_period_max_age

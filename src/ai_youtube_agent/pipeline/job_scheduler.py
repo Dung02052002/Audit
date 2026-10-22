@@ -17,15 +17,14 @@ channel cadence limits, daily production starts, or budget constraints:
 - Audits every scheduled job with ``job.scheduled`` (or blocked attempts).
 """
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final
-import uuid
 
 from ai_youtube_agent.content.budget_guard import BudgetGuard
-from ai_youtube_agent.content.channel import Channel, ChannelStatus
-from ai_youtube_agent.content.strategy import StrategyProfile
+from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.core.audit import (
     Actor,
     ActorKind,
@@ -157,13 +156,19 @@ class JobScheduler:
 
         # 2. Feature flags check
         if self._flags is not None:
-            if item.content_type is ContentType.LONGFORM and not self._flags.longform_enabled:
+            if (
+                item.content_type is ContentType.LONGFORM
+                and not self._flags.longform_enabled
+            ):
                 return ScheduleEligibility(
                     False,
                     code="longform_disabled",
                     reason="LongForm content type is disabled by feature flags",
                 )
-            if item.content_type is ContentType.SHORTS and not self._flags.shorts_enabled:
+            if (
+                item.content_type is ContentType.SHORTS
+                and not self._flags.shorts_enabled
+            ):
                 return ScheduleEligibility(
                     False,
                     code="shorts_disabled",
@@ -174,7 +179,9 @@ class JobScheduler:
         if self._kill_switch is not None:
             stop = self._kill_switch.current()
             if stop.active:
-                reason = f"Emergency stop is active: {stop.reason or 'operations paused'}"
+                reason = (
+                    f"Emergency stop is active: {stop.reason or 'operations paused'}"
+                )
                 return ScheduleEligibility(
                     False,
                     code="killswitch_active",
@@ -220,7 +227,9 @@ class JobScheduler:
                 return ScheduleEligibility(
                     False,
                     code="no_strategy",
-                    reason=f"Channel {item.channel_id} has no strategy profile configured",
+                    reason=(
+                        f"Channel {item.channel_id} has no strategy profile configured"
+                    ),
                 )
             if strategy.cadence is None:
                 return ScheduleEligibility(
@@ -250,19 +259,29 @@ class JobScheduler:
                     False,
                     code="daily_production_limit_reached",
                     reason=(
-                        f"The daily {item.content_type.value} production limit of {limit} "
-                        f"has been reached for this channel ({used} already started today)"
+                        f"The daily {item.content_type.value} production limit of "
+                        f"{limit} "
+                        f"has been reached for this channel ({used} already started "
+                        f"today)"
                     ),
                 )
 
-            # In-flight job check: do not schedule if an active job already exists for item
+            # In-flight job check: do not schedule if an active job already exists for
+            # item
             existing_jobs = AIJobRepository(conn).list_by_content_item(item.id)
             for j in existing_jobs:
-                if j.status in (AIJobStatus.QUEUED, AIJobStatus.RUNNING, AIJobStatus.WAITING):
+                if j.status in (
+                    AIJobStatus.QUEUED,
+                    AIJobStatus.RUNNING,
+                    AIJobStatus.WAITING,
+                ):
                     return ScheduleEligibility(
                         False,
                         code="already_scheduled",
-                        reason=f"AI job {j.id} is already {j.status.value} for item {item.id}",
+                        reason=(
+                            f"AI job {j.id} is already {j.status.value} for item "
+                            f"{item.id}"
+                        ),
                     )
 
         # 5. Budget check
@@ -386,7 +405,10 @@ class JobScheduler:
 
         # Flags check
         if self._flags is not None:
-            if content_type is ContentType.LONGFORM and not self._flags.longform_enabled:
+            if (
+                content_type is ContentType.LONGFORM
+                and not self._flags.longform_enabled
+            ):
                 return 0
             if content_type is ContentType.SHORTS and not self._flags.shorts_enabled:
                 return 0
@@ -435,7 +457,8 @@ class JobScheduler:
         limit: int | None = None,
         at: datetime | None = None,
     ) -> list[ScheduleDecision]:
-        """Schedule eligible draft items for a single channel up to remaining capacity."""
+        """Schedule eligible draft items for a single channel up to remaining
+        capacity."""
         now = at or self._now()
         with self._database.connection() as conn:
             items = ContentItemRepository(conn).list_by_channel(channel_id)
@@ -454,8 +477,13 @@ class JobScheduler:
             decisions.append(decision)
             if decision.scheduled:
                 scheduled_count += 1
-            elif decision.code in ("daily_production_limit_reached", "budget_exceeded", "killswitch_active"):
-                # If hard limits or emergency stops triggered, further scheduling for this channel will fail
+            elif decision.code in (
+                "daily_production_limit_reached",
+                "budget_exceeded",
+                "killswitch_active",
+            ):
+                # If hard limits or emergency stops triggered, further scheduling for
+                # this channel will fail
                 break
 
         return decisions

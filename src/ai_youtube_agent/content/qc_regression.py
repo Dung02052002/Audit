@@ -1,4 +1,6 @@
-"""QC Regression Suite Fixtures (Prompt Pack v8, prompt K-130), context C10 Quality (Test & QC).
+"""QC Regression Suite Fixtures.
+
+(Prompt Pack v8, prompt K-130), context C10 Quality (Test & QC).
 
 Provides deterministic regression fixture builders for both ``Shorts`` (9:16
 vertical, 1080x1920, SRT captions, ShortsMetadata) and ``LongForm`` (16:9
@@ -7,17 +9,18 @@ horizontal, 1920x1080, WebVTT captions, LongFormMetadata with chapters) so
 ``WARN``, and ``FAIL`` scenarios for all 12 checks (#117–#128).
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from decimal import Decimal
 import hashlib
 import io
 import math
 import struct
 import wave
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset_usage import AssetUsage
 from ai_youtube_agent.content.channel import Channel, YouTubeIdentifiers
 from ai_youtube_agent.content.disclosure import DisclosureRecord
 from ai_youtube_agent.content.disclosure_rule import (
@@ -33,7 +36,7 @@ from ai_youtube_agent.content.policy_check import PolicyStatus
 from ai_youtube_agent.content.qc_report import QCReportBuilder
 from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
 from ai_youtube_agent.content.rights_assessment import (
-    RULES_VERSION,
+    Outcome,
     RightsAssessment,
 )
 from ai_youtube_agent.content.shorts_metadata import ShortsMetadata
@@ -65,7 +68,10 @@ from ai_youtube_agent.core.audit import (
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.asset import AssetRepository
+from ai_youtube_agent.core.db.repositories.asset import (
+    AssetRepository,
+    AssetUsageRepository,
+)
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
@@ -119,8 +125,7 @@ def make_regression_mp4(
 ) -> bytes:
     """Build a valid ISO-BMFF MP4 with non-zero, non-frozen 64-byte mdat blocks."""
     blocks = [
-        hashlib.sha256(f"{seed_label}-{idx}".encode("utf-8")).digest() * 2
-        for idx in range(16)
+        hashlib.sha256(f"{seed_label}-{idx}".encode()).digest() * 2 for idx in range(16)
     ]
     return stub_mp4(duration_ms, b"".join(blocks))
 
@@ -219,7 +224,10 @@ def build_shorts_qc_fixture(
     banned_phrases: tuple[str, ...] = ("guaranteed_profit",),
     clock: Callable[[], datetime] = lambda: DEFAULT_REGRESSION_TIME,
 ) -> QCRegressionFixture:
-    """Create a complete, clean Shorts (9:16, 1080x1920, 30fps) fixture in ``database`` and ``storage``."""
+    """Create a complete, clean Shorts (9:16, 1080x1920, 30fps) fixture.
+
+    Created in ``database`` and ``storage``.
+    """
     sink = InMemoryAuditSink()
     audit = AuditLog(sink, clock=clock)
     settings = Settings(_env_file=None)
@@ -259,26 +267,26 @@ def build_shorts_qc_fixture(
         channel.id,
         AssetKind.IMAGE,
         AssetCategory.GENERATED,
-        "shorts-bg.png",
-        created_by=REGRESSION_ACTOR,
+        title="shorts-bg.png",
+        source="internal-gen",
         clock=clock,
     )
     rights_record = RightsRecord.create(
         item.id,
         asset.id,
-        risk_level=RiskLevel.LOW,
         source="internal-gen",
         license="owned",
         clock=clock,
-    )
+    ).with_risk_level(RiskLevel.LOW, clock=clock)
     rights_assessment = RightsAssessment.create(
         rights_record.id,
         item.id,
-        level=RiskLevel.LOW,
-        rule_codes=("generated.declared",),
-        rules_version=RULES_VERSION,
-        asset_id=asset.id,
-        provenance_id=None,
+        Outcome(
+            level=RiskLevel.LOW,
+            rule_codes=("generated.declared",),
+            asset_id=asset.id,
+            provenance_id=None,
+        ),
         assessed_by=REGRESSION_ACTOR,
         clock=clock,
     )
@@ -334,8 +342,10 @@ def build_shorts_qc_fixture(
         ContentItemRepository(conn).add(item)
         assets_repo = AssetRepository(conn)
         assets_repo.add(asset)
-        assets_repo.attach(
-            item.id, asset.id, attached_by=REGRESSION_ACTOR, attached_at=clock()
+        AssetUsageRepository(conn).add(
+            AssetUsage.create(
+                asset.id, item.id, attached_by=REGRESSION_ACTOR, clock=clock
+            )
         )
         RightsRecordRepository(conn).add(rights_record)
         RightsAssessmentRepository(conn).add(rights_assessment)
@@ -471,26 +481,26 @@ def build_longform_qc_fixture(
         channel.id,
         AssetKind.VIDEO_CLIP,
         AssetCategory.GENERATED,
-        "longform-broll.mp4",
-        created_by=REGRESSION_ACTOR,
+        title="longform-broll.mp4",
+        source="internal-gen",
         clock=clock,
     )
     rights_record = RightsRecord.create(
         item.id,
         asset.id,
-        risk_level=RiskLevel.LOW,
         source="internal-gen",
         license="owned",
         clock=clock,
-    )
+    ).with_risk_level(RiskLevel.LOW, clock=clock)
     rights_assessment = RightsAssessment.create(
         rights_record.id,
         item.id,
-        level=RiskLevel.LOW,
-        rule_codes=("generated.declared",),
-        rules_version=RULES_VERSION,
-        asset_id=asset.id,
-        provenance_id=None,
+        Outcome(
+            level=RiskLevel.LOW,
+            rule_codes=("generated.declared",),
+            asset_id=asset.id,
+            provenance_id=None,
+        ),
         assessed_by=REGRESSION_ACTOR,
         clock=clock,
     )
@@ -559,8 +569,10 @@ def build_longform_qc_fixture(
         ContentItemRepository(conn).add(item)
         assets_repo = AssetRepository(conn)
         assets_repo.add(asset)
-        assets_repo.attach(
-            item.id, asset.id, attached_by=REGRESSION_ACTOR, attached_at=clock()
+        AssetUsageRepository(conn).add(
+            AssetUsage.create(
+                asset.id, item.id, attached_by=REGRESSION_ACTOR, clock=clock
+            )
         )
         RightsRecordRepository(conn).add(rights_record)
         RightsAssessmentRepository(conn).add(rights_assessment)

@@ -1,14 +1,18 @@
-"""Actionable Alerts Screen view and service (Prompt Pack v8, prompt Q-202), context X3 Command Center.
+"""Actionable Alerts Screen view and service (Prompt Pack v8, prompt Q-202), context X3
+Command Center.
 
 Builds the Command Center Alerts Screen view model and iOS-style HTML rendering,
 implementing actionable alert cards across:
 - **Failures**: Failed content items, failed AI jobs, and failed publishing jobs with
   direct links to inspect errors and retry.
-- **Approvals**: Pending human approvals, stale approvals invalidated by artifact changes,
+- **Approvals**: Pending human approvals, stale approvals invalidated by artifact
+  changes,
   and expiring approval requests with direct action links to the Approval Center.
-- **Budget**: Daily and monthly budget threshold alerts (50%, 80%, 100%), spend overruns,
+- **Budget**: Daily and monthly budget threshold alerts (50%, 80%, 100%), spend
+  overruns,
   and currency mismatches from ``BudgetGuard``.
-- **Health**: Degraded or down application and provider health checks from ``HealthRegistry``
+- **Health**: Degraded or down application and provider health checks from
+  ``HealthRegistry``
   with remediation guidance.
 """
 
@@ -21,7 +25,6 @@ from typing import Any, Final
 
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.budget_guard import BudgetGuard
-from ai_youtube_agent.content.channel import Channel
 from ai_youtube_agent.content.dashboard_shell import (
     BadgeTone,
     DashboardScreenId,
@@ -41,7 +44,7 @@ from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.db.repositories.publish import PublishJobRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
-from ai_youtube_agent.core.health import CheckResult, HealthRegistry, HealthStatus
+from ai_youtube_agent.core.health import HealthRegistry, HealthStatus
 from ai_youtube_agent.pipeline.job import AIJobStatus
 from ai_youtube_agent.pipeline.publish import PublishStatus
 
@@ -176,7 +179,8 @@ class AlertsScreenService:
             selected_channel = _select_channel(channels, channel_id)
 
             if selected_channel is None:
-                # System-wide health checks can still be evaluated even without a channel
+                # System-wide health checks can still be evaluated even without a
+                # channel
                 health_alerts = self._collect_health_alerts()
                 return AlertsScreenView(
                     shell=shell,
@@ -184,14 +188,10 @@ class AlertsScreenService:
                     channel_id=None,
                     total_alerts=len(health_alerts),
                     critical_count=sum(
-                        1
-                        for a in health_alerts
-                        if a.severity is AlertSeverity.CRITICAL
+                        1 for a in health_alerts if a.severity is AlertSeverity.CRITICAL
                     ),
                     warning_count=sum(
-                        1
-                        for a in health_alerts
-                        if a.severity is AlertSeverity.WARNING
+                        1 for a in health_alerts if a.severity is AlertSeverity.WARNING
                     ),
                     info_count=sum(
                         1 for a in health_alerts if a.severity is AlertSeverity.INFO
@@ -202,7 +202,10 @@ class AlertsScreenService:
                     health_alerts=health_alerts,
                     strategy_alerts=(),
                     all_alerts=health_alerts,
-                    empty_message="No channel selected or configured. System health alerts are shown above.",
+                    empty_message=(
+                        "No channel selected or configured. System health alerts are "
+                        "shown above."
+                    ),
                 )
 
             # Query channel data
@@ -217,8 +220,7 @@ class AlertsScreenService:
             failed_ai_jobs = [
                 j
                 for j in ai_jobs_repo.list_all()
-                if j.status is AIJobStatus.FAILED
-                and j.content_item_id in item_map
+                if j.status is AIJobStatus.FAILED and j.content_item_id in item_map
             ]
 
             # Publish Jobs
@@ -226,8 +228,7 @@ class AlertsScreenService:
             failed_publish_jobs = [
                 pj
                 for pj in publish_repo.list_all()
-                if pj.status is PublishStatus.FAILED
-                and pj.content_item_id in item_map
+                if pj.status is PublishStatus.FAILED and pj.content_item_id in item_map
             ]
 
             # Approvals
@@ -239,9 +240,9 @@ class AlertsScreenService:
                         pending_approvals.append((item, req))
 
             # Strategy
-            strategy_profile = StrategyProfileRepository(
-                connection
-            ).get_by_channel(selected_channel.id)
+            strategy_profile = StrategyProfileRepository(connection).get_by_channel(
+                selected_channel.id
+            )
 
         finally:
             connection.close()
@@ -284,9 +285,7 @@ class AlertsScreenService:
         warn_count = sum(
             1 for a in all_alerts_list if a.severity is AlertSeverity.WARNING
         )
-        info_count = sum(
-            1 for a in all_alerts_list if a.severity is AlertSeverity.INFO
-        )
+        info_count = sum(1 for a in all_alerts_list if a.severity is AlertSeverity.INFO)
 
         return AlertsScreenView(
             shell=shell,
@@ -322,7 +321,10 @@ class AlertsScreenService:
                     severity=AlertSeverity.CRITICAL,
                     tone=BadgeTone.DANGER,
                     title=f"Content Item Failed: {item.title}",
-                    message=f"Lifecycle transition failed for {item.content_type.value} item.",
+                    message=(
+                        f"Lifecycle transition failed for {item.content_type.value} "
+                        f"item."
+                    ),
                     details=(
                         f"Item ID: {item.id}",
                         f"Type: {item.content_type.value.upper()}",
@@ -349,7 +351,10 @@ class AlertsScreenService:
                     severity=AlertSeverity.CRITICAL,
                     tone=BadgeTone.DANGER,
                     title=f"AI Pipeline Job Failed: {job.kind}",
-                    message=f"Job failed after {job.attempts} attempt(s): {job.last_error or 'Unknown failure'}",
+                    message=(
+                        f"Job failed after {job.attempts} attempt(s): "
+                        f"{job.last_error or 'Unknown failure'}"
+                    ),
                     details=(
                         f"Job ID: {job.id}",
                         f"Kind: {job.kind}",
@@ -374,7 +379,10 @@ class AlertsScreenService:
                     severity=AlertSeverity.CRITICAL,
                     tone=BadgeTone.DANGER,
                     title=f"Publishing Failed: {item_title}",
-                    message=f"Upload error: {pjob.last_error or 'Non-resumable upload failure'}",
+                    message=(
+                        f"Upload error: "
+                        f"{pjob.last_error or 'Non-resumable upload failure'}"
+                    ),
                     details=(
                         f"Job Key: {pjob.idempotency_key}",
                         f"Attempts: {pjob.attempts}",
@@ -399,9 +407,7 @@ class AlertsScreenService:
             # Check expiry status (default 72h)
             expires_at = req.created_at + timedelta(hours=72)
             is_urgent = now >= (expires_at - timedelta(hours=12))
-            severity = (
-                AlertSeverity.CRITICAL if is_urgent else AlertSeverity.WARNING
-            )
+            severity = AlertSeverity.CRITICAL if is_urgent else AlertSeverity.WARNING
             tone = BadgeTone.DANGER if is_urgent else BadgeTone.WARNING
 
             video_b = req.binding_for("video")
@@ -417,15 +423,19 @@ class AlertsScreenService:
                     tone=tone,
                     title=f"Approval Required: {item.title}",
                     message=(
-                        f"Urgent approval needed! Expires soon."
+                        "Urgent approval needed! Expires soon."
                         if is_urgent
-                        else "Video rendered and QC passed. Ready for human gate decision."
+                        else (
+                            "Video rendered and QC passed. Ready for human gate "
+                            "decision."
+                        )
                     ),
                     details=(
                         f"Item: {item.title}",
                         f"Type: {item.content_type.value.upper()}",
                         f"Video SHA: {video_hash}",
-                        f"Requested By: {req.requested_by.kind.value}:{req.requested_by.id}",
+                        f"Requested By: "
+                        f"{req.requested_by.kind.value}:{req.requested_by.id}",
                     ),
                     primary_action_label="Review & Approve",
                     primary_action_href=f"/dashboard/approvals?channel_id={channel_id}",
@@ -456,12 +466,16 @@ class AlertsScreenService:
                         title="Budget Guard Active — Production Blocked",
                         message=(
                             f"Channel spend has reached or exceeded limits. "
-                            f"Daily: {status.daily_spend}/{status.daily_limit} {status.currency}, "
-                            f"Monthly: {status.monthly_spend}/{status.monthly_limit} {status.currency}."
+                            f"Daily: {status.daily_spend}/{status.daily_limit} "
+                            f"{status.currency}, "
+                            f"Monthly: {status.monthly_spend}/{status.monthly_limit} "
+                            f"{status.currency}."
                         ),
                         details=(
-                            f"Daily: {status.daily_spend} / {status.daily_limit} {status.currency}",
-                            f"Monthly: {status.monthly_spend} / {status.monthly_limit} {status.currency}",
+                            f"Daily: {status.daily_spend} / {status.daily_limit} "
+                            f"{status.currency}",
+                            f"Monthly: {status.monthly_spend} / {status.monthly_limit} "
+                            f"{status.currency}",
                         ),
                         primary_action_label="Inspect Revenue & Costs",
                         primary_action_href=f"/dashboard/revenue?channel_id={channel_id}",
@@ -487,7 +501,10 @@ class AlertsScreenService:
                         category=AlertCategory.BUDGET,
                         severity=severity,
                         tone=tone,
-                        title=f"{alert.window.value.title()} Budget Threshold ({alert.threshold_percent}%)",
+                        title=(
+                            f"{alert.window.value.title()} Budget Threshold "
+                            f"({alert.threshold_percent}%)"
+                        ),
                         message=alert.message,
                         details=(
                             f"Window: {alert.window.value}",
@@ -517,7 +534,9 @@ class AlertsScreenService:
                     severity=AlertSeverity.CRITICAL,
                     tone=BadgeTone.DANGER,
                     title="System Health: Service DOWN",
-                    message="One or more critical application health checks have failed.",
+                    message=(
+                        "One or more critical application health checks have failed."
+                    ),
                     details=tuple(
                         f"{c.name}: {c.detail or 'Down'}"
                         for c in report.checks
@@ -535,7 +554,10 @@ class AlertsScreenService:
                     severity=AlertSeverity.WARNING,
                     tone=BadgeTone.WARNING,
                     title="System Health: Providers Degraded",
-                    message="One or more external or AI providers are degraded or unresponsive.",
+                    message=(
+                        "One or more external or AI providers are degraded or "
+                        "unresponsive."
+                    ),
                     details=tuple(
                         f"{c.name}: {c.detail or 'Degraded'}"
                         for c in report.checks
@@ -565,7 +587,10 @@ class AlertsScreenService:
                     severity=AlertSeverity.WARNING,
                     tone=BadgeTone.WARNING,
                     title="Strategy Configuration Incomplete",
-                    message=f"Missing settings: {', '.join(missing)}. Channel production will be blocked until configured.",
+                    message=(
+                        f"Missing settings: {', '.join(missing)}. Channel production "
+                        f"will be blocked until configured."
+                    ),
                     details=tuple(f"Missing: {m}" for m in missing),
                     primary_action_label="Configure Strategy",
                     primary_action_href=f"/dashboard/settings?channel_id={channel_id}",
@@ -575,7 +600,8 @@ class AlertsScreenService:
 
     def render_html(self, view: AlertsScreenView) -> str:
         # Category tabs/filter pills
-        tabs_html = f"""<div style="display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px;">
+        tabs_html = f"""<div \
+style="display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px;">
   <span class="yt-pill yt-pill--accent">All Alerts ({view.total_alerts})</span>
   <span class="yt-pill yt-pill--danger">Critical ({view.critical_count})</span>
   <span class="yt-pill yt-pill--warning">Warnings ({view.warning_count})</span>
@@ -583,34 +609,52 @@ class AlertsScreenService:
 </div>"""
 
         if not view.all_alerts:
-            cards_html = """<div class="yt-empty" style="padding:48px 24px;text-align:center;">
+            cards_html = """<div class="yt-empty" style="padding:48px \
+24px;text-align:center;">
   <p style="font-size:24px;margin-bottom:8px;">Everything Operational</p>
-  <p style="color:rgba(255,255,255,0.7);">No critical failures, pending approvals, budget alerts, or health issues detected.</p>
+  <p style="color:rgba(255,255,255,0.7);">No critical failures, pending approvals, \
+budget alerts, or health issues detected.</p>
 </div>"""
         else:
             cards_list = []
             for a in view.all_alerts:
                 details_items = "".join(
-                    f'<li style="font-size:12px;color:rgba(255,255,255,0.7);">{html.escape(d)}</li>'
+                    f'<li style="font-size:12px;color:rgba(255,255,255,0.7);">'
+                    f"{html.escape(d)}</li>"
                     for d in a.details
                 )
                 sec_btn = (
-                    f'<a href="{html.escape(a.secondary_action_href)}" class="yt-button yt-button--secondary" style="font-size:13px;padding:6px 12px;text-decoration:none;">{html.escape(a.secondary_action_label)}</a>'
+                    f'<a href="{html.escape(a.secondary_action_href)}" '
+                    f'class="yt-button yt-button--secondary" style="font-size:13px;'
+                    f'padding:6px 12px;text-decoration:none;">'
+                    f"{html.escape(a.secondary_action_label)}</a>"
                     if a.secondary_action_label and a.secondary_action_href
                     else ""
                 )
 
-                card = f"""<div class="yt-card" style="border-left:4px solid var(--yt-{a.tone.value});margin-bottom:12px;" data-testid="alert-card-{html.escape(a.alert_id)}">
+                card = f"""<div class="yt-card" style="border-left:4px solid \
+var(--yt-{a.tone.value});margin-bottom:12px;" \
+data-testid="alert-card-{html.escape(a.alert_id)}">
   <div class="yt-card__header">
     <div>
-      <span class="yt-pill yt-pill--{a.tone.value}" style="font-size:11px;text-transform:uppercase;">{html.escape(a.category.value)} · {html.escape(a.severity.value)}</span>
-      <h3 style="font-size:16px;font-weight:600;margin-top:6px;">{html.escape(a.title)}</h3>
+      <span class="yt-pill yt-pill--{a.tone.value}" \
+style="font-size:11px;text-transform:uppercase;">{html.escape(a.category.value)} · \
+{html.escape(a.severity.value)}</span>
+      <h3 \
+style="font-size:16px;font-weight:600;margin-top:6px;">{html.escape(a.title)}</h3>
     </div>
   </div>
-  <p style="font-size:14px;color:rgba(255,255,255,0.9);margin:8px 0;">{html.escape(a.message)}</p>
-  {f'<ul style="padding-left:18px;margin:8px 0;">{details_items}</ul>' if details_items else ''}
+  <p style="font-size:14px;color:rgba(255,255,255,0.9);margin:8px \
+0;">{html.escape(a.message)}</p>
+  {
+                    f'<ul style="padding-left:18px;margin:8px 0;">{details_items}</ul>'
+                    if details_items
+                    else ""
+                }
   <div style="display:flex;gap:8px;margin-top:12px;">
-    <a href="{html.escape(a.primary_action_href)}" class="yt-button yt-button--primary" style="font-size:13px;padding:6px 14px;text-decoration:none;">{html.escape(a.primary_action_label)}</a>
+    <a href="{html.escape(a.primary_action_href)}" class="yt-button \
+yt-button--primary" style="font-size:13px;padding:6px \
+14px;text-decoration:none;">{html.escape(a.primary_action_label)}</a>
     {sec_btn}
   </div>
 </div>"""
@@ -624,7 +668,9 @@ class AlertsScreenService:
         <p class="yt-card__subtitle">Command Center Monitoring</p>
         <h2 class="yt-card__title">Actionable Alerts &amp; Triage</h2>
       </div>
-      <span class="yt-pill yt-pill--{'danger' if view.critical_count > 0 else 'success'}">{view.total_alerts} active</span>
+      <span class="yt-pill yt-pill--{
+            "danger" if view.critical_count > 0 else "success"
+        }">{view.total_alerts} active</span>
     </div>
     {tabs_html}
     {cards_html}

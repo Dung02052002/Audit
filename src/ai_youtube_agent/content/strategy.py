@@ -585,11 +585,13 @@ class Cadence:
     time_zone: str = "UTC"
     shorts_schedule: PublishSchedule = PublishSchedule()
     longform_schedule: PublishSchedule = PublishSchedule()
-    longform_per_week: int | None = None
+    # Init-only convenience: a weekly LongForm count fills an unset daily
+    # limit; it is not a stored or serialized field.
+    longform_per_week: InitVar[int | None] = None
 
-    def __post_init__(self) -> None:
-        if self.longform_per_week is not None and self.longform_per_day == 0:
-            object.__setattr__(self, "longform_per_day", max(1, self.longform_per_week))
+    def __post_init__(self, longform_per_week: int | None) -> None:
+        if longform_per_week is not None and self.longform_per_day == 0:
+            object.__setattr__(self, "longform_per_day", max(1, longform_per_week))
         _check_whole("shorts_per_day", self.shorts_per_day, 0, MAX_SHORTS_PER_DAY)
         _check_whole("longform_per_day", self.longform_per_day, 0, MAX_LONGFORM_PER_DAY)
         if self.time_zone not in time_zones():
@@ -696,7 +698,9 @@ class RevenueGoal:
     def as_dict(self) -> dict[str, Any]:
         return {
             "source": self.source.value,
-            "monthly_target": str(self.monthly_target) if self.monthly_target is not None else None,
+            "monthly_target": str(self.monthly_target)
+            if self.monthly_target is not None
+            else None,
             "note": self.note,
         }
 

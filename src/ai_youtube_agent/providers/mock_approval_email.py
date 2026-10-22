@@ -79,5 +79,7 @@ class MockApprovalEmailProvider:
             healthy = self._healthy
         if not healthy:
             raise ApprovalEmailProviderError(
-                EmailErrorCode.UNAVAILABLE, "mock email provider set unhealthy", provider=self.name
+                EmailErrorCode.UNAVAILABLE,
+                "mock email provider set unhealthy",
+                provider=self.name,
             )

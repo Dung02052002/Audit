@@ -1,4 +1,6 @@
-"""Watch-time periods and units normalisation (Prompt Pack v8, prompt #163), context C13.
+"""Watch-time periods and units normalisation.
+
+(Prompt Pack v8, prompt #163), context C13.
 
 Normalises watch-time units (seconds, minutes, hours) and reporting periods across
 channel and video ``MetricSnapshot`` records without ever fabricating missing data
@@ -103,7 +105,10 @@ def convert_watch_time(
     to_unit: WatchTimeUnit,
     places: Decimal = TWO_PLACES,
 ) -> Decimal:
-    """Convert a non-negative watch-time value between ``SECONDS``, ``MINUTES`` and ``HOURS``."""
+    """Convert a non-negative watch-time value between units.
+
+    The units are ``SECONDS``, ``MINUTES`` and ``HOURS``.
+    """
     if not isinstance(from_unit, WatchTimeUnit) or not isinstance(
         to_unit, WatchTimeUnit
     ):
@@ -153,9 +158,7 @@ class WatchTimeMeasurement:
             minutes=convert_watch_time(
                 dec, from_unit=unit, to_unit=WatchTimeUnit.MINUTES
             ),
-            hours=convert_watch_time(
-                dec, from_unit=unit, to_unit=WatchTimeUnit.HOURS
-            ),
+            hours=convert_watch_time(dec, from_unit=unit, to_unit=WatchTimeUnit.HOURS),
         )
 
     def in_unit(self, unit: WatchTimeUnit) -> Decimal:
@@ -391,8 +394,7 @@ def aggregate_watch_time(
             by_window[window] = snap
 
     ordered = [
-        normalize_snapshot_watch_time(by_window[window])
-        for window in sorted(by_window)
+        normalize_snapshot_watch_time(by_window[window]) for window in sorted(by_window)
     ]
     for index in range(1, len(ordered)):
         if ordered[index - 1].period.overlaps(ordered[index].period):

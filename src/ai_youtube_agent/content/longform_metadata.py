@@ -1,6 +1,7 @@
 """LongForm Metadata (Prompt Pack v8, prompt J-113), context C9 LongForm Production.
 
-``LongFormMetadata`` is the canonical YouTube metadata package for a ``LongFormProject`` (#105),
+``LongFormMetadata`` is the canonical YouTube metadata package for a
+``LongFormProject`` (#105),
 and ``LongFormMetadataRecorder`` validates and stores it as the item's
 ``ArtifactKind.METADATA`` artifact (``application/json``):
 
@@ -17,10 +18,10 @@ Key invariants & rules:
 - Chapters: structured tuple of chapter records (title, start_ms, end_ms).
 - Language: BCP-47 canonical tag from strategy profile.
 - Made for kids: boolean flag.
-- AI disclosure: requires a recorded DisclosureRecord on the item; binds disclosure_decision_id
-  and contains_synthetic_media (True when REQUIRED).
-- Policy check: runs PolicyChecker over title, description, tags, channel banned phrases;
-  refuses with POLICY_BLOCKED if status is BLOCK.
+- AI disclosure: requires a recorded DisclosureRecord on the item; binds
+  disclosure_decision_id and contains_synthetic_media (True when REQUIRED).
+- Policy check: runs PolicyChecker over title, description, tags, channel banned
+  phrases; refuses with POLICY_BLOCKED if status is BLOCK.
 - Deterministic JSON serialized under ArtifactKind.METADATA in ArtifactStorage.
 - Replays with created=False when latest METADATA artifact has identical sha256.
 - Invalidates stale approvals on new version and audits `longform.metadata_recorded`.
@@ -29,24 +30,21 @@ Key invariants & rules:
 import hashlib
 import json
 import re
-import sqlite3
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, Final
 
-from ai_youtube_agent.content.disclosure import DisclosureDecision, DisclosureRecord
+from ai_youtube_agent.content.disclosure import DisclosureDecision
 from ai_youtube_agent.content.longform_chapters import format_youtube_chapters
 from ai_youtube_agent.content.longform_project import (
-    LongFormProject,
     LongFormProjectStatus,
 )
 from ai_youtube_agent.content.longform_script_generator import LongFormDisabledError
 from ai_youtube_agent.content.longform_service import (
-    LongFormProjectNotFoundError,
     longform_project_is_current,
 )
 from ai_youtube_agent.content.policy_check import (
@@ -60,7 +58,6 @@ from ai_youtube_agent.content.policy_check import (
 from ai_youtube_agent.content.policy_rule import RuleSet
 from ai_youtube_agent.content.strategy import (
     LANGUAGE_TAG_PATTERN,
-    StrategyProfile,
     canonical_language_tag,
 )
 from ai_youtube_agent.content.text_prompts import banned_phrases
@@ -71,9 +68,7 @@ from ai_youtube_agent.core.audit import (
     AuditLog,
     AuditResult,
     EntityRef,
-    MetadataValue,
 )
-from ai_youtube_agent.core.content_item import ContentItem
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.asset import AssetRepository
 from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
@@ -187,7 +182,9 @@ class LongFormMetadataError(DomainError):
         super().__init__(
             detail,
             code=code.value,
-            user_message=USER_MESSAGES.get(code, USER_MESSAGES[LongFormMetadataErrorCode.METADATA]),
+            user_message=USER_MESSAGES.get(
+                code, USER_MESSAGES[LongFormMetadataErrorCode.METADATA]
+            ),
             http_status=status,
         )
 
@@ -501,7 +498,11 @@ class LongFormMetadataRecorder:
                 for scene in project.timeline.scenes:
                     for asset_ref in scene.assets:
                         a = assets_repo.get(asset_ref.asset_id)
-                        if a is not None and a.attribution and a.attribution not in attributions:
+                        if (
+                            a is not None
+                            and a.attribution
+                            and a.attribution not in attributions
+                        ):
                             attributions.append(a.attribution)
                 if attributions:
                     attr_block = "\n".join(f"- {attr}" for attr in attributions)
@@ -528,9 +529,7 @@ class LongFormMetadataRecorder:
                 tags=clean_tags,
                 banned_phrases=forbidden,
             )
-            policy_result = self._policy_checker.check(
-                policy_input, rule_set=rule_set
-            )
+            policy_result = self._policy_checker.check(policy_input, rule_set=rule_set)
             if policy_result.status == PolicyStatus.BLOCK:
                 raise LongFormMetadataError(
                     f"metadata blocked by policy rule set {rule_set.id}",

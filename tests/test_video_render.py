@@ -362,7 +362,7 @@ def test_results_reject_invalid_values(changes) -> None:
 
 
 def test_only_unavailable_and_timeout_are_retryable() -> None:
-    assert RETRYABLE_CODES == {RenderErrorCode.UNAVAILABLE, RenderErrorCode.TIMEOUT}
+    assert {RenderErrorCode.UNAVAILABLE, RenderErrorCode.TIMEOUT} == RETRYABLE_CODES
     assert [code for code in RenderErrorCode if code.retryable] == [
         RenderErrorCode.UNAVAILABLE,
         RenderErrorCode.TIMEOUT,
@@ -492,7 +492,11 @@ def test_the_same_request_gives_the_same_bytes() -> None:
 @pytest.mark.parametrize(
     "changes",
     [
-        {"duration_ms": 900},
+        {
+            "duration_ms": 900,
+            "layers": (layer(end_ms=900),),
+            "texts": (line(end_ms=900),),
+        },
         {"fps": 25},
         {"audio": audio(b"other wav")},
         {"inputs": (image(data=b"other image"),)},
@@ -575,7 +579,10 @@ def test_check_follows_the_health_switch() -> None:
 
 def test_calls_record_every_request() -> None:
     mock = MockVideoRenderer()
-    first, second = request(), request(duration_ms=800)
+    first = request()
+    second = request(
+        duration_ms=800, layers=(layer(end_ms=800),), texts=(line(end_ms=800),)
+    )
 
     mock.render(first)
     mock.render(second)

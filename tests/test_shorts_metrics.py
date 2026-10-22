@@ -145,7 +145,9 @@ def test_refuses_channel_scope_or_invalid_shorts_duration() -> None:
             normalize_shorts_metrics(
                 video_snapshot, video_duration_seconds=invalid_duration
             )
-        assert duration_err.value.metrics_code is ShortsMetricsErrorCode.INVALID_DURATION
+        assert (
+            duration_err.value.metrics_code is ShortsMetricsErrorCode.INVALID_DURATION
+        )
 
 
 def test_service_normalises_published_shorts_and_refuses_longform(
@@ -216,7 +218,10 @@ def test_service_normalises_published_shorts_and_refuses_longform(
     assert len(views) == 1
     assert views[0].stay_to_watch_rate == Decimal("80.00")
     assert views[0].loop_rate == Decimal("0.80")
-    assert service.latest_for_item(short_item.id) == views[0]
+    assert (
+        service.latest_for_item(short_item.id, video_duration_seconds=Decimal("30"))
+        == views[0]
+    )
 
     by_video = service.normalize_for_video("vid000001ab")
     assert len(by_video) == 1 and by_video[0].content_item_id == short_item.id

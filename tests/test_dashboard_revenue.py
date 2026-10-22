@@ -35,7 +35,7 @@ def test_revenue_screen_empty_when_no_channels(database: Database) -> None:
     assert view.disclaimer == NOT_NET_PROFIT_DISCLAIMER
 
 
-def test_revenue_screen_separates_estimated_and_final_revenue_and_computes_contribution_margin(
+def test_revenue_screen_separates_estimated_final_and_margin(
     database: Database,
 ) -> None:
     channel = make_channel(title="Finance Studio", status=ChannelStatus.ACTIVE)
@@ -92,7 +92,7 @@ def test_revenue_screen_separates_estimated_and_final_revenue_and_computes_contr
         CostRecordRepository(conn).add(cost_tts)
 
     service = RevenueScreenService(database, clock=lambda: FIXED_NOW)
-    view = service.load(channel.id, period_start=p_start, period_end=FIXED_NOW)
+    view = service.load(channel.id, period_start=p_start, period_end=p_end)
 
     assert view.shell.active_screen is DashboardScreenId.REVENUE
     assert view.load_state is ViewLoadState.READY
@@ -125,4 +125,3 @@ def test_revenue_screen_separates_estimated_and_final_revenue_and_computes_contr
     assert 'data-testid="revenue-margin-disclaimer"' in html_out
     assert "contribution_margin" in html_out
     assert "is_net_profit=false" in html_out
-

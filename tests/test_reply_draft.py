@@ -8,8 +8,6 @@ import pytest
 from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.comment import (
     Comment,
-    CommentLabel,
-    ReplyDraft,
     ReplyStatus,
 )
 from ai_youtube_agent.content.comment_classifier import CommentClassifier
@@ -40,12 +38,11 @@ class TestReplyDraftService:
     ) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         brand = Brand(
+            name="Money Minute",
             tone="educational",
             banned_phrases=("guaranteed returns",),
         )
-        profile = dataclasses.replace(
-            make_strategy_profile(channel), brand=brand
-        )
+        profile = dataclasses.replace(make_strategy_profile(channel), brand=brand)
         c_question = Comment.create(
             channel.id,
             "Ugx-q1",
@@ -105,21 +102,18 @@ class TestReplyDraftService:
         # Moderation comment is refused for AI drafting
         with pytest.raises(ReplyDraftError) as exc_mod:
             service.generate_draft(c_mod.id)
-        assert (
-            exc_mod.value.draft_code is ReplyDraftErrorCode.MODERATION_BLOCKED
-        )
+        assert exc_mod.value.draft_code is ReplyDraftErrorCode.MODERATION_BLOCKED
 
     def test_blocks_banned_phrases_and_already_replied_comments(
         self, database: Database
     ) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         brand = Brand(
+            name="Money Minute",
             tone="friendly",
             banned_phrases=("guaranteed returns",),
         )
-        profile = dataclasses.replace(
-            make_strategy_profile(channel), brand=brand
-        )
+        profile = dataclasses.replace(make_strategy_profile(channel), brand=brand)
         comment = Comment.create(
             channel.id,
             "Ugx-q2",
@@ -135,9 +129,7 @@ class TestReplyDraftService:
 
         audit = AuditLog(InMemoryAuditSink(), clock=lambda: NOW)
         text_gen = MockTextGenerator(clock=lambda: NOW)
-        service = ReplyDraftService(
-            database, text_gen, audit, clock=lambda: NOW
-        )
+        service = ReplyDraftService(database, text_gen, audit, clock=lambda: NOW)
 
         # Generated text containing a banned phrase is rejected and not stored
         text_gen.queue("No, it offers guaranteed returns every month!")
@@ -167,9 +159,5 @@ class TestReplyDraftService:
             )
 
         with pytest.raises(ReplyDraftError) as exc_already:
-            service.create_manual_draft(
-                comment.id, text="Another reply", actor=USER
-            )
-        assert (
-            exc_already.value.draft_code is ReplyDraftErrorCode.ALREADY_REPLIED
-        )
+            service.create_manual_draft(comment.id, text="Another reply", actor=USER)
+        assert exc_already.value.draft_code is ReplyDraftErrorCode.ALREADY_REPLIED

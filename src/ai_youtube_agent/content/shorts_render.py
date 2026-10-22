@@ -187,8 +187,7 @@ USER_MESSAGES = {
     "rights category yet.",
     ShortsRenderErrorCode.ASSET_CHANGED: "The source record of a file of this "
     "Short changed. Save the timeline again first.",
-    ShortsRenderErrorCode.RENDER_INVALID: "The rendered video did not pass its "
-    "checks.",
+    ShortsRenderErrorCode.RENDER_INVALID: "The rendered video did not pass its checks.",
     ShortsRenderErrorCode.STORAGE_FAILED: "The video file could not be stored.",
     ShortsRenderErrorCode.INTERRUPTED: "The earlier render of this Short was "
     "interrupted.",
@@ -683,9 +682,7 @@ class ShortsRenderService:
 
     # Storing
 
-    def _store(
-        self, run: _Run, video: RenderedVideo, info: Mp4Info
-    ) -> RenderResult:
+    def _store(self, run: _Run, video: RenderedVideo, info: Mp4Info) -> RenderResult:
         project = run.project
         item_id = project.content_item_id
         checksum = hashlib.sha256(video.data).hexdigest()

@@ -1,4 +1,5 @@
-"""Settings screen view and service (Prompt Pack v8, prompt Q-201), context X3 Command Center.
+"""Settings screen view and service (Prompt Pack v8, prompt Q-201), context X3
+Command Center.
 
 Builds the Command Center Settings screen view model and iOS-style HTML rendering,
 exposing:
@@ -9,8 +10,8 @@ exposing:
 - Configured AI, voice, video render, research, analytics, and upload providers.
 - Channel StrategyProfile (version, market, languages, audience, niche, brand,
   monetization goals, completeness).
-- Cadence and budget limits (shorts/longform daily limits, time zone, monthly/daily budget,
-  currency, alert thresholds).
+- Cadence and budget limits (shorts/longform daily limits, time zone, monthly/daily
+  budget, currency, alert thresholds).
 - Feature flags (SHORTS_ENABLED, LONGFORM_ENABLED, PUBLISH_ENABLED, TEST_REQUIRED,
   APPROVAL_REQUIRED, AUTO_REPLY_ENABLED).
 """
@@ -264,7 +265,9 @@ class SettingsScreenView:
 
 
 class SettingsScreenService:
-    """Provides read-only settings data and iOS-styled HTML for Command Center Settings."""
+    """Provides read-only settings data and iOS-styled HTML for Command Center
+    Settings.
+    """
 
     def __init__(
         self,
@@ -298,9 +301,9 @@ class SettingsScreenService:
 
             strategy_profile: StrategyProfile | None = None
             if selected_channel is not None:
-                strategy_profile = StrategyProfileRepository(
-                    connection
-                ).get_by_channel(selected_channel.id)
+                strategy_profile = StrategyProfileRepository(connection).get_by_channel(
+                    selected_channel.id
+                )
         finally:
             connection.close()
 
@@ -350,7 +353,10 @@ class SettingsScreenService:
                 strategy=None,
                 limits=None,
                 flags=flags_view,
-                empty_message="No channel selected or configured. Create a channel to manage channel settings.",
+                empty_message=(
+                    "No channel selected or configured. "
+                    "Create a channel to manage channel settings."
+                ),
             )
 
         channel_view = ChannelSettingsView(
@@ -359,9 +365,7 @@ class SettingsScreenService:
             handle=selected_channel.identifiers.handle,
             youtube_channel_id=selected_channel.identifiers.channel_id,
             status=selected_channel.status.value,
-            tone=_CHANNEL_STATUS_TONES.get(
-                selected_channel.status, BadgeTone.NEUTRAL
-            ),
+            tone=_CHANNEL_STATUS_TONES.get(selected_channel.status, BadgeTone.NEUTRAL),
             created_at=selected_channel.created_at,
             updated_at=selected_channel.updated_at,
         )
@@ -382,9 +386,7 @@ class SettingsScreenService:
             flags=flags_view,
         )
 
-    def _build_oauth_view(
-        self, channel: Channel | None
-    ) -> OAuthSettingsView:
+    def _build_oauth_view(self, channel: Channel | None) -> OAuthSettingsView:
         scopes = tuple(s.value for s in OAuthScope)
         if self._oauth_provider is None or channel is None:
             return OAuthSettingsView(
@@ -427,9 +429,7 @@ class SettingsScreenService:
         if profile is None:
             return None
 
-        sec_langs = (
-            profile.languages.secondary if profile.languages is not None else ()
-        )
+        sec_langs = profile.languages.secondary if profile.languages is not None else ()
         pillars = (
             tuple(p.name for p in profile.niche.pillars)
             if profile.niche is not None
@@ -450,9 +450,7 @@ class SettingsScreenService:
             is_complete=profile.is_complete,
             missing_settings=profile.missing_settings,
             market=profile.market.country_code if profile.market else None,
-            primary_language=(
-                profile.languages.primary if profile.languages else None
-            ),
+            primary_language=(profile.languages.primary if profile.languages else None),
             secondary_languages=sec_langs,
             audience_description=(
                 profile.audience.description if profile.audience else None
@@ -484,9 +482,7 @@ class SettingsScreenService:
 
         return LimitsSettingsView(
             cadence_shorts_per_day=cadence.shorts_per_day if cadence else None,
-            cadence_longform_per_day=(
-                cadence.longform_per_day if cadence else None
-            ),
+            cadence_longform_per_day=(cadence.longform_per_day if cadence else None),
             cadence_time_zone=cadence.time_zone if cadence else "UTC",
             budget_daily_limit=str(budget.daily_limit) if budget else None,
             budget_monthly_limit=str(budget.monthly_limit) if budget else None,
@@ -506,7 +502,8 @@ class SettingsScreenService:
         <h2 class="yt-card__title">System &amp; Channel Settings</h2>
       </div>
     </div>
-    <p class="yt-empty">{html.escape(view.empty_message or 'No channel settings available.')}</p>
+    <p class="yt-empty">\
+{html.escape(view.empty_message or "No channel settings available.")}</p>
   </section>
 </div>"""
             return render_dashboard_shell_html(
@@ -527,7 +524,13 @@ class SettingsScreenService:
         def flag_pill(name: str, enabled: bool) -> str:
             tone = "success" if enabled else "neutral"
             status = "ON" if enabled else "OFF"
-            return f'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span style="font-weight:500;">{html.escape(name)}</span><span class="yt-pill yt-pill--{tone}">{status}</span></div>'
+            return (
+                '<div style="display:flex;justify-content:space-between;'
+                "align-items:center;padding:8px 0;"
+                'border-bottom:1px solid rgba(255,255,255,0.06);">'
+                f'<span style="font-weight:500;">{html.escape(name)}</span>'
+                f'<span class="yt-pill yt-pill--{tone}">{status}</span></div>'
+            )
 
         flags_html = "".join(
             [
@@ -543,11 +546,14 @@ class SettingsScreenService:
         oauth_badge = (
             '<span class="yt-pill yt-pill--success">Authorized</span>'
             if oa.is_authorized
-            else '<span class="yt-pill yt-pill--warning">Unauthorized / Not Connected</span>'
+            else '<span class="yt-pill yt-pill--warning">'
+            "Unauthorized / Not Connected</span>"
         )
 
         scopes_list = "".join(
-            f'<li style="font-family:monospace;font-size:12px;margin-bottom:4px;word-break:break-all;">{html.escape(s)}</li>'
+            '<li style="font-family:monospace;font-size:12px;'
+            "margin-bottom:4px;word-break:break-all;"
+            f'">{html.escape(s)}</li>'
             for s in oa.scopes
         )
 
@@ -568,7 +574,7 @@ class SettingsScreenService:
       </div>
       <div>
         <p class="yt-stat-label">Handle</p>
-        <p style="font-weight:500;">{html.escape(ch.handle or '—')}</p>
+        <p style="font-weight:500;">{html.escape(ch.handle or "—")}</p>
       </div>
       <div>
         <p class="yt-stat-label">YouTube ID</p>
@@ -590,12 +596,15 @@ class SettingsScreenService:
       </div>
       {oauth_badge}
     </div>
-    <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:8px;">Provider: <strong>{html.escape(oa.provider_name)}</strong> · Refreshable: <strong>{oa.has_refresh_token}</strong> · Expired: <strong>{oa.is_expired}</strong></p>
+    <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:8px;">Provider: \
+<strong>{html.escape(oa.provider_name)}</strong> · Refreshable: <strong>\
+{oa.has_refresh_token}</strong> · Expired: <strong>{oa.is_expired}</strong></p>
     <p class="yt-stat-label" style="margin-top:8px;">Granted / Required Scopes:</p>
     <ul style="padding-left:16px;margin-top:4px;color:rgba(255,255,255,0.85);">
       {scopes_list}
     </ul>
-    <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:8px;">* Secret tokens and credentials are encrypted outside source control and never displayed.</p>
+    <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:8px;">* Secret \
+tokens and credentials are encrypted outside source control and never displayed.</p>
   </section>
 
   <!-- Operational Flags Card -->
@@ -622,23 +631,36 @@ class SettingsScreenService:
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;">
       <div>
         <p class="yt-stat-label">Shorts Daily Limit</p>
-        <p style="font-size:18px;font-weight:700;">{lim.cadence_shorts_per_day if lim and lim.cadence_shorts_per_day is not None else 'Unset'}</p>
+        <p style="font-size:18px;font-weight:700;">{
+            lim.cadence_shorts_per_day
+            if lim and lim.cadence_shorts_per_day is not None
+            else "Unset"
+        }</p>
       </div>
       <div>
         <p class="yt-stat-label">LongForm Daily Limit</p>
-        <p style="font-size:18px;font-weight:700;">{lim.cadence_longform_per_day if lim and lim.cadence_longform_per_day is not None else 'Unset'}</p>
+        <p style="font-size:18px;font-weight:700;">{
+            lim.cadence_longform_per_day
+            if lim and lim.cadence_longform_per_day is not None
+            else "Unset"
+        }</p>
       </div>
       <div>
         <p class="yt-stat-label">Daily Budget Limit</p>
-        <p style="font-size:16px;font-weight:600;">{html.escape(lim.budget_daily_limit or 'Unset')} {html.escape(lim.budget_currency or '')}</p>
+        <p style="font-size:16px;font-weight:600;">\
+{html.escape(lim.budget_daily_limit or "Unset")} \
+{html.escape(lim.budget_currency or "")}</p>
       </div>
       <div>
         <p class="yt-stat-label">Monthly Budget Limit</p>
-        <p style="font-size:16px;font-weight:600;">{html.escape(lim.budget_monthly_limit or 'Unset')} {html.escape(lim.budget_currency or '')}</p>
+        <p style="font-size:16px;font-weight:600;">\
+{html.escape(lim.budget_monthly_limit or "Unset")} \
+{html.escape(lim.budget_currency or "")}</p>
       </div>
       <div style="grid-column:span 2;">
         <p class="yt-stat-label">Cadence Time Zone</p>
-        <p style="font-weight:500;">{html.escape(lim.cadence_time_zone if lim else 'UTC')}</p>
+        <p style="font-weight:500;">\
+{html.escape(lim.cadence_time_zone if lim else "UTC")}</p>
       </div>
     </div>
   </section>
@@ -650,24 +672,31 @@ class SettingsScreenService:
         <p class="yt-card__subtitle">Content Blueprint (v{st.version if st else 1})</p>
         <h2 class="yt-card__title">Strategy Profile</h2>
       </div>
-      <span class="yt-pill yt-pill--{'success' if st and st.is_complete else 'warning'}">{'Complete' if st and st.is_complete else 'Incomplete'}</span>
+      <span class="yt-pill \
+yt-pill--{"success" if st and st.is_complete else "warning"}">\
+{"Complete" if st and st.is_complete else "Incomplete"}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-top:12px;">
+    <div style="display:grid;grid-template-columns:repeat(4, \
+1fr);gap:16px;margin-top:12px;">
       <div>
         <p class="yt-stat-label">Market</p>
-        <p style="font-weight:600;">{html.escape(st.market if st and st.market else 'Unset')}</p>
+        <p style="font-weight:600;">\
+{html.escape(st.market if st and st.market else "Unset")}</p>
       </div>
       <div>
         <p class="yt-stat-label">Languages</p>
-        <p style="font-weight:500;">{html.escape(st.primary_language if st and st.primary_language else 'Unset')} {f"(+{len(st.secondary_languages)})" if st and st.secondary_languages else ""}</p>
+        <p style="font-weight:500;">\
+{html.escape(st.primary_language if st and st.primary_language else "Unset")} \
+{f"(+{len(st.secondary_languages)})" if st and st.secondary_languages else ""}</p>
       </div>
       <div>
         <p class="yt-stat-label">Niche</p>
-        <p style="font-weight:500;">{html.escape(st.niche_name if st and st.niche_name else 'Unset')}</p>
+        <p style="font-weight:500;">\
+{html.escape(st.niche_name if st and st.niche_name else "Unset")}</p>
       </div>
       <div>
         <p class="yt-stat-label">Audience Level</p>
-        <p style="font-weight:500;">{html.escape(st.audience_level or 'Mixed')}</p>
+        <p style="font-weight:500;">{html.escape(st.audience_level or "Mixed")}</p>
       </div>
     </div>
   </section>
@@ -691,11 +720,13 @@ class SettingsScreenService:
       </div>
       <div>
         <p class="yt-stat-label">Voice / TTS Provider</p>
-        <p style="font-weight:500;">{html.escape(pr.voice_provider)} (${html.escape(pr.tts_price_per_1k)}/1k)</p>
+        <p style="font-weight:500;">{html.escape(pr.voice_provider)} \
+(${html.escape(pr.tts_price_per_1k)}/1k)</p>
       </div>
       <div>
         <p class="yt-stat-label">Video Renderer</p>
-        <p style="font-weight:500;">{html.escape(pr.render_provider)} ({pr.render_timeout_seconds}s timeout)</p>
+        <p style="font-weight:500;">{html.escape(pr.render_provider)} \
+({pr.render_timeout_seconds}s timeout)</p>
       </div>
     </div>
   </section>
@@ -712,7 +743,8 @@ class SettingsScreenService:
       <p class="yt-stat-label">Approval Expiry TTL</p>
       <p style="font-size:18px;font-weight:700;">{em.approval_ttl_hours} hours</p>
       <p class="yt-stat-label" style="margin-top:8px;">Notification Gateway</p>
-      <p style="font-weight:500;">{html.escape(em.recipient_email or 'Internal App')}</p>
+      <p style="font-weight:500;">\
+{html.escape(em.recipient_email or "Internal App")}</p>
     </div>
   </section>
 </div>"""

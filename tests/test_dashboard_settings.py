@@ -1,4 +1,7 @@
-"""Tests for Command Center Settings screen view and service (Prompt Pack v8, prompt Q-201)."""
+"""Tests for Command Center Settings screen view and service.
+
+(Prompt Pack v8, prompt Q-201).
+"""
 
 from datetime import UTC, datetime
 
@@ -79,9 +82,9 @@ def test_settings_screen_exposes_channel_oauth_strategy_limits_and_flags(
 
     # Strategy & Limits
     assert view.strategy is not None
-    assert view.strategy.market == "US"
+    assert view.strategy.market == profile.market.country_code
     assert view.limits is not None
-    assert view.limits.cadence_shorts_per_day == 3
+    assert view.limits.cadence_shorts_per_day == profile.cadence.shorts_per_day
 
     # Flags
     assert view.flags.shorts_enabled is True

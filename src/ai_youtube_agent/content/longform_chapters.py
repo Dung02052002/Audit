@@ -1,4 +1,4 @@
-"""LongForm Chapters generator (Prompt Pack v8, prompt J-107), context C8 Video Production.
+"""LongForm Chapters generator (Prompt Pack v8, J-107), context C8 Video Production.
 
 ``generate_chapters`` builds ``ChapterMarker`` entries from the bound LongForm
 ``Script`` (#064, #067) and the planned scenes of a ``LongFormTimeline`` (#106):
@@ -131,6 +131,10 @@ def format_youtube_chapters(chapters: Sequence[ChapterMarker]) -> str:
     for chapter in chapters:
         if not isinstance(chapter, ChapterMarker):
             raise TypeError("chapters must hold ChapterMarker values only")
+    if len(chapters) < MIN_CHAPTER_COUNT:
+        raise ValueError(
+            f"YouTube needs at least {MIN_CHAPTER_COUNT} chapters to show them"
+        )
     if chapters[0].start_ms != 0:
         raise ValueError("the first YouTube chapter must start at 00:00 (0 ms)")
     return "\n".join(
@@ -152,7 +156,9 @@ def _initial_groups(
         groups: list[_Group] = []
         for scene in scenes:
             sec = sections[scene.section_index]
-            title = scene.title or sec.title or _default_title(sec.kind, len(groups) + 1)
+            title = (
+                scene.title or sec.title or _default_title(sec.kind, len(groups) + 1)
+            )
             if groups and groups[-1].scenes[-1].section_index == scene.section_index:
                 groups[-1].scenes.append(scene)
             else:
@@ -186,11 +192,7 @@ def _initial_groups(
         if pos == 0 and pending_prefix:
             chunk = pending_prefix + chunk
         sec = sections[scenes[scene_idx].section_index]
-        title = (
-            scenes[scene_idx].title
-            or sec.title
-            or f"Chapter {pos + 1}"
-        )
+        title = scenes[scene_idx].title or sec.title or f"Chapter {pos + 1}"
         groups.append(_Group(title=title, scenes=chunk))
 
     trailing = list(scenes[last_ch_idx + 1 :])
@@ -250,4 +252,3 @@ def _deduplicate_titles(raw_titles: list[str]) -> list[str]:
         seen.add(candidate.casefold())
         result.append(candidate)
     return result
-

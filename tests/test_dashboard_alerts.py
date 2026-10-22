@@ -1,12 +1,12 @@
-"""Tests for Command Center Alerts screen view and service (Prompt Pack v8, prompt Q-202)."""
+"""Tests for Command Center Alerts screen view and service.
+
+(Prompt Pack v8, prompt Q-202).
+"""
 
 from datetime import UTC, datetime
 
-from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.dashboard_alerts import (
-    AlertCategory,
-    AlertSeverity,
     AlertsScreenService,
 )
 from ai_youtube_agent.content.dashboard_shell import DashboardScreenId, ViewLoadState
@@ -22,12 +22,12 @@ from ai_youtube_agent.core.db.repositories.content import (
     ContentItemRepository,
 )
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
-from ai_youtube_agent.core.db.repositories.publish import PublishJobRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
-from ai_youtube_agent.core.health import CheckKind, CheckResult, HealthCheck, HealthRegistry, HealthStatus
-from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
-from ai_youtube_agent.pipeline.publish import PublishJob, PublishStatus
+from ai_youtube_agent.core.errors import ApplicationError
+from ai_youtube_agent.core.health import CheckKind, HealthCheck, HealthRegistry
+from ai_youtube_agent.pipeline.job import AIJobStatus
 from factories import (
+    make_ai_job,
     make_approval_request,
     make_artifact,
     make_channel,
@@ -36,6 +36,15 @@ from factories import (
 )
 
 FIXED_NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+
+
+def _degraded_render_probe() -> None:
+    """A provider probe fails by raising; its safe message becomes the detail."""
+    raise ApplicationError(
+        "ffmpeg overloaded",
+        code="application.render_overloaded",
+        user_message="FFmpeg high load",
+    )
 
 
 def test_alerts_screen_clean_when_no_channels(database: Database) -> None:
@@ -79,10 +88,10 @@ def test_alerts_screen_aggregates_failures_approvals_and_health(
     req = make_approval_request(pending_item, [video_art])
 
     # Failed AI job
-    failed_job = AIJob(
+    failed_job = make_ai_job(
+        failed_item,
         kind="audio.generate",
         idempotency_key="job-failed-audio-1",
-        content_item_id=failed_item.id,
         status=AIJobStatus.FAILED,
         attempts=3,
         last_error="TTS synthesis timeout after 3 attempts",
@@ -103,7 +112,7 @@ def test_alerts_screen_aggregates_failures_approvals_and_health(
         HealthCheck(
             "render_provider",
             CheckKind.PROVIDER,
-            lambda: CheckResult("render_provider", HealthStatus.DEGRADED, detail="FFmpeg high load"),
+            _degraded_render_probe,
         )
     )
 

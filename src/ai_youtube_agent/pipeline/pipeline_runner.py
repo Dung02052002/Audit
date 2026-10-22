@@ -2,7 +2,8 @@
 
 ``PipelineRunner`` executes the shared content lifecycle one gate at a time:
 - Shared lifecycle stages:
-  ``DRAFT -> GENERATING -> TESTING -> PREVIEW_READY -> AWAITING_APPROVAL -> APPROVED -> PUBLISHING -> PUBLISHED``
+  ``DRAFT -> GENERATING -> TESTING -> PREVIEW_READY -> AWAITING_APPROVAL ->
+  APPROVED -> PUBLISHING -> PUBLISHED``
   and terminal/rework moves (``FAILED``, ``REJECTED``, return to ``GENERATING``).
 - Only two content types: ``SHORTS`` and ``LONGFORM``.
 - Evaluates gates at each transition using ``evaluate_gates`` (#033):
@@ -10,19 +11,23 @@
     ``DailyLimitGate`` (#036), ``KillSwitchGate`` (#040), ``IdempotencyGate`` (#041).
   - Move to ``TESTING``: verifies generated artifacts (video, script, audio).
   - Move to ``PREVIEW_READY``: executes QC checks via ``QCReportBuilder`` (#129).
-  - Move to ``AWAITING_APPROVAL``: ensures an ``ApprovalRequest`` binds exact artifact versions.
-  - Move to ``APPROVED``: requires explicit human approval (``ActorKind.USER``); halts and waits if pending (R-08).
-  - Move to ``PUBLISHING``: checks ``PUBLISH_ENABLED`` flag, evaluates ``PublishGate`` (G-078b),
+  - Move to ``AWAITING_APPROVAL``: ensures an ``ApprovalRequest`` binds exact
+    artifact versions.
+  - Move to ``APPROVED``: requires explicit human approval (``ActorKind.USER``);
+    halts and waits if pending (R-08).
+  - Move to ``PUBLISHING``: checks ``PUBLISH_ENABLED`` flag, evaluates
+    ``PublishGate`` (G-078b),
     and dispatches to ``ShortsPublisher`` (#149) or ``LongFormPublisher`` (#150).
-- Single-step execution (``advance``) and multi-step pipeline run (``run``) with bounded loops.
+- Single-step execution (``advance``) and multi-step pipeline run (``run``) with
+  bounded loops.
 - Emits audit records for every step transition.
 """
 
-from collections.abc import Callable, Sequence
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Final
-import uuid
 
 from ai_youtube_agent.content.approval import (
     ApprovalRequest,
@@ -31,7 +36,6 @@ from ai_youtube_agent.content.approval import (
 )
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.qc_report import QCReportBuilder
-from ai_youtube_agent.core.strategy_gate import StrategyGate
 from ai_youtube_agent.core.approval_gate import ApprovalGate
 from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.audit import (
@@ -80,6 +84,7 @@ from ai_youtube_agent.core.kill_switch_gate import KillSwitchGate, KillSwitchSou
 from ai_youtube_agent.core.production import start_production
 from ai_youtube_agent.core.publish_gate import PublishGate
 from ai_youtube_agent.core.rights_gate import RightsGate
+from ai_youtube_agent.core.strategy_gate import StrategyGate
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
 from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
 
@@ -120,7 +125,9 @@ class PipelineStepResult:
             "waiting_for_approval": self.waiting_for_approval,
             "error": self.error,
             "reason": self.reason,
-            "gate_blocked": bool(self.gate_report.blocked) if self.gate_report else False,
+            "gate_blocked": bool(self.gate_report.blocked)
+            if self.gate_report
+            else False,
             "details": self.details,
         }
 
@@ -201,13 +208,16 @@ class PipelineRunner:
                         now,
                         GateReason(
                             "domain.content_transition_blocked",
-                            f"Transition from {item.status.value} to {target_status.value} is not allowed",
+                            f"Transition from {item.status.value} to "
+                            f"{target_status.value} is not allowed",
                         ),
                     ),
                 ),
             )
 
-        context = GateContext(item=item, target_status=target_status, actor=eval_actor, at=now)
+        context = GateContext(
+            item=item, target_status=target_status, actor=eval_actor, at=now
+        )
 
         if target_status is ContentStatus.GENERATING:
             with self._database.connection() as conn:
@@ -234,8 +244,12 @@ class PipelineRunner:
                 return self._publish_gate.evaluate(item, actor=eval_actor, at=now)
             with self._database.connection() as conn:
                 gates = [
-                    ApprovalGate(ApprovalRequestRepository(conn), ArtifactRepository(conn)),
-                    DailyLimitGate(StrategyProfileRepository(conn), DailyUsageRepository(conn)),
+                    ApprovalGate(
+                        ApprovalRequestRepository(conn), ArtifactRepository(conn)
+                    ),
+                    DailyLimitGate(
+                        StrategyProfileRepository(conn), DailyUsageRepository(conn)
+                    ),
                     RightsGate(RightsRecordRepository(conn)),
                     IdempotencyGate(
                         AIJobRepository(conn),
@@ -247,7 +261,8 @@ class PipelineRunner:
                     gates.append(KillSwitchGate(self._kill_switch))
                 return evaluate_gates(gates, context)
 
-        # For other transitions without multi-gate contracts, evaluate transition allowance
+        # For other transitions without multi-gate contracts, evaluate transition
+        # allowance
         return GateReport(
             results=(GateResult.passed(GateName.TEST, now),),
         )
@@ -266,13 +281,17 @@ class PipelineRunner:
         with self._database.connection() as conn:
             item = ContentItemRepository(conn).get(item_id)
         if item is None:
-            raise PipelineRunnerError("domain.content_not_found", f"Content item {item_id} not found")
+            raise PipelineRunnerError(
+                "domain.content_not_found", f"Content item {item_id} not found"
+            )
 
         current_status = item.status
 
         # 1. DRAFT -> GENERATING
         if current_status is ContentStatus.DRAFT:
-            report = self.evaluate_stage_gates(item, ContentStatus.GENERATING, actor=eval_actor, at=now)
+            report = self.evaluate_stage_gates(
+                item, ContentStatus.GENERATING, actor=eval_actor, at=now
+            )
             if report.blocked:
                 self._audit_block(item, ContentStatus.GENERATING, report, eval_actor)
                 return PipelineStepResult(
@@ -285,7 +304,9 @@ class PipelineRunner:
                 )
             with self._database.transaction() as conn:
                 moved, _ = start_production(conn, item, clock=lambda: now)
-            self._audit_step(item.id, current_status, ContentStatus.GENERATING, eval_actor)
+            self._audit_step(
+                item.id, current_status, ContentStatus.GENERATING, eval_actor
+            )
             return PipelineStepResult(
                 item_id=item.id,
                 from_status=current_status,
@@ -308,7 +329,9 @@ class PipelineRunner:
                 )
             with self._database.transaction() as conn:
                 moved = item.with_status(ContentStatus.TESTING, clock=lambda: now)
-                ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
+                ContentItemRepository(conn).update(
+                    moved, expected_updated_at=item.updated_at
+                )
             self._audit_step(item.id, current_status, ContentStatus.TESTING, eval_actor)
             return PipelineStepResult(
                 item_id=item.id,
@@ -324,10 +347,16 @@ class PipelineRunner:
                 if report.status is QCStatus.FAIL or report.blocks:
                     # Move back to generating on QC failure
                     with self._database.transaction() as conn:
-                        moved = item.with_status(ContentStatus.GENERATING, clock=lambda: now)
-                        ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
+                        moved = item.with_status(
+                            ContentStatus.GENERATING, clock=lambda: now
+                        )
+                        ContentItemRepository(conn).update(
+                            moved, expected_updated_at=item.updated_at
+                        )
                     failed_names = [c.name for c in report.failed_checks]
-                    self._audit_step(item.id, current_status, ContentStatus.GENERATING, eval_actor)
+                    self._audit_step(
+                        item.id, current_status, ContentStatus.GENERATING, eval_actor
+                    )
                     return PipelineStepResult(
                         item_id=item.id,
                         from_status=current_status,
@@ -339,8 +368,12 @@ class PipelineRunner:
 
             with self._database.transaction() as conn:
                 moved = item.with_status(ContentStatus.PREVIEW_READY, clock=lambda: now)
-                ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
-            self._audit_step(item.id, current_status, ContentStatus.PREVIEW_READY, eval_actor)
+                ContentItemRepository(conn).update(
+                    moved, expected_updated_at=item.updated_at
+                )
+            self._audit_step(
+                item.id, current_status, ContentStatus.PREVIEW_READY, eval_actor
+            )
             return PipelineStepResult(
                 item_id=item.id,
                 from_status=current_status,
@@ -358,7 +391,9 @@ class PipelineRunner:
                     ApprovalStatus.PENDING,
                     ApprovalStatus.APPROVED,
                 ):
-                    all_artifacts = ArtifactRepository(conn).list_by_content_item(item.id)
+                    all_artifacts = ArtifactRepository(conn).list_by_content_item(
+                        item.id
+                    )
                     latest_by_kind: dict[ArtifactKind, Any] = {}
                     for a in all_artifacts:
                         if (
@@ -380,9 +415,15 @@ class PipelineRunner:
                     )
                     app_repo.add(req)
 
-                moved = item.with_status(ContentStatus.AWAITING_APPROVAL, clock=lambda: now)
-                ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
-            self._audit_step(item.id, current_status, ContentStatus.AWAITING_APPROVAL, eval_actor)
+                moved = item.with_status(
+                    ContentStatus.AWAITING_APPROVAL, clock=lambda: now
+                )
+                ContentItemRepository(conn).update(
+                    moved, expected_updated_at=item.updated_at
+                )
+            self._audit_step(
+                item.id, current_status, ContentStatus.AWAITING_APPROVAL, eval_actor
+            )
             return PipelineStepResult(
                 item_id=item.id,
                 from_status=current_status,
@@ -409,8 +450,12 @@ class PipelineRunner:
             if latest_req.status is ApprovalStatus.REJECTED:
                 with self._database.transaction() as conn:
                     moved = item.with_status(ContentStatus.REJECTED, clock=lambda: now)
-                    ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
-                self._audit_step(item.id, current_status, ContentStatus.REJECTED, eval_actor)
+                    ContentItemRepository(conn).update(
+                        moved, expected_updated_at=item.updated_at
+                    )
+                self._audit_step(
+                    item.id, current_status, ContentStatus.REJECTED, eval_actor
+                )
                 return PipelineStepResult(
                     item_id=item.id,
                     from_status=current_status,
@@ -420,9 +465,15 @@ class PipelineRunner:
                 )
             if latest_req.status is ApprovalStatus.CHANGES_REQUESTED:
                 with self._database.transaction() as conn:
-                    moved = item.with_status(ContentStatus.GENERATING, clock=lambda: now)
-                    ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
-                self._audit_step(item.id, current_status, ContentStatus.GENERATING, eval_actor)
+                    moved = item.with_status(
+                        ContentStatus.GENERATING, clock=lambda: now
+                    )
+                    ContentItemRepository(conn).update(
+                        moved, expected_updated_at=item.updated_at
+                    )
+                self._audit_step(
+                    item.id, current_status, ContentStatus.GENERATING, eval_actor
+                )
                 return PipelineStepResult(
                     item_id=item.id,
                     from_status=current_status,
@@ -433,8 +484,12 @@ class PipelineRunner:
             if latest_req.status is ApprovalStatus.APPROVED:
                 with self._database.transaction() as conn:
                     moved = item.with_status(ContentStatus.APPROVED, clock=lambda: now)
-                    ContentItemRepository(conn).update(moved, expected_updated_at=item.updated_at)
-                self._audit_step(item.id, current_status, ContentStatus.APPROVED, eval_actor)
+                    ContentItemRepository(conn).update(
+                        moved, expected_updated_at=item.updated_at
+                    )
+                self._audit_step(
+                    item.id, current_status, ContentStatus.APPROVED, eval_actor
+                )
                 return PipelineStepResult(
                     item_id=item.id,
                     from_status=current_status,
@@ -456,7 +511,9 @@ class PipelineRunner:
             if self._publish_gate is not None:
                 report = self._publish_gate.evaluate(item, actor=eval_actor, at=now)
                 if report.blocked:
-                    self._audit_block(item, ContentStatus.PUBLISHING, report, eval_actor)
+                    self._audit_block(
+                        item, ContentStatus.PUBLISHING, report, eval_actor
+                    )
                     return PipelineStepResult(
                         item_id=item.id,
                         from_status=current_status,
@@ -483,7 +540,9 @@ class PipelineRunner:
             outcome = publisher.publish(item.id, actor=eval_actor)
             with self._database.connection() as conn:
                 updated_item = ContentItemRepository(conn).get(item.id)
-            new_status = updated_item.status if updated_item else ContentStatus.PUBLISHING
+            new_status = (
+                updated_item.status if updated_item else ContentStatus.PUBLISHING
+            )
             return PipelineStepResult(
                 item_id=item.id,
                 from_status=current_status,
@@ -509,14 +568,18 @@ class PipelineRunner:
         actor: Actor | None = None,
         at: datetime | None = None,
     ) -> PipelineRunResult:
-        """Run lifecycle progression step-by-step until blocked, waiting, or completed."""
+        """Run lifecycle progression step-by-step until blocked, waiting, or
+        completed.
+        """
         now = at or self._now()
         eval_actor = actor or RUNNER_ACTOR
 
         with self._database.connection() as conn:
             item = ContentItemRepository(conn).get(item_id)
         if item is None:
-            raise PipelineRunnerError("domain.content_not_found", f"Content item {item_id} not found")
+            raise PipelineRunnerError(
+                "domain.content_not_found", f"Content item {item_id} not found"
+            )
 
         initial_status = item.status
         steps: list[PipelineStepResult] = []
@@ -529,7 +592,9 @@ class PipelineRunner:
 
             if not step.transitioned:
                 waiting_for_approval = step.waiting_for_approval
-                stopped_reason = step.reason or step.error or "Stopped without transition"
+                stopped_reason = (
+                    step.reason or step.error or "Stopped without transition"
+                )
                 break
 
             if step.to_status is ContentStatus.PUBLISHED:

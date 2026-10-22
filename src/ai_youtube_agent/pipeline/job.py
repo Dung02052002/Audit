@@ -309,7 +309,10 @@ class AIJob:
         *,
         clock: Clock | None = None,
     ) -> "AIJob":
-        """Append an orchestrator checkpoint on a non-final job (running, waiting, or failed)."""
+        """Append an orchestrator checkpoint on a non-final job.
+
+        The job is running, waiting, or failed.
+        """
         if self.is_final:
             raise self._state_error("checkpoint")
         now = max(_now(clock), self.updated_at)
@@ -328,7 +331,9 @@ class AIJob:
         checkpoint_data: dict[str, MetadataValue] = {}
         if approval_request_id:
             checkpoint_data["approval_request_id"] = approval_request_id
-        saved = JobCheckpoint(len(self.checkpoints) + 1, "approval.wait", now, checkpoint_data)
+        saved = JobCheckpoint(
+            len(self.checkpoints) + 1, "approval.wait", now, checkpoint_data
+        )
         return replace(
             self,
             status=AIJobStatus.WAITING,

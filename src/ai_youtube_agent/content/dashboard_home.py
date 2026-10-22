@@ -1,4 +1,5 @@
-"""Home Screen view and service (Prompt Pack v8, prompt Q-192), context X3 Command Center.
+"""Home Screen view and service (Prompt Pack v8, prompt Q-192), context X3 Command
+Center.
 
 Builds the Command Center Home Screen view model and iOS-style HTML rendering,
 aggregating:
@@ -233,9 +234,7 @@ class HomeScreenView:
             ),
             "ai_status": self.ai_status.as_dict(),
             "production": self.production.as_dict() if self.production else None,
-            "pending_approvals": [
-                item.as_dict() for item in self.pending_approvals
-            ],
+            "pending_approvals": [item.as_dict() for item in self.pending_approvals],
             "pending_approvals_count": self.pending_approvals_count,
             "alerts": [alert.as_dict() for alert in self.alerts],
             "shell": self.shell.as_dict(),
@@ -431,7 +430,9 @@ class HomeScreenService:
                     category="approval",
                     severity=BadgeTone.WARNING,
                     title="Pending Human Approvals",
-                    message=f"{len(approvals)} content item(s) awaiting human approval.",
+                    message=(
+                        f"{len(approvals)} content item(s) awaiting human approval."
+                    ),
                     action_href=f"/dashboard/approvals?channel_id={channel_id}",
                 )
             )
@@ -466,7 +467,10 @@ class HomeScreenService:
                             ),
                             category="budget",
                             severity=tone,
-                            title=f"{b_alert.window.value.title()} Budget Alert ({b_alert.threshold_percent}%)",
+                            title=(
+                                f"{b_alert.window.value.title()} Budget Alert "
+                                f"({b_alert.threshold_percent}%)"
+                            ),
                             message=b_alert.message,
                             action_href=f"/dashboard/revenue?channel_id={channel_id}",
                         )
@@ -644,11 +648,7 @@ def _build_system_alerts(
 ) -> tuple[HomeAlertPreview, ...]:
     if health_status is HealthStatus.OK:
         return ()
-    tone = (
-        BadgeTone.DANGER
-        if health_status is HealthStatus.DOWN
-        else BadgeTone.WARNING
-    )
+    tone = BadgeTone.DANGER if health_status is HealthStatus.DOWN else BadgeTone.WARNING
     checks_str = ", ".join(degraded_checks) if degraded_checks else "system"
     return (
         HomeAlertPreview(
@@ -679,7 +679,8 @@ def _render_home_body_html(view: HomeScreenView) -> str:
     alerts_html = (
         "".join(
             f'<li data-category="{html.escape(alert.category, quote=True)}">'
-            f'<span class="cc-badge cc-badge-{html.escape(alert.severity.value, quote=True)}">'
+            '<span class="cc-badge '
+            f'cc-badge-{html.escape(alert.severity.value, quote=True)}">'
             f"{html.escape(alert.category)}</span> "
             f"<strong>{html.escape(alert.title)}</strong>: "
             f"{html.escape(alert.message)}</li>"
@@ -691,20 +692,28 @@ def _render_home_body_html(view: HomeScreenView) -> str:
     return f"""<div class="cc-grid" data-screen="home" data-testid="home-screen">
   <section class="cc-card" data-widget="channel-health">
     <h3>Channel Health</h3>
-    <p><strong>{html.escape(health.channel_title)}</strong> ({html.escape(health.channel_status)})</p>
-    <p>System: <span class="cc-badge cc-badge-{html.escape(health.tone.value, quote=True)}">{html.escape(health.system_health_status)}</span></p>
+    <p><strong>{html.escape(health.channel_title)}</strong> \
+({html.escape(health.channel_status)})</p>
+    <p>System: <span class="cc-badge \
+cc-badge-{html.escape(health.tone.value, quote=True)}">\
+{html.escape(health.system_health_status)}</span></p>
     <p>Strategy Complete: {"Yes" if health.strategy_complete else "No"}</p>
   </section>
   <section class="cc-card" data-widget="ai-status">
     <h3>AI Status</h3>
-    <p>State: <span class="cc-badge cc-badge-{html.escape(ai.tone.value, quote=True)}">{html.escape(ai.state)}</span></p>
-    <p>Running: {ai.running_jobs} | Queued: {ai.queued_jobs} | Waiting: {ai.waiting_jobs} | Failed: {ai.failed_jobs}</p>
+    <p>State: <span class="cc-badge \
+cc-badge-{html.escape(ai.tone.value, quote=True)}">{html.escape(ai.state)}</span></p>
+    <p>Running: {ai.running_jobs} | Queued: {ai.queued_jobs} | \
+Waiting: {ai.waiting_jobs} | Failed: {ai.failed_jobs}</p>
   </section>
   <section class="cc-card" data-widget="production-count">
     <h3>Production Count</h3>
-    <p>In Progress: {prod.total_in_progress} (Shorts: {prod.shorts_in_progress}, LongForm: {prod.longform_in_progress})</p>
-    <p>Published: Shorts {prod.shorts_published_total}, LongForm {prod.longform_published_total}</p>
-    <p>Today Shorts: {prod.today_shorts_started}/{prod.today_shorts_limit if prod.today_shorts_limit is not None else "-"}</p>
+    <p>In Progress: {prod.total_in_progress} \
+(Shorts: {prod.shorts_in_progress}, LongForm: {prod.longform_in_progress})</p>
+    <p>Published: Shorts {prod.shorts_published_total}, \
+LongForm {prod.longform_published_total}</p>
+    <p>Today Shorts: {prod.today_shorts_started}/\
+{prod.today_shorts_limit if prod.today_shorts_limit is not None else "-"}</p>
   </section>
 </div>
 <section class="cc-card" data-widget="pending-approvals">
@@ -715,4 +724,3 @@ def _render_home_body_html(view: HomeScreenView) -> str:
   <h3>Active Alerts ({len(view.alerts)})</h3>
   <ul>{alerts_html}</ul>
 </section>"""
-

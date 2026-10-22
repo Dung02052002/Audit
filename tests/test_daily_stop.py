@@ -1,7 +1,7 @@
 """Tests for DailyStopService (Prompt Pack v8, task R-210)."""
 
-from datetime import UTC, datetime
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 
@@ -85,9 +85,12 @@ def test_check_channel_limit_within_limit(
 def test_check_channel_limit_reached(
     database: Database, audit_log: AuditLog, sample_channel: Channel
 ) -> None:
+    with database.connection() as conn:
+        strategy = StrategyProfileRepository(conn).get_by_channel(sample_channel.id)
+    assert strategy is not None
     item1 = ContentItem.create(
         channel_id=sample_channel.id,
-        strategy_profile_id=sample_channel.id,
+        strategy_profile_id=strategy.id,
         strategy_version=1,
         content_type=ContentType.SHORTS,
         title="Item 1",
@@ -95,7 +98,7 @@ def test_check_channel_limit_reached(
     )
     item2 = ContentItem.create(
         channel_id=sample_channel.id,
-        strategy_profile_id=sample_channel.id,
+        strategy_profile_id=strategy.id,
         strategy_version=1,
         content_type=ContentType.SHORTS,
         title="Item 2",

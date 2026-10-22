@@ -1,7 +1,7 @@
 """Tests for ApprovalWaitService (Prompt Pack v8, task R-207)."""
 
-from datetime import UTC, datetime, timedelta
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -121,7 +121,10 @@ def sample_job(database: Database, sample_item: ContentItem) -> AIJob:
 
 
 def test_pause_for_approval_transitions_to_waiting(
-    database: Database, audit_log: AuditLog, sample_job: AIJob, sample_approval: ApprovalRequest
+    database: Database,
+    audit_log: AuditLog,
+    sample_job: AIJob,
+    sample_approval: ApprovalRequest,
 ) -> None:
     service = ApprovalWaitService(
         database, audit_log, clock=_fixed_clock(T0 + timedelta(seconds=10))
@@ -139,7 +142,10 @@ def test_pause_for_approval_transitions_to_waiting(
 
 
 def test_pause_for_approval_rejects_non_running_job(
-    database: Database, audit_log: AuditLog, sample_item: ContentItem, sample_approval: ApprovalRequest
+    database: Database,
+    audit_log: AuditLog,
+    sample_item: ContentItem,
+    sample_approval: ApprovalRequest,
 ) -> None:
     pending_job = AIJob.create(
         "content.generate",
@@ -164,7 +170,10 @@ def test_pause_for_approval_rejects_missing_approval(
 
 
 def test_check_and_resolve_resumes_when_approved(
-    database: Database, audit_log: AuditLog, sample_job: AIJob, sample_approval: ApprovalRequest
+    database: Database,
+    audit_log: AuditLog,
+    sample_job: AIJob,
+    sample_approval: ApprovalRequest,
 ) -> None:
     queue = InMemoryJobQueue(clock=_fixed_clock(T0))
     service = ApprovalWaitService(
@@ -190,7 +199,10 @@ def test_check_and_resolve_resumes_when_approved(
 
 
 def test_check_and_resolve_cancels_when_rejected(
-    database: Database, audit_log: AuditLog, sample_job: AIJob, sample_approval: ApprovalRequest
+    database: Database,
+    audit_log: AuditLog,
+    sample_job: AIJob,
+    sample_approval: ApprovalRequest,
 ) -> None:
     service = ApprovalWaitService(
         database, audit_log, clock=_fixed_clock(T0 + timedelta(seconds=10))
@@ -215,7 +227,10 @@ def test_check_and_resolve_cancels_when_rejected(
 
 
 def test_check_and_resolve_still_waiting_when_pending(
-    database: Database, audit_log: AuditLog, sample_job: AIJob, sample_approval: ApprovalRequest
+    database: Database,
+    audit_log: AuditLog,
+    sample_job: AIJob,
+    sample_approval: ApprovalRequest,
 ) -> None:
     service = ApprovalWaitService(
         database, audit_log, clock=_fixed_clock(T0 + timedelta(seconds=10))
@@ -232,7 +247,10 @@ def test_check_and_resolve_still_waiting_when_pending(
 
 
 def test_poll_waiting_jobs(
-    database: Database, audit_log: AuditLog, sample_job: AIJob, sample_approval: ApprovalRequest
+    database: Database,
+    audit_log: AuditLog,
+    sample_job: AIJob,
+    sample_approval: ApprovalRequest,
 ) -> None:
     service = ApprovalWaitService(
         database, audit_log, clock=_fixed_clock(T0 + timedelta(seconds=10))

@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 
 from ai_youtube_agent.content.channel import ChannelStatus
+from ai_youtube_agent.content.dashboard_shell import DashboardError, DashboardErrorCode
 from ai_youtube_agent.content.dashboard_video_detail import VideoDetailService
-from ai_youtube_agent.content.preview_artifact import PreviewError, PreviewErrorCode
 from ai_youtube_agent.content.qc import QCStatus
-from ai_youtube_agent.core.artifact import ArtifactKind
-from ai_youtube_agent.core.artifact_storage import ArtifactStorage
+from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
+from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
 from ai_youtube_agent.core.db.database import Database
@@ -38,12 +38,32 @@ FIXED_NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
 def env(
     database: Database, tmp_path: Path
 ) -> tuple[Database, ArtifactStorage, Settings]:
-    storage = ArtifactStorage(tmp_path / "artifacts")
+    storage = LocalFileStorage(tmp_path / "artifacts")
     settings = Settings(
         database_path=tmp_path / "test.db",
         artifact_dir=tmp_path / "artifacts",
     )
     return database, storage, settings
+
+
+def _store_first(
+    storage: ArtifactStorage,
+    content_item_id: str,
+    kind: ArtifactKind,
+    data: bytes,
+    media_type: str,
+) -> Artifact:
+    """Write version 1 of an artifact to storage and build its ``Artifact``."""
+    stored = storage.write(content_item_id, kind, 1, data, media_type=media_type)
+    return Artifact.create(
+        content_item_id,
+        kind,
+        uri=stored.uri,
+        sha256=stored.sha256,
+        size_bytes=stored.size_bytes,
+        media_type=media_type,
+        clock=lambda: FIXED_NOW,
+    )
 
 
 def _seed_channel_and_item(
@@ -73,9 +93,9 @@ def test_video_detail_missing_item_raises_not_found(
 ) -> None:
     db, storage, settings = env
     service = VideoDetailService(db, storage, settings, clock=lambda: FIXED_NOW)
-    with pytest.raises(PreviewError) as exc_info:
+    with pytest.raises(DashboardError) as exc_info:
         service.load("missing-item-id")
-    assert exc_info.value.code == PreviewErrorCode.ITEM_NOT_FOUND.value
+    assert exc_info.value.dashboard_code is DashboardErrorCode.CONTENT_NOT_FOUND
 
 
 def test_video_detail_draft_without_video_artifact(
@@ -101,20 +121,12 @@ def test_video_detail_with_real_preview_player_artifacts_and_reports(
     item = _seed_channel_and_item(db, status=ContentStatus.PREVIEW_READY)
 
     mp4_bytes = stub_mp4(45_000, b"quantum-video-payload")
-    video_art = storage.store_first(
-        item.id,
-        ArtifactKind.VIDEO,
-        mp4_bytes,
-        media_type="video/mp4",
-        clock=lambda: FIXED_NOW,
+    video_art = _store_first(
+        storage, item.id, ArtifactKind.VIDEO, mp4_bytes, "video/mp4"
     )
     srt_bytes = b"1\n00:00:00,000 --> 00:00:02,000\nWelcome to quantum computing.\n"
-    subs_art = storage.store_first(
-        item.id,
-        ArtifactKind.SUBTITLES,
-        srt_bytes,
-        media_type="text/plain",
-        clock=lambda: FIXED_NOW,
+    subs_art = _store_first(
+        storage, item.id, ArtifactKind.SUBTITLES, srt_bytes, "application/x-subrip"
     )
     qc_res = make_qc_result(item, [video_art, subs_art])
 
@@ -141,4 +153,3 @@ def test_video_detail_with_real_preview_player_artifacts_and_reports(
     assert 'data-testid="preview-player"' in rendered
     assert 'data-testid="video-artifacts-table"' in rendered
     assert video_art.sha256[:12] in rendered
-

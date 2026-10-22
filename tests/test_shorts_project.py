@@ -550,9 +550,11 @@ def test_update_with_an_old_version_is_refused_and_changes_nothing(
         project.timeline, ShortsProjectStatus.DRAFT, actor=AI, clock=at(T2)
     )
 
-    with world.database.transaction() as connection:
-        with pytest.raises(ConcurrencyError):
-            ShortsProjectRepository(connection).update(changed, expected_version=7)
+    with (
+        world.database.transaction() as connection,
+        pytest.raises(ConcurrencyError),
+    ):
+        ShortsProjectRepository(connection).update(changed, expected_version=7)
 
     assert world.project_of() == project
 
@@ -561,9 +563,11 @@ def test_update_of_an_unknown_project_is_refused(world: World) -> None:
     world.prepare()
     project = world.entity()
 
-    with world.database.transaction() as connection:
-        with pytest.raises(RecordNotFoundError):
-            ShortsProjectRepository(connection).update(project, expected_version=1)
+    with (
+        world.database.transaction() as connection,
+        pytest.raises(RecordNotFoundError),
+    ):
+        ShortsProjectRepository(connection).update(project, expected_version=1)
 
 
 def test_an_item_has_one_project(world: World) -> None:
@@ -699,11 +703,7 @@ def test_the_length_limits_are_accepted(world: World) -> None:
         {"timeline_json": "[]"},
         {"timeline_json": '{"duration_ms": 30250, "scenes": []}'},
         {"timeline_json": json.dumps({"schema_version": 1, "duration_ms": 30250})},
-        {
-            "timeline_json": json.dumps(
-                Timeline.empty(30250).to_dict() | {"scenes": {}}
-            )
-        },
+        {"timeline_json": json.dumps(Timeline.empty(30250).to_dict() | {"scenes": {}})},
         {"timeline_json": '{"schema_version": 1, "scenes": []}'},
         {"timeline_json": timeline_text(30251)},
         {"audio_duration_ms": 60_001, "timeline_json": timeline_text(60_001)},
@@ -737,16 +737,20 @@ def test_a_row_cannot_be_changed_into_a_contradiction(world: World) -> None:
     world.prepare()
     insert_row(world)
 
-    with world.database.transaction() as connection:
-        with pytest.raises(sqlite3.IntegrityError):
-            connection.execute("UPDATE shorts_projects SET status = 'planned'")
+    with (
+        world.database.transaction() as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute("UPDATE shorts_projects SET status = 'planned'")
 
-    with world.database.transaction() as connection:
-        with pytest.raises(sqlite3.IntegrityError):
-            connection.execute(
-                "UPDATE shorts_projects SET timeline_json = ?",
-                (timeline_text(scenes=1),),
-            )
+    with (
+        world.database.transaction() as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute(
+            "UPDATE shorts_projects SET timeline_json = ?",
+            (timeline_text(scenes=1),),
+        )
 
 
 def test_the_content_item_is_unique(world: World) -> None:

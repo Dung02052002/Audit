@@ -142,7 +142,9 @@ class ApprovalWaitService:
                 return ApprovalWaitResolution(
                     job_id=job.id,
                     status=ApprovalWaitStatus.NOT_FOUND,
-                    details=f"Job is not in WAITING status (current: {job.status.value})",
+                    details=(
+                        f"Job is not in WAITING status (current: {job.status.value})"
+                    ),
                 )
 
             approval_request_id: str | None = None
@@ -220,7 +222,10 @@ class ApprovalWaitService:
                     approval_request_id=approval.id,
                     details=reason,
                 )
-            elif approval.status in (ApprovalStatus.EXPIRED, ApprovalStatus.INVALIDATED):
+            elif approval.status in (
+                ApprovalStatus.EXPIRED,
+                ApprovalStatus.INVALIDATED,
+            ):
                 return ApprovalWaitResolution(
                     job_id=job.id,
                     status=ApprovalWaitStatus.EXPIRED,
@@ -250,7 +255,10 @@ class ApprovalWaitService:
         return resolution
 
     def poll_waiting_jobs(self) -> list[ApprovalWaitResolution]:
-        """Scans all jobs in WAITING status and resolves them against their approval requests."""
+        """Scans all jobs in WAITING status and resolves them.
+
+        Resolved against their approval requests.
+        """
         with self._database.connection() as conn:
             job_repo = AIJobRepository(conn)
             all_jobs = job_repo.list_all()

@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, AuditResult, EntityRef
+from ai_youtube_agent.core.audit import (
+    Actor,
+    ActorKind,
+    AuditLog,
+    AuditResult,
+    EntityRef,
+)
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.errors import DomainError
@@ -43,7 +49,9 @@ class KillSwitchNotAllowedError(KillSwitchError):
         super().__init__(
             detail,
             code="domain.killswitch_not_allowed",
-            user_message="Only an authorized human operator may perform this kill switch action.",
+            user_message=(
+                "Only an authorized human operator may perform this kill switch action."
+            ),
         )
 
 
@@ -86,7 +94,8 @@ class KillSwitchTransition:
 
 
 class KillSwitchService:
-    """Thread-safe emergency stop store and controller implementing ``KillSwitchSource``."""
+    """Thread-safe emergency stop store and controller implementing
+    ``KillSwitchSource``."""
 
     def __init__(
         self,
@@ -104,7 +113,8 @@ class KillSwitchService:
         self._history: list[KillSwitchTransition] = []
 
     def current(self) -> EmergencyStop:
-        """Return the current ``EmergencyStop`` snapshot (satisfies ``KillSwitchSource``)."""
+        """Return the current ``EmergencyStop`` snapshot (satisfies
+        ``KillSwitchSource``)."""
         with self._lock:
             return self._state
 
@@ -191,9 +201,10 @@ class KillSwitchService:
                 job_repo = AIJobRepository(conn)
                 for job in job_repo.list_all():
                     if job.status is AIJobStatus.QUEUED:
+                        at = max(now, job.updated_at)
                         cancelled = job.cancel(
                             reason=cancel_reason,
-                            clock=lambda: max(now, job.updated_at),
+                            clock=lambda at=at: at,
                         )
                         job_repo.update(cancelled, expected_updated_at=job.updated_at)
                         cancelled_ids.append(job.id)
@@ -246,7 +257,11 @@ class KillSwitchService:
                 "Only a human user (ActorKind.USER) may deactivate the emergency stop."
             )
 
-        cleaned_reason = reason.strip() if isinstance(reason, str) and reason.strip() else "manual_reset"
+        cleaned_reason = (
+            reason.strip()
+            if isinstance(reason, str) and reason.strip()
+            else "manual_reset"
+        )
         now = self._clock()
         inactive_stop = EmergencyStop.inactive()
 

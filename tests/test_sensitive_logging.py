@@ -44,7 +44,8 @@ def test_json_formatter_redacts_message_fields_and_exception_traceback() -> None
 
         try:
             raise RuntimeError(
-                "OAuth failed for user@example.com with client_secret=GOCSPX-1234567890abcdef1234"
+                "OAuth failed for user@example.com with "
+                "client_secret=GOCSPX-1234567890abcdef1234"
             )
         except RuntimeError:
             logger.exception(

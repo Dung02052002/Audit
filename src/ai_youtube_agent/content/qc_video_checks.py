@@ -1,4 +1,5 @@
-"""Video QC checks (Prompt Pack v8, prompts K-117..K-125), context C10 Quality (Test & QC).
+"""Video QC checks (Prompt Pack v8, prompts K-117..K-125), context C10 Quality
+(Test & QC).
 
 Concrete QC check implementations that inspect rendered MP4 video files and
 their companion production artifacts:
@@ -26,10 +27,12 @@ their companion production artifacts:
 """
 
 import hashlib
+import io
 import json
 import re
 import struct
 import unicodedata
+import wave
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -37,6 +40,8 @@ from typing import Any, Final
 from ai_youtube_agent.content.audio_validation import (
     DEFAULT_LIMITS,
     AudioLimits,
+)
+from ai_youtube_agent.content.audio_validation import (
     analyze as analyze_audio,
 )
 from ai_youtube_agent.content.longform_metadata import LongFormMetadata
@@ -270,14 +275,19 @@ def check_resolution(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=RESOLUTION_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"Shorts aspect ratio must be 9:16 vertical, got {width}x{height}",
+                detail=(
+                    f"Shorts aspect ratio must be 9:16 vertical, got {width}x{height}"
+                ),
             )
     else:
         if width * 9 != height * 16:
             return QCCheck(
                 name=RESOLUTION_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"LongForm aspect ratio must be 16:9 horizontal, got {width}x{height}",
+                detail=(
+                    "LongForm aspect ratio must be 16:9 horizontal, got "
+                    f"{width}x{height}"
+                ),
             )
 
     if (width, height) != (context.expected_width, context.expected_height):
@@ -328,7 +338,10 @@ def check_fps(context: VideoInspectionContext) -> QCCheck:
         return QCCheck(
             name=FPS_CHECK_NAME,
             status=QCStatus.FAIL,
-            detail=f"Video FPS {fps:.1f} differs from configured {context.expected_fps} fps",
+            detail=(
+                f"Video FPS {fps:.1f} differs from configured {context.expected_fps} "
+                "fps"
+            ),
         )
 
     return QCCheck(
@@ -371,7 +384,9 @@ def check_duration(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=DURATION_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"LongForm duration {duration_ms} ms is under 180 seconds minimum",
+                detail=(
+                    f"LongForm duration {duration_ms} ms is under 180 seconds minimum"
+                ),
             )
         if duration_ms > context.max_duration_ms:
             return QCCheck(
@@ -404,8 +419,21 @@ def check_duration(context: VideoInspectionContext) -> QCCheck:
     )
 
 
+def _wav_duration_ms(data: bytes) -> int:
+    """The duration a WAV header declares; 0 when it cannot be read (the
+    integrity check then reports the bad file)."""
+    try:
+        with wave.open(io.BytesIO(data), "rb") as reader:
+            rate = reader.getframerate()
+            return round(reader.getnframes() * 1000 / rate) if rate else 0
+    except (wave.Error, EOFError):
+        return 0
+
+
 def check_audio(context: VideoInspectionContext) -> QCCheck:
-    """Validate audio track presence, duration sync, and clipping/silence thresholds (Prompt #121)."""
+    """Validate audio track presence, duration sync, and clipping/silence thresholds
+    (Prompt #121).
+    """
     audio_bytes = context.audio_data
     if audio_bytes is None or len(audio_bytes) == 0:
         return QCCheck(
@@ -419,13 +447,17 @@ def check_audio(context: VideoInspectionContext) -> QCCheck:
         if context.audio_sha256 is not None
         else hashlib.sha256(audio_bytes).hexdigest()
     )
-    limits = context.audio_limits if context.audio_limits is not None else DEFAULT_LIMITS
+    limits = (
+        context.audio_limits if context.audio_limits is not None else DEFAULT_LIMITS
+    )
     sub_checks, stats = analyze_audio(
         audio_bytes,
-        artifact_size=len(audio_bytes),
-        artifact_sha256=expected_sha256,
-        metadata_duration_ms=(
-            context.expected_duration_ms if context.expected_duration_ms > 0 else None
+        expected_sha256=expected_sha256,
+        expected_size=len(audio_bytes),
+        expected_duration_ms=(
+            context.expected_duration_ms
+            if context.expected_duration_ms > 0
+            else _wav_duration_ms(audio_bytes)
         ),
         limits=limits,
     )
@@ -458,7 +490,10 @@ def check_audio(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=AUDIO_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail=f"Cannot verify audio-video sync due to invalid video container: {error}",
+                detail=(
+                    "Cannot verify audio-video sync due to invalid video container: "
+                    f"{error}"
+                ),
             )
 
     warned = [c for c in sub_checks if c.status is QCStatus.WARN]
@@ -500,9 +535,8 @@ def _parse_subtitle_cues(
         raise ValueError("Subtitle content is empty.")
 
     is_vtt = (
-        (media_type is not None and "vtt" in media_type.lower())
-        or stripped.startswith("WEBVTT")
-    )
+        media_type is not None and "vtt" in media_type.lower()
+    ) or stripped.startswith("WEBVTT")
 
     blocks = re.split(r"\n\s*\n", stripped)
     cues: list[SubtitleCue] = []
@@ -550,7 +584,9 @@ def _parse_subtitle_cues(
     for idx, block in enumerate(blocks, start=1):
         lines = block.split("\n")
         if len(lines) < 3:
-            raise ValueError(f"Malformed SRT cue block {idx} (expected index, timecode, text).")
+            raise ValueError(
+                f"Malformed SRT cue block {idx} (expected index, timecode, text)."
+            )
         if not lines[0].strip().isdigit():
             raise ValueError(f"Invalid SRT cue index at block {idx}: {lines[0]!r}")
         cue_num = int(lines[0].strip())
@@ -722,9 +758,7 @@ def check_subtitles(context: VideoInspectionContext) -> QCCheck:
 
     if context.scene_windows_ms:
         for scene_idx, (s_start, s_end) in enumerate(context.scene_windows_ms, start=1):
-            covered = any(
-                cue.start_ms < s_end and cue.end_ms > s_start for cue in cues
-            )
+            covered = any(cue.start_ms < s_end and cue.end_ms > s_start for cue in cues)
             if not covered:
                 return QCCheck(
                     name=SUBTITLE_CHECK_NAME,
@@ -829,7 +863,8 @@ def check_black_frames(context: VideoInspectionContext) -> QCCheck:
                 name=BLACK_FRAME_CHECK_NAME,
                 status=QCStatus.FAIL,
                 detail=(
-                    f"Excessive frozen frames detected ({frozen_ratio * 100:.1f}% frozen, "
+                    f"Excessive frozen frames detected ({frozen_ratio * 100:.1f}% "
+                    "frozen, "
                     f"max continuous run {max_frozen_ms:.0f} ms)."
                 ),
             )
@@ -852,7 +887,8 @@ def check_black_frames(context: VideoInspectionContext) -> QCCheck:
             name=BLACK_FRAME_CHECK_NAME,
             status=QCStatus.PASS,
             detail=(
-                f"No excessive black or frozen frames ({total_frames} frames inspected, "
+                f"No excessive black or frozen frames ({total_frames} frames "
+                "inspected, "
                 f"{black_ratio * 100:.1f}% black, {frozen_ratio * 100:.1f}% frozen)"
             ),
         )
@@ -870,7 +906,10 @@ def check_black_frames(context: VideoInspectionContext) -> QCCheck:
         return QCCheck(
             name=BLACK_FRAME_CHECK_NAME,
             status=QCStatus.FAIL,
-            detail=f"Excessive black frames detected ({zero_ratio * 100:.1f}% zero mdat blocks).",
+            detail=(
+                f"Excessive black frames detected ({zero_ratio * 100:.1f}% zero mdat "
+                "blocks)."
+            ),
         )
 
     if len(mdat) >= 64 and len(set(mdat)) == 1:
@@ -884,13 +923,19 @@ def check_black_frames(context: VideoInspectionContext) -> QCCheck:
         return QCCheck(
             name=BLACK_FRAME_CHECK_NAME,
             status=QCStatus.WARN,
-            detail=f"Elevated black frame blocks ({zero_ratio * 100:.1f}% zero mdat blocks).",
+            detail=(
+                f"Elevated black frame blocks ({zero_ratio * 100:.1f}% zero mdat "
+                "blocks)."
+            ),
         )
 
     return QCCheck(
         name=BLACK_FRAME_CHECK_NAME,
         status=QCStatus.PASS,
-        detail=f"No excessive black or frozen frames ({len(blocks)} payload blocks inspected)",
+        detail=(
+            f"No excessive black or frozen frames ({len(blocks)} payload blocks "
+            "inspected)"
+        ),
     )
 
 
@@ -957,7 +1002,8 @@ def check_render_integrity(context: VideoInspectionContext) -> QCCheck:
                 name=INTEGRITY_CHECK_NAME,
                 status=QCStatus.FAIL,
                 detail=(
-                    f"Incomplete or truncated MP4 box {kind.decode('latin1', errors='replace')!r} "
+                    "Incomplete or truncated MP4 box "
+                    f"{kind.decode('latin1', errors='replace')!r} "
                     f"at offset {pos} (declared size {size}, remaining {end - pos})."
                 ),
             )
@@ -1004,7 +1050,9 @@ def check_render_integrity(context: VideoInspectionContext) -> QCCheck:
         return QCCheck(
             name=INTEGRITY_CHECK_NAME,
             status=QCStatus.FAIL,
-            detail=f"Render job is not succeeded (status: {context.render_job_status}).",
+            detail=(
+                f"Render job is not succeeded (status: {context.render_job_status})."
+            ),
         )
 
     if (
@@ -1031,7 +1079,10 @@ def check_render_integrity(context: VideoInspectionContext) -> QCCheck:
     return QCCheck(
         name=INTEGRITY_CHECK_NAME,
         status=QCStatus.PASS,
-        detail=f"Render integrity verified ({len(raw)} bytes, sha256={actual_sha256[:12]}...)",
+        detail=(
+            f"Render integrity verified ({len(raw)} bytes, "
+            f"sha256={actual_sha256[:12]}...)"
+        ),
     )
 
 
@@ -1048,7 +1099,9 @@ def check_metadata(context: VideoInspectionContext) -> QCCheck:
     try:
         raw_payload = json.loads(bytes(raw).decode("utf-8"))
         if context.content_type == ContentType.SHORTS:
-            meta: ShortsMetadata | LongFormMetadata = ShortsMetadata.from_json_bytes(raw)
+            meta: ShortsMetadata | LongFormMetadata = ShortsMetadata.from_json_bytes(
+                raw
+            )
         else:
             meta = LongFormMetadata.from_bytes(raw)
     except Exception as error:
@@ -1144,7 +1197,10 @@ def check_metadata(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=METADATA_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail="LongForm metadata requires at least 3 chapters when chapters are enabled.",
+                detail=(
+                    "LongForm metadata requires at least 3 chapters when chapters are "
+                    "enabled."
+                ),
             )
         if meta.chapters[0].start_ms != 0:
             return QCCheck(
@@ -1172,7 +1228,10 @@ def check_metadata(context: VideoInspectionContext) -> QCCheck:
             return QCCheck(
                 name=METADATA_CHECK_NAME,
                 status=QCStatus.FAIL,
-                detail="LongForm metadata description is missing formatted YouTube chapters.",
+                detail=(
+                    "LongForm metadata description is missing formatted YouTube "
+                    "chapters."
+                ),
             )
 
     for attr in context.expected_attributions:
@@ -1190,17 +1249,20 @@ def check_metadata(context: VideoInspectionContext) -> QCCheck:
         return QCCheck(
             name=METADATA_CHECK_NAME,
             status=QCStatus.FAIL,
-            detail="Metadata disclosure_decision_id does not match the latest disclosure decision.",
+            detail=(
+                "Metadata disclosure_decision_id does not match the latest disclosure "
+                "decision."
+            ),
         )
 
-    if (
-        context.expected_synthetic_media is True
-        and not meta.contains_synthetic_media
-    ):
+    if context.expected_synthetic_media is True and not meta.contains_synthetic_media:
         return QCCheck(
             name=METADATA_CHECK_NAME,
             status=QCStatus.FAIL,
-            detail="Metadata contains_synthetic_media is False while AI disclosure is required.",
+            detail=(
+                "Metadata contains_synthetic_media is False while AI disclosure is "
+                "required."
+            ),
         )
 
     if meta.policy_status is PolicyStatus.BLOCK:
@@ -1225,4 +1287,3 @@ def check_metadata(context: VideoInspectionContext) -> QCCheck:
             f"(project v{meta.project_version}, script v{meta.script_version})"
         ),
     )
-

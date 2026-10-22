@@ -360,10 +360,11 @@ def mix_audio(
         gains, ducked_ratio = _duck_gains(active, window, voice.frames, constraints)
         for channel in range(channels):
             music[channel::channels] = array(
-                "d", [v * g for v, g in zip(music[channel::channels], gains)]
+                "d",
+                [v * g for v, g in zip(music[channel::channels], gains, strict=True)],
             )
     mixed = array(
-        "d", [v + m + e for v, m, e in zip(voice.samples, music, effects)]
+        "d", [v + m + e for v, m, e in zip(voice.samples, music, effects, strict=True)]
     )
     step = window * channels
     measured = _active_rms(mixed, active, step)
@@ -491,7 +492,10 @@ def _conform(
         else:
             data = array(
                 "d",
-                [(left + right) / 2 for left, right in zip(data[0::2], data[1::2])],
+                [
+                    (left + right) / 2
+                    for left, right in zip(data[0::2], data[1::2], strict=True)
+                ],
             )
     if source_rate != rate:
         data = _resample(data, channels, source_rate, rate)
@@ -532,15 +536,16 @@ def _fade(data: array, channels: int, frames: int, tail: bool) -> None:
 
 def _add(bus: array, offset: int, data: array) -> None:
     end = offset + len(data)
-    bus[offset:end] = array("d", [a + b for a, b in zip(bus[offset:end], data)])
+    # A track running past the end of the bus is cut at the bus end.
+    bus[offset:end] = array(
+        "d", [a + b for a, b in zip(bus[offset:end], data, strict=False)]
+    )
 
 
 # Ducking
 
 
-def _activity(
-    voice: PcmAudio, constraints: MixConstraints
-) -> tuple[int, list[bool]]:
+def _activity(voice: PcmAudio, constraints: MixConstraints) -> tuple[int, list[bool]]:
     """The window size in frames and whether the voice is active in each window."""
     window = max(1, voice.sample_rate * ACTIVITY_WINDOW_MS // 1000)
     step = window * voice.channels
@@ -623,7 +628,7 @@ def _limit(
     else:
         peaks = [
             max(abs(left), abs(right))
-            for left, right in zip(samples[0::2], samples[1::2])
+            for left, right in zip(samples[0::2], samples[1::2], strict=True)
         ]
     reduction = 0.0
     if max(peaks) > ceiling:
@@ -646,7 +651,8 @@ def _limit(
             previous = smooth
         for channel in range(channels):
             samples[channel::channels] = array(
-                "d", [v * g for v, g in zip(samples[channel::channels], gains)]
+                "d",
+                [v * g for v, g in zip(samples[channel::channels], gains, strict=True)],
             )
         reduction = -20 * math.log10(min(gains))
     samples = array("d", [max(-ceiling, min(ceiling, v)) for v in samples])

@@ -27,7 +27,6 @@ import hashlib
 import sqlite3
 import unicodedata
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from http import HTTPStatus
@@ -102,8 +101,7 @@ USER_MESSAGES = {
         "The LongForm project changed in the meantime. Reload it and try again."
     ),
     LongFormSubtitleErrorCode.CAPTIONS_OFF: (
-        "The format of this LongForm video has captions off, so it has no "
-        "subtitles."
+        "The format of this LongForm video has captions off, so it has no subtitles."
     ),
     LongFormSubtitleErrorCode.NO_CAPTIONS: (
         "Add captions that cover every scene before saving the subtitles."
@@ -112,8 +110,7 @@ USER_MESSAGES = {
         "The captions break a rule, so the subtitles cannot be saved."
     ),
     LongFormSubtitleErrorCode.STALE_INPUT: (
-        "The script or audio of this project is out of date. Rebind the "
-        "project first."
+        "The script or audio of this project is out of date. Rebind the project first."
     ),
     LongFormSubtitleErrorCode.STORAGE_FAILED: (
         "The subtitle file could not be stored."
@@ -151,9 +148,7 @@ def _stamp(ms: int, separator: str) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}{separator}{millis:03d}"
 
 
-def _cues(
-    timeline: LongFormTimeline, rules: CaptionRules, separator: str
-) -> list[str]:
+def _cues(timeline: LongFormTimeline, rules: CaptionRules, separator: str) -> list[str]:
     cues = []
     for caption in timeline.captions:
         lines = wrap(caption.text, rules)
@@ -165,19 +160,18 @@ def _cues(
     return cues
 
 
-def render_longform_srt(
-    timeline: LongFormTimeline, rules: CaptionRules
-) -> str:
+def render_longform_srt(timeline: LongFormTimeline, rules: CaptionRules) -> str:
     """The SRT text of the captions of ``timeline``; ValueError if one cannot wrap."""
     cues = _cues(timeline, rules, ",")
     blocks = [f"{number}\n{cue}" for number, cue in enumerate(cues, 1)]
     return unicodedata.normalize("NFC", "\n\n".join(blocks) + "\n") if blocks else ""
 
 
-def render_longform_vtt(
-    timeline: LongFormTimeline, rules: CaptionRules
-) -> str:
-    """The WebVTT text of the captions of ``timeline``; ValueError if one cannot wrap."""
+def render_longform_vtt(timeline: LongFormTimeline, rules: CaptionRules) -> str:
+    """The WebVTT text of the captions of ``timeline``.
+
+    ValueError if one cannot wrap.
+    """
     cues = _cues(timeline, rules, ".")
     return unicodedata.normalize("NFC", "\n\n".join(["WEBVTT", *cues]) + "\n")
 
@@ -213,9 +207,7 @@ class LongFormSubtitleRecorder:
         if not isinstance(subtitle_format, SubtitleFormat):
             raise TypeError("subtitle_format must be a SubtitleFormat")
         media_type = (
-            SRT_MEDIA_TYPE
-            if subtitle_format is SubtitleFormat.SRT
-            else VTT_MEDIA_TYPE
+            SRT_MEDIA_TYPE if subtitle_format is SubtitleFormat.SRT else VTT_MEDIA_TYPE
         )
         written: StoredFile | None = None
         try:
@@ -255,9 +247,7 @@ class LongFormSubtitleRecorder:
                         f"stored: {error}",
                         code=LongFormSubtitleErrorCode.STORAGE_FAILED,
                     ) from error
-                artifact = _artifact(
-                    latest, item_id, written, media_type, self._clock
-                )
+                artifact = _artifact(latest, item_id, written, media_type, self._clock)
                 artifacts.add(artifact)
                 invalidation = invalidate_stale_approvals(
                     connection, item_id, clock=self._clock
@@ -286,9 +276,7 @@ class LongFormSubtitleRecorder:
             )
 
 
-def _stored(
-    connection: sqlite3.Connection, project_id: str
-) -> LongFormProject:
+def _stored(connection: sqlite3.Connection, project_id: str) -> LongFormProject:
     project = LongFormProjectRepository(connection).get(project_id)
     if project is None:
         raise LongFormSubtitleError(
@@ -298,9 +286,7 @@ def _stored(
     return project
 
 
-def _subtitle_bytes(
-    project: LongFormProject, subtitle_format: SubtitleFormat
-) -> bytes:
+def _subtitle_bytes(project: LongFormProject, subtitle_format: SubtitleFormat) -> bytes:
     config = project.config
     timeline = project.timeline
     if not config.captions:
@@ -373,4 +359,3 @@ def _event_metadata(
             check_longform_captions(project.config, project.timeline).warnings
         ),
     }
-

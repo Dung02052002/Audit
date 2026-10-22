@@ -10,7 +10,7 @@ decided by the user on 2026-10-18:
   ``<key>.<ext>``, the audio as ``audio.wav``, each text line as ``t<n>.txt``
   (UTF-8 without a BOM), the configured font (``font_file``) as
   ``font0.<ext>`` and the filter graph as ``graph.txt``, then runs ffmpeg in
-  that folder with ``-filter_complex_script graph.txt`` and reads ``out.mp4``.
+  that folder with ``-/filter_complex graph.txt`` and reads ``out.mp4``.
   Only these generated plain names appear in the graph and the command line:
   no user text and no path, so nothing needs escaping. The text is read by
   ``drawtext`` from its file with ``expansion=none``. The program is never run
@@ -195,7 +195,9 @@ def build_command(
             command += ["-ss", seconds(layer.source_in_ms)]
         command += ["-t", seconds(span), "-i", file]
     command += ["-i", files.audio]
-    command += ["-filter_complex_script", files.graph]
+    # ``-/opt file`` reads the option value from a file (ffmpeg 7.0 or later;
+    # ffmpeg 8 removed ``-filter_complex_script``).
+    command += ["-/filter_complex", files.graph]
     command += ["-map", "[vout]", "-map", f"{len(request.layers)}:a"]
     command += ["-c:v", "libx264", "-preset", "medium", "-crf", "20"]
     command += ["-pix_fmt", "yuv420p", "-r", str(request.fps)]
@@ -282,9 +284,7 @@ class FfmpegVideoRenderer:
                 provider=self.name,
             )
 
-    def _prepare(
-        self, root: Path, request: RenderRequest, files: RenderFiles
-    ) -> None:
+    def _prepare(self, root: Path, request: RenderRequest, files: RenderFiles) -> None:
         """Write every file of the render into ``root``."""
         try:
             for item in request.inputs:

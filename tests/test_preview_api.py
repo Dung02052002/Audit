@@ -4,8 +4,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from tests.factories import make_channel, make_strategy_profile
 
 from ai_youtube_agent.bootstrap import build_container, prepare_database
+from ai_youtube_agent.content.policy_check import PolicyStatus
 from ai_youtube_agent.content.preview_player import srt_to_vtt
 from ai_youtube_agent.content.qc import QCCheck, QCResult, QCStatus
 from ai_youtube_agent.content.qc_report import ALL_QC_CHECK_NAMES
@@ -38,9 +40,7 @@ def _store_artifact(
     data: bytes,
     media_type: str,
 ) -> Artifact:
-    stored = storage.write(
-        content_item_id, kind, 1, data, media_type=media_type
-    )
+    stored = storage.write(content_item_id, kind, 1, data, media_type=media_type)
     return Artifact.create(
         content_item_id,
         kind,
@@ -55,55 +55,42 @@ def _store_artifact(
 def _seed_shorts_preview_item(
     db: Database, storage: ArtifactStorage
 ) -> tuple[ContentItem, dict[ArtifactKind, str]]:
-    from ai_youtube_agent.content.channel import Channel
-    from ai_youtube_agent.content.strategy import (
-        Cadence,
-        ContentPillar,
-        FormatMix,
-        LanguageTargets,
-        StrategyProfile,
-        ToneRules,
+    ch = make_channel()
+    sp = make_strategy_profile(ch)
+    item = (
+        ContentItem.create(
+            ch.id,
+            sp.id,
+            sp.version,
+            ContentType.SHORTS,
+            "Why Determinism Matters",
+            clock=lambda: NOW,
+        )
+        .with_status(ContentStatus.GENERATING, clock=lambda: NOW)
+        .with_status(ContentStatus.TESTING, clock=lambda: NOW)
+        .with_status(ContentStatus.PREVIEW_READY, clock=lambda: NOW)
     )
 
-    ch = Channel.create(
-        title="Audit Tech Shorts",
-        youtube_channel_id="UC" + "A" * 22,
-        handle="@audittech",
-        clock=lambda: NOW,
-    )
-    sp = StrategyProfile.create(
-        channel_id=ch.id,
-        niche="AI engineering",
-        audience="Developers",
-        pillars=(ContentPillar("Systems", "Architecture"),),
-        tone=ToneRules(style="Analytical", allowed=("facts",), forbidden=("hype",)),
-        cadence=Cadence(videos_per_week=3),
-        format_mix=FormatMix(shorts_percent=100, longform_percent=0),
-        languages=LanguageTargets(primary="en"),
-        clock=lambda: NOW,
-    )
-    item = ContentItem.create(
-        ch.id, sp.id, sp.version, ContentType.SHORTS, "Why Determinism Matters", clock=lambda: NOW
-    ).with_status(ContentStatus.GENERATING, clock=lambda: NOW).with_status(
-        ContentStatus.TESTING, clock=lambda: NOW
-    ).with_status(
-        ContentStatus.PREVIEW_READY, clock=lambda: NOW
-    )
-
-    video_bytes = stub_mp4(b"shorts-v1-seed", duration_ms=15_000, fps=30)
+    video_bytes = stub_mp4(15_000, b"shorts-v1-seed")
     video_art = _store_artifact(
         storage, item.id, ArtifactKind.VIDEO, video_bytes, "video/mp4"
     )
 
     srt_bytes = (
-        "1\n00:00:00,000 --> 00:00:05,000\nDeterminism prevents silent drift.\n\n"
-        "2\n00:00:05,000 --> 00:00:15,000\nEvery artifact is versioned.\n"
-    ).encode("utf-8")
+        b"1\n00:00:00,000 --> 00:00:05,000\nDeterminism prevents silent drift.\n\n"
+        b"2\n00:00:05,000 --> 00:00:15,000\nEvery artifact is versioned.\n"
+    )
     sub_art = _store_artifact(
         storage, item.id, ArtifactKind.SUBTITLES, srt_bytes, "application/x-subrip"
     )
 
-    thumb_bytes = generate_thumbnail_png("DETERMINISM", 1080, 1920)
+    thumb_bytes = generate_thumbnail_png(
+        width=1080,
+        height=1920,
+        project_id="proj-1",
+        script_id="script-1",
+        title_text="DETERMINISM",
+    )
     thumb_art = _store_artifact(
         storage, item.id, ArtifactKind.THUMBNAIL, thumb_bytes, "image/png"
     )
@@ -112,18 +99,22 @@ def _seed_shorts_preview_item(
         content_item_id=item.id,
         project_id="proj-1",
         project_version=1,
+        channel_id=ch.id,
         script_id="script-1",
         script_version=1,
+        strategy_version=sp.version,
         title="Why Determinism Matters #Shorts",
-        description="Deterministic pipelines prevent silent state drift.\n\n#Shorts #AI",
+        description=(
+            "Deterministic pipelines prevent silent state drift.\n\n#Shorts #AI"
+        ),
         tags=("shorts", "ai", "determinism"),
-        category_id="28",
         language="en",
         made_for_kids=False,
         contains_synthetic_media=True,
         disclosure_decision_id="disc-1",
-        policy_status="pass",
-        created_at=NOW,
+        policy_rule_set_id="rules-1",
+        policy_rule_set_version=1,
+        policy_status=PolicyStatus.PASS,
     )
     meta_art = _store_artifact(
         storage,

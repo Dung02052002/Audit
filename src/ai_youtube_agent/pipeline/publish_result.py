@@ -78,7 +78,9 @@ class PublishResultInconsistentError(DomainError):
     default_http_status = HTTPStatus.CONFLICT
 
 
-def confirm_receipt(receipt: YouTubeUploadReceipt, payload: YouTubeUploadPayload) -> None:
+def confirm_receipt(
+    receipt: YouTubeUploadReceipt, payload: YouTubeUploadPayload
+) -> None:
     """Raise ``PublishReceiptError`` unless the receipt answers this payload."""
     mismatches: list[str] = []
     if receipt.channel_id != payload.channel_id:
@@ -147,7 +149,9 @@ class PublishResultService:
             channel = ChannelRepository(connection).get(item.channel_id)
             jobs = [
                 job
-                for job in PublishJobRepository(connection).list_by_content_item(item.id)
+                for job in PublishJobRepository(connection).list_by_content_item(
+                    item.id
+                )
                 if job.status is PublishStatus.SUCCEEDED
             ]
         finally:
@@ -156,7 +160,11 @@ class PublishResultService:
             raise PublishResultNotFoundError(
                 f"content item {content_item_id} has no succeeded publish job"
             )
-        if len(jobs) > 1 or item.status is not ContentStatus.PUBLISHED or channel is None:
+        if (
+            len(jobs) > 1
+            or item.status is not ContentStatus.PUBLISHED
+            or channel is None
+        ):
             raise PublishResultInconsistentError(
                 f"content item {item.id} is {item.status.value} with "
                 f"{len(jobs)} succeeded publish job(s)"
@@ -171,7 +179,9 @@ class PublishResultService:
                 raise PublishResultNotFoundError(f"channel {channel_id} was not found")
             published = [
                 item
-                for item in ContentItemRepository(connection).list_by_channel(channel_id)
+                for item in ContentItemRepository(connection).list_by_channel(
+                    channel_id
+                )
                 if item.status is ContentStatus.PUBLISHED
             ]
             job_repository = PublishJobRepository(connection)
@@ -184,9 +194,17 @@ class PublishResultService:
         finally:
             connection.close()
         records = [
-            self._record(job, channel.youtube.channel_id, channel.id) for job in succeeded
+            self._record(job, channel.youtube.channel_id, channel.id)
+            for job in succeeded
         ]
-        return sorted(records, key=lambda record: (record.published_at, record.job_id))
+        return sorted(
+            records,
+            key=lambda record: (
+                record.published_at,
+                record.youtube_video_id,
+                record.job_id,
+            ),
+        )
 
     def _record(
         self, job: PublishJob, youtube_channel_id: str, channel_id: str
@@ -202,9 +220,9 @@ class PublishResultService:
                     privacy = value if isinstance(value, str) else None
                     flag = event.metadata.get("contains_synthetic_media")
                     synthetic = flag if isinstance(flag, bool) else None
-        url = (SHORTS_URL if job.content_type is ContentType.SHORTS else WATCH_URL).format(
-            video_id=video_id
-        )
+        url = (
+            SHORTS_URL if job.content_type is ContentType.SHORTS else WATCH_URL
+        ).format(video_id=video_id)
         return PublishResultRecord(
             job_id=job.id,
             content_item_id=job.content_item_id,

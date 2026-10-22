@@ -17,10 +17,16 @@ from ai_youtube_agent.content.shorts_captions import (
     IssueKind,
     PixelBox,
     caption_box,
-    check_captions as _check_captions,
-    covers_every_scene as _covers_every_scene,
-    plan_captions as _plan_captions,
     wrap,
+)
+from ai_youtube_agent.content.shorts_captions import (
+    check_captions as _check_captions,
+)
+from ai_youtube_agent.content.shorts_captions import (
+    covers_every_scene as _covers_every_scene,
+)
+from ai_youtube_agent.content.shorts_captions import (
+    plan_captions as _plan_captions,
 )
 from ai_youtube_agent.content.shorts_timeline import CaptionOverlay
 
@@ -59,4 +65,3 @@ __all__ = [
     "plan_longform_captions",
     "wrap",
 ]
-

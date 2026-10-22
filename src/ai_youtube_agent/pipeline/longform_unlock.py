@@ -1,14 +1,15 @@
 """LongForm Unlock Gate & Service (Prompt Pack v8, prompt T-237), context C3/C16.
 
 Evaluates whether all required technical gates pass before allowing a human operator
-(``ActorKind.USER``) to unlock LongForm production (``FeatureFlags.longform_enabled = True``,
+(``ActorKind.USER``) to unlock LongForm production
+(``FeatureFlags.longform_enabled = True``,
 R-04 / R-05). Never unlocks LongForm autonomously.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -55,7 +56,9 @@ class LongFormUnlockNotAllowedError(LongFormUnlockError):
     default_code = "domain.longform_unlock_not_allowed"
     default_user_message = "Only an explicit human user may unlock LongForm production."
 
-    def __init__(self, detail: str = "Only ActorKind.USER may unlock LongForm.") -> None:
+    def __init__(
+        self, detail: str = "Only ActorKind.USER may unlock LongForm."
+    ) -> None:
         super().__init__(
             detail,
             code=self.default_code,
@@ -68,7 +71,8 @@ class LongFormUnlockBlockedError(LongFormUnlockError):
 
     default_code = "domain.longform_unlock_blocked"
     default_user_message = (
-        "LongForm production cannot be unlocked until all required technical gates pass."
+        "LongForm production cannot be unlocked until all required technical "
+        "gates pass."
     )
 
     def __init__(self, evaluation: LongFormUnlockEvaluation) -> None:
@@ -150,7 +154,10 @@ class LongFormUnlockDecision:
 
 
 class LongFormUnlockService:
-    """Evaluates technical gates and unlocks LongForm only when all gates pass (T-237)."""
+    """Evaluates technical gates and unlocks LongForm only when all gates pass.
+
+    (T-237)
+    """
 
     def __init__(
         self,
@@ -177,7 +184,10 @@ class LongFormUnlockService:
         return self._clock() if self._clock else datetime.now(UTC)
 
     def evaluate(self, channel_id: str) -> LongFormUnlockEvaluation:
-        """Evaluates all required technical gates for unlocking LongForm on ``channel_id``."""
+        """Evaluates all required technical gates for unlocking LongForm.
+
+        For ``channel_id``.
+        """
         now = self._now()
         checks: list[UnlockGateCheck] = []
         blockers: list[str] = []
@@ -212,7 +222,7 @@ class LongFormUnlockService:
         strategy_ok = (
             strategy is not None
             and strategy.is_complete
-            and strategy.formats is not None
+            and strategy.format is not None
             and strategy.cadence is not None
             and strategy.cadence.longform_per_day >= 1
         )
@@ -223,7 +233,10 @@ class LongFormUnlockService:
                 config_ok,
                 "Channel is ACTIVE and strategy is complete with longform_per_day >= 1"
                 if config_ok
-                else "Channel is missing/inactive, strategy is incomplete, or longform_per_day < 1",
+                else (
+                    "Channel is missing/inactive, strategy is incomplete, "
+                    "or longform_per_day < 1"
+                ),
             )
         )
         if not config_ok:
@@ -248,9 +261,15 @@ class LongFormUnlockService:
             UnlockGateCheck(
                 "shorts_pilot_passed",
                 pilot_ok,
-                f"Shorts pilot passed on item {passing_pilot.content_item_id} ({passing_pilot.pilot_id})"
+                (
+                    f"Shorts pilot passed on item {passing_pilot.content_item_id} "
+                    f"({passing_pilot.pilot_id})"
+                )
                 if passing_pilot
-                else "No completed Shorts pilot with human approval and published receipt found",
+                else (
+                    "No completed Shorts pilot with human approval and published "
+                    "receipt found"
+                ),
             )
         )
         if not pilot_ok:
@@ -264,7 +283,10 @@ class LongFormUnlockService:
                 rights_ok,
                 "Zero high-risk rights records on channel"
                 if rights_ok
-                else f"{high_risk_count} unresolved HIGH-risk rights record(s) on channel",
+                else (
+                    f"{high_risk_count} unresolved HIGH-risk rights record(s) "
+                    "on channel"
+                ),
             )
         )
         if not rights_ok:
@@ -280,7 +302,10 @@ class LongFormUnlockService:
                     sec_ok,
                     "Security audit passed with 0 high/critical findings"
                     if sec_ok
-                    else f"Security audit failed ({sec_report.critical_count} critical, {sec_report.high_count} high)",
+                    else (
+                        f"Security audit failed ({sec_report.critical_count} "
+                        f"critical, {sec_report.high_count} high)"
+                    ),
                 )
             )
             if not sec_ok:
@@ -305,7 +330,8 @@ class LongFormUnlockService:
         actor: Actor,
         current_flags: FeatureFlags | None = None,
     ) -> LongFormUnlockDecision:
-        """Unlocks LongForm production (``longform_enabled=True``) if all technical gates pass.
+        """Unlocks LongForm production (``longform_enabled=True``) if all technical
+        gates pass.
 
         Requires an explicit human actor (``ActorKind.USER``). Raises
         ``LongFormUnlockBlockedError`` if any technical gate fails.
@@ -330,7 +356,7 @@ class LongFormUnlockService:
             )
             raise LongFormUnlockBlockedError(evaluation)
 
-        updated_flags = replace(base_flags, longform_enabled=True)
+        updated_flags = base_flags.model_copy(update={"longform_enabled": True})
         self._audit.record(
             action=LONGFORM_UNLOCKED_ACTION,
             actor=actor,

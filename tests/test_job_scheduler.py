@@ -1,12 +1,10 @@
 """Tests for JobScheduler (Prompt Pack v8, prompt #205), context C16 Orchestration."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-import uuid
 
-import pytest
-
-from ai_youtube_agent.content.budget_guard import BudgetGuard, BudgetGuardStatus
+from ai_youtube_agent.content.budget_guard import BudgetGuardStatus
 from ai_youtube_agent.content.channel import Channel, ChannelStatus, YouTubeIdentifiers
 from ai_youtube_agent.content.strategy import (
     Cadence,
@@ -16,7 +14,6 @@ from ai_youtube_agent.core.audit import (
     Actor,
     ActorKind,
     AuditLog,
-    EntityRef,
     InMemoryAuditSink,
 )
 from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
@@ -26,18 +23,19 @@ from ai_youtube_agent.core.db.repositories.channel import (
     StrategyProfileRepository,
 )
 from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
-from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
+from ai_youtube_agent.core.db.repositories.jobs import (
+    AIJobRepository,
+    SessionRepository,
+)
 from ai_youtube_agent.core.db.repositories.usage import ProductionStartRepository
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.kill_switch_gate import KillSwitchSource
 from ai_youtube_agent.core.production_start import ProductionStart
-from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
+from ai_youtube_agent.pipeline.job import AIJobStatus, Session
 from ai_youtube_agent.pipeline.job_queue import InMemoryJobQueue
 from ai_youtube_agent.pipeline.job_scheduler import (
-    JOB_SCHEDULE_BLOCKED_ACTION,
     JOB_SCHEDULED_ACTION,
     JobScheduler,
-    ScheduleEligibility,
 )
 from ai_youtube_agent.pipeline.kill_switch import EmergencyStop
 
@@ -54,7 +52,9 @@ class StubBudgetGuard:
     def __init__(self, allowed: bool = True) -> None:
         self.allowed = allowed
 
-    def evaluate(self, channel_id: str, *, at: datetime | None = None) -> BudgetGuardStatus:
+    def evaluate(
+        self, channel_id: str, *, at: datetime | None = None
+    ) -> BudgetGuardStatus:
         now = at or datetime.now(UTC)
         return BudgetGuardStatus(
             channel_id=channel_id,
@@ -69,8 +69,12 @@ class StubBudgetGuard:
             daily_spend=Decimal("0.00") if self.allowed else Decimal("100.00"),
             monthly_spend=Decimal("0.00") if self.allowed else Decimal("1000.00"),
             estimated_additional_cost=Decimal("0.00"),
-            projected_daily_spend=Decimal("0.00") if self.allowed else Decimal("100.00"),
-            projected_monthly_spend=Decimal("0.00") if self.allowed else Decimal("1000.00"),
+            projected_daily_spend=Decimal("0.00")
+            if self.allowed
+            else Decimal("100.00"),
+            projected_monthly_spend=Decimal("0.00")
+            if self.allowed
+            else Decimal("1000.00"),
             daily_remaining=Decimal("100.00") if self.allowed else Decimal("0.00"),
             monthly_remaining=Decimal("1000.00") if self.allowed else Decimal("0.00"),
             allowed=self.allowed,
@@ -115,14 +119,18 @@ def _seed_channel_and_strategy(
                 longform_per_day=longform_per_day,
                 time_zone=time_zone,
             )
-            strategy = strategy.update(cadence=cadence, actor=Actor(ActorKind.USER, "owner"), clock=lambda: now)
+            strategy = strategy.update(
+                cadence=cadence, actor=Actor(ActorKind.USER, "owner"), clock=lambda: now
+            )
         with database.transaction() as conn:
             StrategyProfileRepository(conn).add(strategy)
 
     return channel, strategy
 
 
-def test_evaluate_eligibility_refuses_terminal_or_non_draft_status(database: Database) -> None:
+def test_evaluate_eligibility_refuses_terminal_or_non_draft_status(
+    database: Database,
+) -> None:
     channel_id = str(uuid.uuid4())
     _seed_channel_and_strategy(database, channel_id)
 
@@ -195,7 +203,9 @@ def test_evaluate_eligibility_checks_feature_flags(database: Database) -> None:
     assert el.code == "longform_disabled"
 
 
-def test_evaluate_eligibility_refuses_when_kill_switch_active(database: Database) -> None:
+def test_evaluate_eligibility_refuses_when_kill_switch_active(
+    database: Database,
+) -> None:
     channel_id = str(uuid.uuid4())
     _seed_channel_and_strategy(database, channel_id)
 
@@ -258,15 +268,17 @@ def test_evaluate_eligibility_refuses_inactive_channel(database: Database) -> No
     assert el.code == "channel_paused"
 
 
-def test_evaluate_eligibility_checks_cadence_and_daily_limit(database: Database) -> None:
+def test_evaluate_eligibility_checks_cadence_and_daily_limit(
+    database: Database,
+) -> None:
     channel_id = str(uuid.uuid4())
-    _seed_channel_and_strategy(database, channel_id, shorts_per_day=1)
+    _, strategy = _seed_channel_and_strategy(database, channel_id, shorts_per_day=1)
 
     now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
     item1 = ContentItem(
         id=str(uuid.uuid4()),
         channel_id=channel_id,
-        strategy_profile_id=channel_id,
+        strategy_profile_id=strategy.id,
         strategy_version=1,
         content_type=ContentType.SHORTS,
         title="Draft Short 1",
@@ -297,7 +309,7 @@ def test_evaluate_eligibility_checks_cadence_and_daily_limit(database: Database)
     item2 = ContentItem(
         id=str(uuid.uuid4()),
         channel_id=channel_id,
-        strategy_profile_id=channel_id,
+        strategy_profile_id=strategy.id,
         strategy_version=1,
         content_type=ContentType.SHORTS,
         title="Draft Short 2",
@@ -312,13 +324,13 @@ def test_evaluate_eligibility_checks_cadence_and_daily_limit(database: Database)
 
 def test_schedule_item_transitions_and_enqueues_job(database: Database) -> None:
     channel_id = str(uuid.uuid4())
-    _seed_channel_and_strategy(database, channel_id, shorts_per_day=3)
+    _, strategy = _seed_channel_and_strategy(database, channel_id, shorts_per_day=3)
 
     now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
     item = ContentItem(
         id=str(uuid.uuid4()),
         channel_id=channel_id,
-        strategy_profile_id=channel_id,
+        strategy_profile_id=strategy.id,
         strategy_version=1,
         content_type=ContentType.SHORTS,
         title="Draft Short",
@@ -339,7 +351,10 @@ def test_schedule_item_transitions_and_enqueues_job(database: Database) -> None:
         clock=lambda: now,
     )
 
-    session_id = str(uuid.uuid4())
+    session = Session.start(actor=Actor(ActorKind.USER, "owner"), clock=lambda: now)
+    with database.transaction() as conn:
+        SessionRepository(conn).add(session)
+    session_id = session.id
     decision = scheduler.schedule_item(item, session_id=session_id, at=now)
 
     assert decision.scheduled is True
@@ -365,7 +380,7 @@ def test_schedule_item_transitions_and_enqueues_job(database: Database) -> None:
 
 def test_remaining_capacity_calculation(database: Database) -> None:
     channel_id = str(uuid.uuid4())
-    _seed_channel_and_strategy(database, channel_id, shorts_per_day=5)
+    _, strategy = _seed_channel_and_strategy(database, channel_id, shorts_per_day=5)
 
     now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
     scheduler = JobScheduler(
@@ -382,7 +397,7 @@ def test_remaining_capacity_calculation(database: Database) -> None:
     item = ContentItem(
         id=str(uuid.uuid4()),
         channel_id=channel_id,
-        strategy_profile_id=channel_id,
+        strategy_profile_id=strategy.id,
         strategy_version=1,
         content_type=ContentType.SHORTS,
         title="Short",
@@ -401,14 +416,14 @@ def test_remaining_capacity_calculation(database: Database) -> None:
 
 def test_schedule_channel_batch_limits(database: Database) -> None:
     channel_id = str(uuid.uuid4())
-    _seed_channel_and_strategy(database, channel_id, shorts_per_day=2)
+    _, strategy = _seed_channel_and_strategy(database, channel_id, shorts_per_day=2)
 
     now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
     items = [
         ContentItem(
             id=str(uuid.uuid4()),
             channel_id=channel_id,
-            strategy_profile_id=channel_id,
+            strategy_profile_id=strategy.id,
             strategy_version=1,
             content_type=ContentType.SHORTS,
             title=f"Short {i}",

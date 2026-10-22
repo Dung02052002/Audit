@@ -77,7 +77,9 @@ def test_test_gate_and_qc_gate_pass_when_all_checks_pass() -> None:
     test_gate = TestGate(_StubQCResults([qc_res]), _StubArtifacts([video]))
     qc_gate = QCGate(_StubQCResults([qc_res]), _StubArtifacts([video]))
 
-    ctx = GateContext(_make_item(ContentStatus.APPROVED), ContentStatus.PUBLISHING, SYSTEM, NOW)
+    ctx = GateContext(
+        _make_item(ContentStatus.APPROVED), ContentStatus.PUBLISHING, SYSTEM, NOW
+    )
     assert test_gate.evaluate(ctx).outcome is GateOutcome.PASS
     assert qc_gate.evaluate(ctx).outcome is GateOutcome.PASS
 
@@ -92,7 +94,9 @@ def test_test_gate_and_qc_gate_block_when_missing_or_failed() -> None:
         media_type="video/mp4",
         clock=lambda: NOW,
     )
-    ctx = GateContext(_make_item(ContentStatus.APPROVED), ContentStatus.PUBLISHING, SYSTEM, NOW)
+    ctx = GateContext(
+        _make_item(ContentStatus.APPROVED), ContentStatus.PUBLISHING, SYSTEM, NOW
+    )
 
     empty_test = TestGate(_StubQCResults([]), _StubArtifacts([video])).evaluate(ctx)
     assert empty_test.gate is GateName.TEST
@@ -104,7 +108,9 @@ def test_test_gate_and_qc_gate_block_when_missing_or_failed() -> None:
         QCCheck("qc.rights", QCStatus.FAIL, "blocked"),
     )
     failed_qc = QCResult.create("item-1", (video,), failed_checks, clock=lambda: NOW)
-    test_res = TestGate(_StubQCResults([failed_qc]), _StubArtifacts([video])).evaluate(ctx)
+    test_res = TestGate(_StubQCResults([failed_qc]), _StubArtifacts([video])).evaluate(
+        ctx
+    )
     qc_res = QCGate(_StubQCResults([failed_qc]), _StubArtifacts([video])).evaluate(ctx)
 
     assert test_res.outcome is GateOutcome.BLOCK

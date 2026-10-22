@@ -49,7 +49,7 @@ def deterministic_youtube_reply_id(
 ) -> str:
     """Derive a deterministic YouTube reply ID from parent comment ID and key."""
     digest = hashlib.sha256(
-        f"{parent_youtube_comment_id}:{idempotency_key}".encode("utf-8")
+        f"{parent_youtube_comment_id}:{idempotency_key}".encode()
     ).hexdigest()
     return f"Ugw-reply-{digest[:16]}"
 
@@ -150,13 +150,15 @@ class MockCommentProvider:
                 raise TypeError("comments must contain RemoteComment instances")
             if item.youtube_video_id != youtube_video_id:
                 raise ValueError(
-                    f"comment {item.youtube_comment_id} belongs to video {item.youtube_video_id}, expected {youtube_video_id}"
+                    f"comment {item.youtube_comment_id} belongs to video "
+                    f"{item.youtube_video_id}, expected {youtube_video_id}"
                 )
         with self._lock:
             existing_ch = self._video_channels.get(youtube_video_id)
             if existing_ch is not None and existing_ch != youtube_channel_id:
                 raise ValueError(
-                    f"video {youtube_video_id} is already seeded for channel {existing_ch}"
+                    f"video {youtube_video_id} is already seeded for channel "
+                    f"{existing_ch}"
                 )
             self._video_channels[youtube_video_id] = youtube_channel_id
             bucket = self._comments.setdefault(
@@ -195,7 +197,8 @@ class MockCommentProvider:
             if owner_ch is None or owner_ch != query.youtube_channel_id:
                 raise CommentProviderError(
                     CommentErrorCode.NOT_FOUND,
-                    f"video {query.youtube_video_id} not found on channel {query.youtube_channel_id}",
+                    f"video {query.youtube_video_id} not found on channel "
+                    f"{query.youtube_channel_id}",
                     provider=self._name,
                 )
             if query.youtube_video_id in self._disabled_videos:
@@ -217,8 +220,10 @@ class MockCommentProvider:
         offset = 0
         if query.page_token is not None:
             match = _OFFSET_TOKEN.fullmatch(query.page_token)
-            if match is None or (stored and int(match.group(1)) >= len(stored)) or (
-                not stored and int(match.group(1)) > 0
+            if (
+                match is None
+                or (stored and int(match.group(1)) >= len(stored))
+                or (not stored and int(match.group(1)) > 0)
             ):
                 raise CommentProviderError(
                     CommentErrorCode.INVALID_REQUEST,
@@ -265,7 +270,8 @@ class MockCommentProvider:
             if owner_ch is None or owner_ch != request.youtube_channel_id:
                 raise CommentProviderError(
                     CommentErrorCode.NOT_FOUND,
-                    f"video {request.youtube_video_id} not found on channel {request.youtube_channel_id}",
+                    f"video {request.youtube_video_id} not found on channel "
+                    f"{request.youtube_channel_id}",
                     provider=self._name,
                 )
             if request.youtube_video_id in self._disabled_videos:
@@ -281,7 +287,8 @@ class MockCommentProvider:
             if parent is None:
                 raise CommentProviderError(
                     CommentErrorCode.NOT_FOUND,
-                    f"parent comment {request.parent_youtube_comment_id} was not found on video {request.youtube_video_id}",
+                    f"parent comment {request.parent_youtube_comment_id} was not "
+                    f"found on video {request.youtube_video_id}",
                     provider=self._name,
                 )
             top_level_parent_id = (
@@ -339,7 +346,8 @@ class MockCommentProvider:
         ):
             raise CommentProviderError(
                 CommentErrorCode.UNAUTHORIZED,
-                "comment read token requires youtube.readonly or youtube.force-ssl scope",
+                "comment read token requires youtube.readonly or youtube.force-ssl "
+                "scope",
                 provider=self._name,
             )
 

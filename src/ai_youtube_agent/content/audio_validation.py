@@ -274,9 +274,7 @@ def analyze(
             sample_rate,
             limits,
         ),
-        _level_check(
-            _dbfs(peak_abs, full_scale), rms, clipped, len(samples), limits
-        ),
+        _level_check(_dbfs(peak_abs, full_scale), rms, clipped, len(samples), limits),
     )
     return checks, stats
 
@@ -366,7 +364,9 @@ def _windows(
             clipped = sum(1 for value in chunk if abs(value) >= clip_level)
         square_sum = 0 if silent else sum(value * value for value in chunk)
         windows.append(
-            _Window(len(chunk) // channels, peak, silent, clipped, square_sum, len(chunk))
+            _Window(
+                len(chunk) // channels, peak, silent, clipped, square_sum, len(chunk)
+            )
         )
     return windows
 
@@ -389,9 +389,7 @@ def _silent_runs(windows: list[_Window]) -> tuple[int, int, int]:
     return longest, leading, trailing
 
 
-def _rms_dbfs(
-    windows: list[_Window], samples: Sequence[int], full_scale: int
-) -> float:
+def _rms_dbfs(windows: list[_Window], samples: Sequence[int], full_scale: int) -> float:
     """RMS over the non-silent windows, or over all samples when none is."""
     active = [window for window in windows if not window.silent]
     if active:
@@ -441,7 +439,10 @@ def _duration_check(actual: int, expected: int, limits: AudioLimits) -> QCCheck:
     findings = []
     if actual < limits.min_duration_ms:
         findings.append(
-            (QCStatus.FAIL, f"duration {actual} ms is under {limits.min_duration_ms} ms")
+            (
+                QCStatus.FAIL,
+                f"duration {actual} ms is under {limits.min_duration_ms} ms",
+            )
         )
     if actual > limits.max_duration_ms:
         findings.append(
@@ -473,9 +474,7 @@ def _silence_check(
             (QCStatus.FAIL, f"the audio is silent, its peak is {peak_dbfs:.1f} dBFS")
         )
     if silent_ratio >= limits.silent_ratio_fail:
-        findings.append(
-            (QCStatus.FAIL, f"{silent_ratio:.0%} of the audio is silent")
-        )
+        findings.append((QCStatus.FAIL, f"{silent_ratio:.0%} of the audio is silent"))
     elif silent_ratio >= limits.silent_ratio_warn:
         findings.append((QCStatus.WARN, f"{silent_ratio:.0%} of the audio is silent"))
     if longest >= limits.long_silence_ms:
@@ -493,13 +492,13 @@ def _level_check(
     findings = []
     ratio = clipped / total
     if ratio >= limits.clip_fail_ratio:
-        findings.append(
-            (QCStatus.FAIL, f"{clipped} samples are clipped ({ratio:.2%})")
-        )
+        findings.append((QCStatus.FAIL, f"{clipped} samples are clipped ({ratio:.2%})"))
     elif clipped:
         findings.append((QCStatus.WARN, f"{clipped} samples are clipped"))
     if peak_dbfs > limits.peak_warn_dbfs:
-        findings.append((QCStatus.WARN, f"peak {peak_dbfs:.1f} dBFS is near full scale"))
+        findings.append(
+            (QCStatus.WARN, f"peak {peak_dbfs:.1f} dBFS is near full scale")
+        )
     if rms_dbfs < limits.rms_fail_dbfs:
         findings.append((QCStatus.FAIL, f"RMS {rms_dbfs:.1f} dBFS is too quiet"))
     elif rms_dbfs < limits.rms_warn_low_dbfs:

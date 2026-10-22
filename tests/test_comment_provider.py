@@ -12,7 +12,6 @@ from ai_youtube_agent.providers.comments import (
     CommentProviderError,
     CommentQuery,
     RemoteComment,
-    ReplyPostReceipt,
     ReplyPostRequest,
 )
 from ai_youtube_agent.providers.mock_comments import (
@@ -183,9 +182,7 @@ class TestCommentProviderContract:
         assert all_after.comments[-1].parent_comment_id == "Ugx-1"
 
     def test_disabled_comments_and_injected_failures(self) -> None:
-        provider = MockCommentProvider(
-            reject_duplicate_replies=True, clock=lambda: NOW
-        )
+        provider = MockCommentProvider(reject_duplicate_replies=True, clock=lambda: NOW)
         provider.disable_comments(YT_CH, VID, disabled=True)
 
         with pytest.raises(CommentProviderError) as exc_dis:

@@ -17,8 +17,6 @@ import dataclasses
 import uuid
 
 import pytest
-from test_shorts_planner import add_sectioned_script, words
-from test_shorts_project import STANDARD, World, refusal
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_usage import AssetUsage
@@ -50,7 +48,9 @@ from ai_youtube_agent.core.db.repositories.asset import (
 )
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from ai_youtube_agent.core.db.repositories.provenance import ProvenanceRepository
-from factories import USER, at, make_channel, T0
+from factories import T0, USER, at, make_channel
+from test_shorts_planner import add_sectioned_script, words
+from test_shorts_project import STANDARD, World, refusal
 
 # Value objects
 
@@ -304,7 +304,12 @@ def test_fades_must_fit_the_placement() -> None:
         Scene("s1", 0, 0, 3000, None, (dataclasses.replace(sfx, fade_out_ms=501),))
     with pytest.raises(ValueError, match="fades"):
         Scene(
-            "s1", 0, 0, 3000, None, (asset(AssetRole.SFX, fade_in_ms=2000, fade_out_ms=1001),)
+            "s1",
+            0,
+            0,
+            3000,
+            None,
+            (asset(AssetRole.SFX, fade_in_ms=2000, fade_out_ms=1001),),
         )
 
 
@@ -420,8 +425,12 @@ def ready_timeline(*, backgrounds=(1, 1)) -> Timeline:
             assets = (assets[0], dataclasses.replace(assets[0], role=AssetRole.B_ROLL))
         scenes.append(
             Scene(
-                f"s{position + 1}", position, position * 1500, (position + 1) * 1500,
-                None, assets,
+                f"s{position + 1}",
+                position,
+                position * 1500,
+                (position + 1) * 1500,
+                None,
+                assets,
             )
         )
     return timeline_with(scenes=scenes)
@@ -492,6 +501,9 @@ class Stage:
         channel_id: str | None = None,
         attach: bool = True,
         provenance: bool = False,
+        license_ref: str | None = None,
+        attribution: str | None = None,
+        source: str = "user",
     ) -> Asset:
         key = uuid.uuid4().hex
         asset_entity = Asset.create(
@@ -499,15 +511,15 @@ class Stage:
             kind,
             category,
             title=f"Asset {key}",
-            source="user",
+            source=source,
             owner="Owner" if category is AssetCategory.USER_OWNED else None,
-            license_ref="CC" if category is AssetCategory.LICENSED else None,
+            license_ref=license_ref
+            or ("CC" if category is AssetCategory.LICENSED else None),
+            attribution=attribution,
             clock=at(T0),
         )
         with self.database.transaction() as connection:
-            AssetRepository(connection).add(
-                asset_entity, source_key=key, title_key=key
-            )
+            AssetRepository(connection).add(asset_entity, source_key=key, title_key=key)
             if attach:
                 AssetUsageRepository(connection).add(
                     AssetUsage.create(
@@ -633,9 +645,7 @@ def test_an_asset_attached_to_another_item_is_refused(stage: Stage) -> None:
     image = stage.add_asset(attach=False)
     with stage.database.transaction() as connection:
         AssetUsageRepository(connection).add(
-            AssetUsage.create(
-                image.id, other_item.id, attached_by=USER, clock=at(T0)
-            )
+            AssetUsage.create(image.id, other_item.id, attached_by=USER, clock=at(T0))
         )
 
     stage.refuse(
@@ -751,7 +761,9 @@ def test_a_different_provenance_id_is_refused_not_overwritten(stage: Stage) -> N
     stage.add_provenance(image.id)
 
     stage.refuse(
-        stage.timeline(SceneAsset(image.id, AssetRole.BACKGROUND, provenance_id=old.id)),
+        stage.timeline(
+            SceneAsset(image.id, AssetRole.BACKGROUND, provenance_id=old.id)
+        ),
         Code.ASSET_PROVENANCE_MISMATCH,
     )
 

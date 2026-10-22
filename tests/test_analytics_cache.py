@@ -52,10 +52,14 @@ def _video_query(**overrides) -> AnalyticsQuery:
     return AnalyticsQuery(**values)
 
 
-def test_serves_fresh_hits_refreshes_expired_and_falls_back_on_retryable_failure() -> None:
+def test_serves_fresh_hits_refreshes_expired_and_falls_back_on_retryable_failure() -> (
+    None
+):
     now = NOW
     inner = MockAnalyticsProvider(clock=lambda: now)
-    inner.set_channel_metrics(CHANNEL, {"views": Decimal("100"), "likes": Decimal("10")})
+    inner.set_channel_metrics(
+        CHANNEL, {"views": Decimal("100"), "likes": Decimal("10")}
+    )
     cache = AnalyticsCache(inner, clock=lambda: now)
 
     assert isinstance(cache, AnalyticsProvider)
@@ -84,7 +88,9 @@ def test_serves_fresh_hits_refreshes_expired_and_falls_back_on_retryable_failure
     assert inner.calls == 2
 
     # Next call succeeds -> REFRESH replaces the cached entry.
-    inner.set_channel_metrics(CHANNEL, {"views": Decimal("250"), "likes": Decimal("25")})
+    inner.set_channel_metrics(
+        CHANNEL, {"views": Decimal("250"), "likes": Decimal("25")}
+    )
     refreshed_page, refresh_info = cache.query_with_info(_channel_query())
     assert refresh_info.outcome is AnalyticsCacheOutcome.REFRESH
     assert refreshed_page.rows[0].metrics["views"] == Decimal("250")

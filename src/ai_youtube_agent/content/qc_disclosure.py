@@ -1,4 +1,5 @@
-"""AI Disclosure QC check (Prompt Pack v8, prompt K-128), context C10 Quality (Test & QC).
+"""AI Disclosure QC check (Prompt Pack v8, prompt K-128), context C10 Quality
+(Test & QC).
 
 Verifies that the configured AI disclosure requirement (#081) is satisfied for a
 content item before QC/publish:
@@ -19,9 +20,9 @@ content item before QC/publish:
   satisfied by the publish metadata.
 """
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-import json
 from typing import Any, Final
 
 from ai_youtube_agent.content.asset import AssetCategory
@@ -380,7 +381,8 @@ class DisclosureQCChecker:
                         name=DISCLOSURE_QC_CHECK_NAME,
                         status=QCStatus.FAIL,
                         detail=(
-                            f"Stored DisclosureRecord decision {record.decision.value!r} "
+                            "Stored DisclosureRecord decision "
+                            f"{record.decision.value!r} "
                             f"disagrees with rule evaluation {re_eval.decision.value!r}"
                         ),
                     ),
@@ -390,15 +392,12 @@ class DisclosureQCChecker:
         effective_require_metadata = require_metadata or bool(meta_artifacts)
         if resolved_metadata is None and meta_artifacts and self._storage is not None:
             latest_meta = meta_artifacts[-1]
-            if self._storage.exists(latest_meta.uri):
-                try:
-                    loaded = json.loads(
-                        self._storage.read(latest_meta.uri).decode("utf-8")
-                    )
-                    if isinstance(loaded, dict):
-                        resolved_metadata = loaded
-                except Exception:
-                    resolved_metadata = None
+            try:  # a missing or unreadable file counts as no metadata
+                loaded = json.loads(self._storage.read(latest_meta.uri).decode("utf-8"))
+                if isinstance(loaded, dict):
+                    resolved_metadata = loaded
+            except Exception:
+                resolved_metadata = None
 
         return evaluate_disclosure_qc(
             content_item_id=item.id,

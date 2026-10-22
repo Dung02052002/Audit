@@ -115,4 +115,3 @@ def test_comments_screen_shows_new_and_attention_comments_and_reply_drafts(
     assert 'data-testid="comments-screen"' in html_out
     assert "AUTO_REPLY_ENABLED=false" in html_out
     assert "Thanks for flagging!" in html_out
-

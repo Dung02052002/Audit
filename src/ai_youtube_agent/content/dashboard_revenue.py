@@ -1,4 +1,6 @@
-"""Revenue Screen view and service (Prompt Pack v8, prompt Q-197), context X3 Command Center.
+"""Revenue Screen view and service.
+
+(Prompt Pack v8, prompt Q-197), context X3 Command Center.
 
 Builds the Command Center Revenue Screen view model and iOS-style HTML rendering,
 presenting:
@@ -27,7 +29,6 @@ from ai_youtube_agent.content.contribution_margin import (
 )
 from ai_youtube_agent.content.cost_ledger import CostLedger, CostLedgerSummary
 from ai_youtube_agent.content.dashboard_shell import (
-    BadgeTone,
     DashboardScreenId,
     DashboardShellService,
     DashboardShellState,
@@ -42,6 +43,7 @@ from ai_youtube_agent.content.revenue_sources import (
 )
 from ai_youtube_agent.core.audit import AuditLog
 from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 
 Clock = Callable[[], datetime]
@@ -77,9 +79,7 @@ class RevenueScreenView:
             "is_net_profit": self.is_net_profit,
             "disclaimer": self.disclaimer,
             "estimated_revenue": (
-                self.estimated_revenue.as_dict()
-                if self.estimated_revenue
-                else None
+                self.estimated_revenue.as_dict() if self.estimated_revenue else None
             ),
             "final_revenue": (
                 self.final_revenue.as_dict() if self.final_revenue else None
@@ -111,18 +111,15 @@ class RevenueScreenService:
     ) -> None:
         self._database = database
         self._clock = clock
-        audit = audit_log or AuditLog(database)
+        audit = audit_log or AuditLog(SqliteAuditSink(database), clock=clock)
         self._revenue_sources = revenue_sources or RevenueSourceService(
             database, audit, clock=clock
         )
         self._cost_ledger = cost_ledger or CostLedger(database, audit, clock=clock)
-        self._margin_calculator = (
-            margin_calculator
-            or ContributionMarginCalculator(
-                database,
-                self._revenue_sources,
-                self._cost_ledger,
-            )
+        self._margin_calculator = margin_calculator or ContributionMarginCalculator(
+            database,
+            self._revenue_sources,
+            self._cost_ledger,
         )
         self._shell_service = shell_service or DashboardShellService(
             database, clock=clock
@@ -171,7 +168,10 @@ class RevenueScreenService:
                 costs=None,
                 estimated_margin=None,
                 final_margin=None,
-                empty_message="No revenue records or channel configured yet. Create a channel to view revenue, costs, and contribution margin.",
+                empty_message=(
+                    "No revenue records or channel configured yet. "
+                    "Create a channel to view revenue, costs, and contribution margin."
+                ),
             )
 
         est_rev = self._revenue_sources.breakdown(
@@ -208,9 +208,7 @@ class RevenueScreenService:
             default_currency=default_currency,
         )
 
-        has_activity = bool(
-            est_rev.records or fin_rev.records or costs.records
-        )
+        has_activity = bool(est_rev.records or fin_rev.records or costs.records)
 
         return RevenueScreenView(
             shell=shell,
@@ -268,7 +266,8 @@ class RevenueScreenService:
         cost_rows = ""
         if costs and costs.by_category:
             cost_rows = "".join(
-                f"<tr><td>{html.escape(cat)}</td><td>{html.escape(str(amt))} {html.escape(currency)}</td></tr>"
+                f"<tr><td>{html.escape(cat)}</td>"
+                f"<td>{html.escape(str(amt))} {html.escape(currency)}</td></tr>"
                 for cat, amt in sorted(costs.by_category.items())
             )
 
@@ -285,7 +284,9 @@ class RevenueScreenService:
       <span class="yt-kpi__value">{html.escape(est_rev_str)}</span>
       <span class="yt-kpi__unit">estimated revenue</span>
     </div>
-    <p class="yt-card__subtitle">Estimated contribution margin: <strong>{html.escape(est_cm_str)}</strong></p>
+    <p class="yt-card__subtitle">Estimated contribution margin: <strong>{
+            html.escape(est_cm_str)
+        }</strong></p>
   </section>
 
   <section class="yt-card yt-grid__span-6" data-testid="revenue-final-card">
@@ -300,7 +301,9 @@ class RevenueScreenService:
       <span class="yt-kpi__value">{html.escape(fin_rev_str)}</span>
       <span class="yt-kpi__unit">finalized revenue</span>
     </div>
-    <p class="yt-card__subtitle">Final contribution margin: <strong>{html.escape(fin_cm_str)}</strong></p>
+    <p class="yt-card__subtitle">Final contribution margin: <strong>{
+            html.escape(fin_cm_str)
+        }</strong></p>
   </section>
 
   <section class="yt-card yt-grid__span-6" data-testid="revenue-costs-card">
@@ -309,7 +312,9 @@ class RevenueScreenService:
         <p class="yt-card__subtitle">Tracked Contribution Costs</p>
         <h2 class="yt-card__title">Cost Ledger</h2>
       </div>
-      <span class="yt-pill yt-pill--info">{len(costs.records) if costs else 0} entries</span>
+      <span class="yt-pill yt-pill--info">{
+            len(costs.records) if costs else 0
+        } entries</span>
     </div>
     <div class="yt-kpi">
       <span class="yt-kpi__value">{html.escape(cost_str)}</span>
@@ -331,7 +336,9 @@ class RevenueScreenService:
     </div>
     <p><strong>Final Contribution Margin:</strong> {html.escape(fin_cm_str)}</p>
     <p><strong>Estimated Contribution Margin:</strong> {html.escape(est_cm_str)}</p>
-    <p class="yt-card__subtitle" data-testid="revenue-margin-disclaimer">{html.escape(view.disclaimer)}</p>
+    <p class="yt-card__subtitle" data-testid="revenue-margin-disclaimer">{
+            html.escape(view.disclaimer)
+        }</p>
   </section>
 </div>"""
         return render_dashboard_shell_html(
@@ -342,4 +349,3 @@ class RevenueScreenService:
 
     def _now(self) -> datetime:
         return self._clock() if self._clock else datetime.now(UTC)
-

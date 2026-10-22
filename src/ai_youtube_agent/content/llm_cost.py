@@ -12,7 +12,8 @@ explicit token usage counts:
 - Token counts are never guessed: if ``GeneratedText.input_tokens`` or
   ``GeneratedText.output_tokens`` is ``None``, ``LLMCostError(MISSING_TOKEN_USAGE)``
   is raised.
-- Amount is ``(input_tokens * input_price_per_1k + output_tokens * output_price_per_1k) / 1000``
+- Amount is
+  ``(input_tokens * input_price_per_1k + output_tokens * output_price_per_1k) / 1000``
   rounded half-up to 6 decimal places via ``quantize_cost_amount``.
 - Delegates persistence, channel/item validation, budget currency guard, and
   ``(CostCategory.LLM, ref)`` idempotency to ``CostLedger``.
@@ -119,18 +120,25 @@ class LLMModelRate:
         }
 
 
+# The catalog's default when no rate is given: free, in USD.
+FREE_USD_RATE = LLMModelRate(
+    input_price_per_1k=Decimal("0"),
+    output_price_per_1k=Decimal("0"),
+    currency="USD",
+)
+
+
 class LLMPricingCatalog:
-    """Lookup table of ``LLMModelRate`` by ``(provider, model)`` with optional default."""
+    """Lookup table of ``LLMModelRate`` by ``(provider, model)``.
+
+    With an optional default.
+    """
 
     def __init__(
         self,
         rates: Mapping[tuple[str, str], LLMModelRate] | None = None,
         *,
-        default_rate: LLMModelRate | None = LLMModelRate(
-            input_price_per_1k=Decimal("0"),
-            output_price_per_1k=Decimal("0"),
-            currency="USD",
-        ),
+        default_rate: LLMModelRate | None = FREE_USD_RATE,
     ) -> None:
         if default_rate is not None and not isinstance(default_rate, LLMModelRate):
             raise TypeError("default_rate must be an LLMModelRate or None")
@@ -196,7 +204,8 @@ class LLMCostRecorder:
         if generated.input_tokens is None or generated.output_tokens is None:
             raise LLMCostError(
                 LLMCostErrorCode.MISSING_TOKEN_USAGE,
-                f"GeneratedText from {generated.provider}/{generated.model} is missing token counts",
+                f"GeneratedText from {generated.provider}/{generated.model} "
+                "is missing token counts",
             )
         return self.record_usage(
             channel_id,

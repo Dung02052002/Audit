@@ -15,35 +15,36 @@ Tests for:
 from pathlib import Path
 
 import pytest
-from factories import USER, at
-from test_shorts_audio_mix import T1
-from test_shorts_render import Studio
 
+from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.disclosure_rule import (
     DISCLOSURE_RULES,
     DisclosureFacts,
 )
 from ai_youtube_agent.content.policy_report import PolicyReporter
-from ai_youtube_agent.content.rights import RightsRecord, RiskLevel, RiskResolution
+from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
 from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.shorts_bundle import (
     BUNDLE_BUILT,
     BUNDLE_SCHEMA_VERSION,
+    ShortsBundleBuilder,
     ShortsBundleConflictError,
     ShortsBundleError,
     ShortsBundleErrorCode,
-    ShortsBundleBuilder,
 )
 from ai_youtube_agent.content.shorts_metadata import ShortsMetadataRecorder
 from ai_youtube_agent.content.shorts_subtitles import ShortsSubtitleRecorder
 from ai_youtube_agent.content.shorts_thumbnail import ShortsThumbnailRecorder
-from ai_youtube_agent. content.strategy import Brand
+from ai_youtube_agent.content.strategy import Brand
 from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
 from ai_youtube_agent.core.db.repositories.review import RightsRecordRepository
+from factories import USER, at
+from test_shorts_audio_mix import T1
+from test_shorts_render import Studio
 
 Code = ShortsBundleErrorCode
 
@@ -72,9 +73,7 @@ class BundleRig(Studio):
         self.metadata_recorder = ShortsMetadataRecorder(
             database, self.storage, self.audit, clock=at(T1)
         )
-        self.rights_reporter = RightsReporter(
-            database, self.settings, clock=at(T1)
-        )
+        self.rights_reporter = RightsReporter(database, self.settings, clock=at(T1))
         self.policy_reporter = PolicyReporter(database, clock=at(T1))
         self.builder = ShortsBundleBuilder(
             database,
@@ -86,9 +85,19 @@ class BundleRig(Studio):
         )
 
     def prepare_all(self, *, realistic_visual: bool = False) -> None:
+        if realistic_visual:
+            # The rule needs an attached generated visual next to the fact.
+            self.add_asset(
+                AssetKind.IMAGE, AssetCategory.GENERATED, source="mock-provider"
+            )
         self.decider.decide(
             self.world.item.id,
-            DisclosureFacts(realistic_visual=realistic_visual),
+            DisclosureFacts(
+                realistic_person=False,
+                realistic_event=False,
+                synthetic_voice_of_real_person=False,
+                realistic_visual=realistic_visual,
+            ),
             rule_set=DISCLOSURE_RULES,
             actor=USER,
         )
@@ -120,7 +129,7 @@ def test_build_packages_all_artifacts_and_reports_when_captions_enabled(
 ) -> None:
     rig = BundleRig(database, tmp_path, captions=True)
     rig.prepare_all(realistic_visual=True)
-    rig.sink.events.clear()
+    events_before = len(rig.sink.events())
 
     bundle = rig.builder.build(
         rig.project.id,
@@ -148,8 +157,8 @@ def test_build_packages_all_artifacts_and_reports_when_captions_enabled(
     assert bundle.metadata.contains_synthetic_media is True
     assert len(bundle.manifest_sha256) == 64
 
-    assert len(rig.sink.events) == 1
-    event = rig.sink.events[0]
+    assert len(rig.sink.events()) - events_before == 1
+    event = rig.sink.events()[-1]
     assert event.action == BUNDLE_BUILT
     assert event.metadata["manifest_sha256"] == bundle.manifest_sha256
     assert "Learn this fast" not in str(event.metadata)
@@ -178,7 +187,12 @@ def test_build_refuses_missing_artifacts_in_sequence(
     rig = BundleRig(database, tmp_path, captions=True)
     rig.decider.decide(
         rig.world.item.id,
-        DisclosureFacts(),
+        DisclosureFacts(
+            realistic_person=False,
+            realistic_event=False,
+            synthetic_voice_of_real_person=False,
+            realistic_visual=False,
+        ),
         rule_set=DISCLOSURE_RULES,
         actor=USER,
     )
@@ -204,9 +218,7 @@ def test_build_refuses_missing_artifacts_in_sequence(
         rig.builder.build(rig.project.id, actor=USER)
     assert exc_info.value.code == Code.THUMBNAIL_MISSING.value
 
-    rig.thumbnail_recorder.generate(
-        rig.project.id, title_text="Hook", actor=USER
-    )
+    rig.thumbnail_recorder.generate(rig.project.id, title_text="Hook", actor=USER)
 
     # 4. Missing metadata
     with pytest.raises(ShortsBundleError) as exc_info:
@@ -248,9 +260,8 @@ def test_build_refuses_blocking_rights_or_blocking_policy(
         asset_ref="asset-high",
         source="unknown-blog",
         license=None,
-        risk_level=RiskLevel.HIGH,
         clock=at(T1),
-    )
+    ).with_risk_level(RiskLevel.HIGH, clock=at(T1))
     with database.transaction() as connection:
         RightsRecordRepository(connection).add(high_risk)
 
@@ -259,16 +270,17 @@ def test_build_refuses_blocking_rights_or_blocking_policy(
     assert exc_info.value.code == Code.RIGHTS_BLOCKED.value
 
     # Resolve the rights record, then add a banned phrase that matches the metadata
-    resolved = high_risk.resolve(
-        RiskResolution.REPLACED, actor=USER, clock=at(T1)
-    )
+    resolved = high_risk.resolve(actor=USER, clock=at(T1))
     with database.transaction() as connection:
-        RightsRecordRepository(connection).update(resolved)
+        RightsRecordRepository(connection).update(
+            resolved, expected_updated_at=high_risk.updated_at
+        )
         strategies = StrategyProfileRepository(connection)
         current = strategies.get_by_channel(rig.world.item.channel_id)
         assert current is not None
         updated = current.update(
             brand=Brand(
+                name="Test Brand",
                 tone="Strict",
                 banned_phrases=("learn this fast",),
             ),
@@ -280,4 +292,3 @@ def test_build_refuses_blocking_rights_or_blocking_policy(
     with pytest.raises(ShortsBundleError) as exc_info:
         rig.builder.build(rig.project.id, actor=USER)
     assert exc_info.value.code == Code.POLICY_BLOCKED.value
-

@@ -1,6 +1,8 @@
-"""Estimated revenue sync and queries (Prompt Pack v8, prompt #171), context C14 Economics.
+"""Estimated revenue sync and queries (Prompt Pack v8, prompt #171), context C14
+Economics.
 
-``EstimatedRevenueSync`` reads **estimated** revenue figures (``RevenueStage.ESTIMATED``)
+``EstimatedRevenueSync`` reads **estimated** revenue figures
+(``RevenueStage.ESTIMATED``)
 from a ``RevenueProvider`` (#170) and stores them as ``RevenueRecord`` rows (#024)
 strictly separate from finalized revenue (``RevenueStage.FINAL``, #172):
 
@@ -28,7 +30,6 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, Final
@@ -61,7 +62,11 @@ from ai_youtube_agent.providers.revenue import (
     RevenueQuery,
     RevenueRow,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 Clock = Callable[[], datetime]
 
@@ -158,7 +163,9 @@ class ChannelEstimatedRevenueResult:
             "missing_revenue_types": list(self.missing_revenue_types),
             "created_count": self.created_count,
             "unchanged_count": self.unchanged_count,
-            "data_through": self.data_through.isoformat() if self.data_through else None,
+            "data_through": self.data_through.isoformat()
+            if self.data_through
+            else None,
             "complete": self.complete,
         }
 
@@ -208,7 +215,9 @@ class VideoEstimatedRevenueResult:
             "created_count": self.created_count,
             "unchanged_count": self.unchanged_count,
             "pages": self.pages,
-            "data_through": self.data_through.isoformat() if self.data_through else None,
+            "data_through": self.data_through.isoformat()
+            if self.data_through
+            else None,
             "complete": self.complete,
         }
 
@@ -230,7 +239,9 @@ class EstimatedRevenueSync:
         clock: Clock | None = None,
     ) -> None:
         if isinstance(page_size, bool) or not 1 <= page_size <= MAX_VIDEO_IDS:
-            raise ValueError(f"page_size must be a whole number from 1 to {MAX_VIDEO_IDS}")
+            raise ValueError(
+                f"page_size must be a whole number from 1 to {MAX_VIDEO_IDS}"
+            )
         self._database = database
         self._provider = provider
         self._oauth = oauth_provider
@@ -263,8 +274,10 @@ class EstimatedRevenueSync:
             period_end=period_end,
             revenue_types=requested,
         )
-        token = self._oauth.get_token(
-            channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_MONETARY_READONLY,)
+        token = get_or_renew_token(
+            self._oauth,
+            channel.id,
+            required_scopes=(OAuthScope.YT_ANALYTICS_MONETARY_READONLY,),
         )
         page = call_with_retry(
             lambda: self._provider.query(query, token=token),
@@ -346,8 +359,10 @@ class EstimatedRevenueSync:
         collected_rows: list[tuple[str, RevenueRow]] = []
         pages: list[RevenuePage] = []
         if eligible:
-            token = self._oauth.get_token(
-                channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_MONETARY_READONLY,)
+            token = get_or_renew_token(
+                self._oauth,
+                channel.id,
+                required_scopes=(OAuthScope.YT_ANALYTICS_MONETARY_READONLY,),
             )
             for start in range(0, len(eligible), MAX_VIDEO_IDS):
                 chunk = eligible[start : start + MAX_VIDEO_IDS]
@@ -472,7 +487,8 @@ class EstimatedRevenueSync:
         period_start: datetime,
         period_end: datetime,
     ) -> dict[str, RevenueRecord]:
-        """Return the latest ``ESTIMATED`` record per ``revenue_type`` for an exact period."""
+        """Return the latest ``ESTIMATED`` record per ``revenue_type`` for an exact
+        period."""
         connection = self._database.connect()
         try:
             records = RevenueRecordRepository(connection).list_by_subject(

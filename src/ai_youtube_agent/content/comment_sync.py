@@ -1,4 +1,6 @@
-"""Comment sync and pagination service (Prompt Pack v8, prompt #183), context C15 Community.
+"""Comment sync and pagination service.
+
+(Prompt Pack v8, prompt #183), context C15 Community.
 
 ``CommentSync`` reads comments and replies for a channel's published videos from
 ``CommentProvider`` (#182) and persists new comments as immutable ``Comment``
@@ -62,6 +64,7 @@ from ai_youtube_agent.providers.youtube_oauth import (
     OAuthToken,
     YouTubeOAuthError,
     YouTubeOAuthProvider,
+    get_or_renew_token,
 )
 
 COMMENTS_SYNCED: Final[str] = "comment.synced"
@@ -241,9 +244,7 @@ class CommentSync:
 
         outcomes = self._store_comments(channel.id, remote_comments)
         source = pages[0].source if pages else None
-        retrieved_at = (
-            max(page.retrieved_at for page in pages) if pages else None
-        )
+        retrieved_at = max(page.retrieved_at for page in pages) if pages else None
         result = CommentSyncResult(
             channel_id=channel.id,
             source=source,
@@ -278,7 +279,10 @@ class CommentSync:
         youtube_video_id: str | None = None,
         include_replies: bool = True,
     ) -> list[Comment]:
-        """List stored comments for ``channel_id``, ordered by ``(published_at, id)``."""
+        """List stored comments for ``channel_id``.
+
+        Ordered by ``(published_at, id)``.
+        """
         connection = self._database.connect()
         try:
             if ChannelRepository(connection).get(channel_id) is None:
@@ -312,13 +316,15 @@ class CommentSync:
 
     def _acquire_read_token(self, channel_id: str) -> OAuthToken:
         try:
-            return self._oauth.get_token(
-                channel_id, required_scopes=(OAuthScope.YOUTUBE_READONLY,)
+            return get_or_renew_token(
+                self._oauth, channel_id, required_scopes=(OAuthScope.YOUTUBE_READONLY,)
             )
         except YouTubeOAuthError as exc:
             if exc.oauth_code is OAuthErrorCode.INSUFFICIENT_SCOPE:
-                return self._oauth.get_token(
-                    channel_id, required_scopes=(OAuthScope.YOUTUBE_FORCE_SSL,)
+                return get_or_renew_token(
+                    self._oauth,
+                    channel_id,
+                    required_scopes=(OAuthScope.YOUTUBE_FORCE_SSL,),
                 )
             raise
 
@@ -353,20 +359,17 @@ class CommentSync:
                 if not include_replies and item.is_reply:
                     continue
                 if item.youtube_comment_id in seen_comment_ids:
-                    remote_comments[seen_comment_ids[item.youtube_comment_id]] = (
-                        item
-                    )
+                    remote_comments[seen_comment_ids[item.youtube_comment_id]] = item
                 else:
-                    seen_comment_ids[item.youtube_comment_id] = len(
-                        remote_comments
-                    )
+                    seen_comment_ids[item.youtube_comment_id] = len(remote_comments)
                     remote_comments.append(item)
             if page.next_page_token is None:
                 return
             if page.next_page_token in seen_tokens:
                 raise CommentSyncError(
                     CommentSyncErrorCode.TOO_MANY_PAGES,
-                    f"repeated page_token {page.next_page_token!r} while syncing video {youtube_video_id}",
+                    f"repeated page_token {page.next_page_token!r} "
+                    f"while syncing video {youtube_video_id}",
                 )
             seen_tokens.add(page.next_page_token)
             page_token = page.next_page_token
@@ -391,7 +394,8 @@ class CommentSync:
                     if existing.channel_id != channel_id:
                         raise CommentSyncError(
                             CommentSyncErrorCode.CHANNEL_MISMATCH,
-                            f"youtube_comment_id {remote.youtube_comment_id} belongs to channel {existing.channel_id}",
+                            f"youtube_comment_id {remote.youtube_comment_id} "
+                            f"belongs to channel {existing.channel_id}",
                         )
                     outcomes.append(SyncedCommentOutcome(existing, False))
                     continue

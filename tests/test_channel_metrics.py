@@ -140,7 +140,10 @@ def test_a_repeated_sync_of_the_same_numbers_stores_nothing_new(fx: Fixture) -> 
 
     assert changed.created is True
     assert changed.snapshot is not None and changed.snapshot.id != first.snapshot.id
-    assert [dict(s.metrics)["views"] for s in fx.stored()] == [Decimal("10"), Decimal("11")]
+    assert [dict(s.metrics)["views"] for s in fx.stored()] == [
+        Decimal("10"),
+        Decimal("11"),
+    ]
 
 
 def test_retryable_provider_errors_are_retried_then_the_sync_succeeds(

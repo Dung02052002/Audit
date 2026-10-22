@@ -6,10 +6,8 @@ from ai_youtube_agent.content.longform_timeline import (
     format_chapter_timestamp,
 )
 from ai_youtube_agent.content.shorts_timeline import (
-    AssetRole,
-    CaptionOverlay,
+    TIMELINE_SCHEMA_VERSION,
     Scene,
-    SceneAsset,
     TimingSource,
 )
 
@@ -18,25 +16,27 @@ def test_format_chapter_timestamp_renders_mm_ss_and_h_mm_ss() -> None:
     assert format_chapter_timestamp(0) == "00:00"
     assert format_chapter_timestamp(15_000) == "00:15"
     assert format_chapter_timestamp(605_000) == "10:05"
-    assert format_chapter_timestamp(3_661_000) == "1:01:01"
+    assert format_chapter_timestamp(3_661_000) == "01:01:01"
 
 
 def test_longform_timeline_validates_contiguous_scenes_and_chapters() -> None:
     scenes = (
-        Scene(index=0, section_index=0, start_ms=0, duration_ms=15_000),
-        Scene(index=1, section_index=1, start_ms=15_000, duration_ms=60_000),
-        Scene(index=2, section_index=2, start_ms=75_000, duration_ms=60_000),
-        Scene(index=3, section_index=3, start_ms=135_000, duration_ms=65_000),
+        Scene("s1", 0, 0, 15_000),
+        Scene("s2", 1, 15_000, 75_000),
+        Scene("s3", 2, 75_000, 135_000),
+        Scene("s4", 3, 135_000, 200_000),
     )
     chapters = (
-        ChapterMarker(index=0, section_index=0, start_ms=0, title="Intro"),
-        ChapterMarker(index=1, section_index=1, start_ms=15_000, title="Part 1"),
-        ChapterMarker(index=2, section_index=2, start_ms=75_000, title="Part 2"),
+        ChapterMarker("ch1", "Intro", "s1", "s1", 0, 15_000),
+        ChapterMarker("ch2", "Part 1", "s2", "s2", 15_000, 75_000),
+        ChapterMarker("ch3", "Part 2", "s3", "s4", 75_000, 200_000),
     )
     timeline = LongFormTimeline(
+        TIMELINE_SCHEMA_VERSION,
+        200_000,
+        TimingSource.ESTIMATED,
         scenes=scenes,
         chapters=chapters,
-        timing_source=TimingSource.ESTIMATED,
     )
 
     assert timeline.duration_ms == 200_000
@@ -46,45 +46,38 @@ def test_longform_timeline_validates_contiguous_scenes_and_chapters() -> None:
 
 def test_longform_timeline_refuses_too_few_chapters_or_non_zero_first_chapter() -> None:
     scenes = (
-        Scene(index=0, section_index=0, start_ms=0, duration_ms=100_000),
-        Scene(index=1, section_index=1, start_ms=100_000, duration_ms=100_000),
+        Scene("s1", 0, 0, 100_000),
+        Scene("s2", 1, 100_000, 200_000),
     )
-    with pytest.raises(ValueError, match="at least 3"):
+    with pytest.raises(ValueError, match="3 to 50"):
         LongFormTimeline(
+            TIMELINE_SCHEMA_VERSION,
+            200_000,
+            TimingSource.ESTIMATED,
             scenes=scenes,
             chapters=(
-                ChapterMarker(index=0, section_index=0, start_ms=0, title="Intro"),
-                ChapterMarker(index=1, section_index=1, start_ms=100_000, title="Main"),
+                ChapterMarker("ch1", "Intro", "s1", "s1", 0, 100_000),
+                ChapterMarker("ch2", "Main", "s2", "s2", 100_000, 200_000),
             ),
         )
-    with pytest.raises(ValueError, match="0 ms"):
+    with pytest.raises(ValueError, match="must match scene s1 start_ms"):
         LongFormTimeline(
+            TIMELINE_SCHEMA_VERSION,
+            200_000,
+            TimingSource.ESTIMATED,
             scenes=(
-                Scene(index=0, section_index=0, start_ms=0, duration_ms=60_000),
-                Scene(index=1, section_index=1, start_ms=60_000, duration_ms=60_000),
-                Scene(index=2, section_index=2, start_ms=120_000, duration_ms=80_000),
+                Scene("s1", 0, 0, 60_000),
+                Scene("s2", 1, 60_000, 120_000),
+                Scene("s3", 2, 120_000, 200_000),
             ),
             chapters=(
-                ChapterMarker(index=0, section_index=0, start_ms=10_000, title="A"),
-                ChapterMarker(index=1, section_index=1, start_ms=60_000, title="B"),
-                ChapterMarker(index=2, section_index=2, start_ms=120_000, title="C"),
+                ChapterMarker("ch1", "A", "s1", "s1", 10_000, 60_000),
+                ChapterMarker("ch2", "B", "s2", "s2", 60_000, 120_000),
+                ChapterMarker("ch3", "C", "s3", "s3", 120_000, 200_000),
             ),
         )
 
 
 def test_longform_timeline_refuses_chapters_shorter_than_10_seconds() -> None:
-    scenes = (
-        Scene(index=0, section_index=0, start_ms=0, duration_ms=5_000),
-        Scene(index=1, section_index=1, start_ms=5_000, duration_ms=95_000),
-        Scene(index=2, section_index=2, start_ms=100_000, duration_ms=100_000),
-    )
     with pytest.raises(ValueError, match="10000 ms"):
-        LongFormTimeline(
-            scenes=scenes,
-            chapters=(
-                ChapterMarker(index=0, section_index=0, start_ms=0, title="Short"),
-                ChapterMarker(index=1, section_index=1, start_ms=5_000, title="One"),
-                ChapterMarker(index=2, section_index=2, start_ms=100_000, title="Two"),
-            ),
-        )
-
+        ChapterMarker("ch1", "Short", "s1", "s1", 0, 5_000)

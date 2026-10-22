@@ -1,4 +1,6 @@
-"""Tests for the analytics provider contract and its seeded mock (N-158, prompt #158)."""
+"""Tests for the analytics provider contract and its seeded mock (N-158, prompt
+#158).
+"""
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -98,7 +100,7 @@ def test_a_valid_video_query_is_accepted() -> None:
     assert query.video_ids == VIDEOS and query.page_token == "o2"
 
 
-# --- rows and pages --------------------------------------------------------------------
+# --- rows and pages -----------------------------------------------------------------
 
 
 def test_a_row_holds_only_finite_known_metrics_and_is_never_empty() -> None:
@@ -130,11 +132,17 @@ def test_a_page_refuses_two_rows_for_one_subject_and_reports_its_last_page() -> 
         AnalyticsPage((row,), None, "Bad Name", START, END, NOW)
     with pytest.raises(ValueError):
         AnalyticsPage(
-            (row,), None, "mock_analytics", START, END, NOW, data_through=START - timedelta(days=1)
+            (row,),
+            None,
+            "mock_analytics",
+            START,
+            END,
+            NOW,
+            data_through=START - timedelta(days=1),
         )
 
 
-# --- the mock ----------------------------------------------------------------------------
+# --- the mock -----------------------------------------------------------------------
 
 
 def test_the_mock_is_an_analytics_provider(provider: MockAnalyticsProvider) -> None:
@@ -145,7 +153,9 @@ def test_the_mock_is_an_analytics_provider(provider: MockAnalyticsProvider) -> N
 def test_channel_metrics_are_exactly_the_seeded_ones(
     provider: MockAnalyticsProvider,
 ) -> None:
-    provider.set_channel_metrics(CHANNEL, {"views": Decimal("1200"), "likes": Decimal("30")})
+    provider.set_channel_metrics(
+        CHANNEL, {"views": Decimal("1200"), "likes": Decimal("30")}
+    )
 
     page = provider.query(
         _query(metrics=("views", "subscribers_gained", "average_view_percentage"))

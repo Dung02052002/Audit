@@ -127,7 +127,9 @@ class MockAnalyticsProvider:
             if self._failures:
                 code = self._failures.pop(0)
                 raise AnalyticsProviderError(
-                    code, f"injected analytics failure ({code.value})", provider=self._name
+                    code,
+                    f"injected analytics failure ({code.value})",
+                    provider=self._name,
                 )
             if query.youtube_channel_id not in self._channels:
                 raise AnalyticsProviderError(

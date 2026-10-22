@@ -2,8 +2,8 @@
 QC, preview, explicit human approval (R-08), and controlled/mock publishing.
 """
 
-import dataclasses
 import json
+
 import pytest
 
 from ai_youtube_agent.content.approval import ApprovalStatus
@@ -131,8 +131,8 @@ def test_longform_e2e_chapters_qc_preview_approval_and_mock_publish(
 
     # 2. Preview snapshot and Approval
     preview_service = PreviewArtifactService(database, storage)
-    snapshot = preview_service.load_snapshot(item.id)
-    assert snapshot.content_item.content_type is ContentType.LONGFORM
+    snapshot = preview_service.get_snapshot(item.id)
+    assert snapshot.content_type is ContentType.LONGFORM
 
     approval_service = ApprovalService(database, audit, clock=at(3))
     req = approval_service.request_approval(item.id, requested_by=SYSTEM)
@@ -158,7 +158,7 @@ def test_longform_e2e_chapters_qc_preview_approval_and_mock_publish(
     pub = build_publishing(seed)
 
     # 3. R-05: When longform_enabled is False, LongFormPublisher refuses to publish
-    disabled_flags = dataclasses.replace(PUBLISH_FLAGS, longform_enabled=False)
+    disabled_flags = PUBLISH_FLAGS.model_copy(update={"longform_enabled": False})
     disabled_publisher = LongFormPublisher(
         database, storage, pub.executor, flags=disabled_flags
     )
@@ -175,6 +175,10 @@ def test_longform_e2e_chapters_qc_preview_approval_and_mock_publish(
         privacy_status=YouTubePrivacyStatus.PRIVATE,
     )
     assert outcome.replayed is False
-    assert outcome.item.status is ContentStatus.PUBLISHED
-    assert outcome.result.youtube_video_id != ""
+    assert outcome.receipt is not None
+    assert outcome.receipt.youtube_video_id != ""
+    with database.connection() as conn:
+        published_item = ContentItemRepository(conn).get(item.id)
+    assert published_item is not None
+    assert published_item.status is ContentStatus.PUBLISHED
     assert any(e.action == LONGFORM_PUBLISHED for e in pub.sink.events())

@@ -162,4 +162,3 @@ def test_channel_overview_keeps_missing_metrics_none(database: Database) -> None
     assert view.views_and_watch_time is not None
     assert view.views_and_watch_time.views is None
     assert view.views_and_watch_time.watch_time_minutes is None
-

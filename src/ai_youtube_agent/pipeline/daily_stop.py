@@ -106,7 +106,8 @@ class DailyStopService:
         channel_id: str,
         content_type: ContentType,
     ) -> DailyStopEvaluation:
-        """Evaluates whether production should be stopped for the given channel and content type."""
+        """Evaluates whether production should be stopped for the given channel and
+        content type."""
         now = self._now()
         with self._database.transaction() as conn:
             strategy_repo = StrategyProfileRepository(conn)

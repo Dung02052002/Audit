@@ -93,7 +93,7 @@ def test_render_and_non_retryable_provider_fault_injection(
         AIJobRepository(conn).add(job)
 
     injector.arm_render_failure(
-        code="validation.invalid_resolution",
+        code="validation_error.invalid_resolution",
         retryable=False,
         operation="ffmpeg_encode",
     )
@@ -124,13 +124,15 @@ def test_database_fault_injection_rolls_back_partial_writes(
         times=1,
     )
 
-    with pytest.raises(PersistenceError):
-        with injector.guarded_transaction(
+    with (
+        pytest.raises(PersistenceError),
+        injector.guarded_transaction(
             database,
             operation="save_channel",
             fail_before_commit=True,
-        ) as conn:
-            ChannelRepository(conn).add(ch)
+        ) as conn,
+    ):
+        ChannelRepository(conn).add(ch)
 
     # Verify channel was rolled back and is not present in SQLite
     with database.connection() as conn:

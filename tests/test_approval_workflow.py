@@ -1,10 +1,13 @@
-"""Tests for L-137..L-140 Approval Request, Email Approval, Approve Action, and Reject Action."""
+"""Tests for L-137..L-140 Approval Request, Email Approval, Approve Action, and Reject
+Action."""
 
+import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.test_preview_api import _seed_shorts_preview_item
 
 from ai_youtube_agent.bootstrap import build_container, prepare_database
 from ai_youtube_agent.content.approval import (
@@ -15,7 +18,6 @@ from ai_youtube_agent.content.approval import (
     ApprovalStatus,
 )
 from ai_youtube_agent.content.approval_service import ApprovalService
-from ai_youtube_agent.content.email_approval import ApprovalEmailService
 from ai_youtube_agent.core.approval_gate import ApprovalGate
 from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage
@@ -29,7 +31,6 @@ from ai_youtube_agent.core.gates import GateContext, GateOutcome
 from ai_youtube_agent.main import create_app
 from ai_youtube_agent.providers.approval_email import ApprovalEmailProvider
 from ai_youtube_agent.providers.mock_approval_email import MockApprovalEmailProvider
-from tests.test_preview_api import _seed_shorts_preview_item
 
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 HUMAN_REVIEWER = Actor(ActorKind.USER, "owner-1")
@@ -81,12 +82,14 @@ def test_request_approval_sends_safe_email_and_approve_unlocks_approval_gate(
 
     # Before approval, ApprovalGate blocks PUBLISHING
     with db.transaction() as conn:
-        gate = ApprovalGate(
-            ApprovalRequestRepository(conn), ArtifactRepository(conn)
-        )
+        gate = ApprovalGate(ApprovalRequestRepository(conn), ArtifactRepository(conn))
         blocked = gate.evaluate(
             GateContext(
-                req_result.content_item,
+                # An approved-status copy of the item: only that status may
+                # ask to publish, and the newest approval is still pending.
+                dataclasses.replace(
+                    req_result.content_item, status=ContentStatus.APPROVED
+                ),
                 ContentStatus.PUBLISHING,
                 HUMAN_REVIEWER,
                 NOW,
@@ -119,9 +122,7 @@ def test_request_approval_sends_safe_email_and_approve_unlocks_approval_gate(
 
     # After explicit human approval on current artifacts, ApprovalGate passes!
     with db.transaction() as conn:
-        gate = ApprovalGate(
-            ApprovalRequestRepository(conn), ArtifactRepository(conn)
-        )
+        gate = ApprovalGate(ApprovalRequestRepository(conn), ArtifactRepository(conn))
         passed = gate.evaluate(
             GateContext(
                 approved_res.content_item,
@@ -148,9 +149,7 @@ def test_reject_action_requires_reason_and_transitions_item_to_rejected(
     item, _ = _seed_shorts_preview_item(db, storage)  # type: ignore[arg-type]
 
     approval_service = container.resolve(ApprovalService)
-    req_result = approval_service.request_approval(
-        item.id, requested_by=HUMAN_REVIEWER
-    )
+    req_result = approval_service.request_approval(item.id, requested_by=HUMAN_REVIEWER)
 
     with pytest.raises(ApprovalReasonRequiredError):
         approval_service.reject(
@@ -209,8 +208,7 @@ def test_approvals_http_api_routes(tmp_path: Path) -> None:
     )
     assert email_res.status_code == 200
     assert (
-        email_res.json()["message"]["video_artifact_id"]
-        == art_ids[ArtifactKind.VIDEO]
+        email_res.json()["message"]["video_artifact_id"] == art_ids[ArtifactKind.VIDEO]
     )
 
     approve_res = client.post(

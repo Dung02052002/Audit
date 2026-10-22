@@ -99,6 +99,7 @@ def store_artifact(
     artifact = Artifact.create(
         content_item_id,
         kind,
+        version=version,
         uri=stored.uri,
         sha256=stored.sha256,
         size_bytes=stored.size_bytes,
@@ -173,7 +174,12 @@ def seed_approved_item(
         repository = ArtifactRepository(connection)
         artifacts = {
             ArtifactKind.VIDEO: store_artifact(
-                storage, repository, item.id, ArtifactKind.VIDEO, "video/mp4", video_bytes
+                storage,
+                repository,
+                item.id,
+                ArtifactKind.VIDEO,
+                "video/mp4",
+                video_bytes,
             ),
             ArtifactKind.METADATA: store_artifact(
                 storage,
@@ -205,7 +211,15 @@ def seed_approved_item(
         ).approve(USER)
         ApprovalRequestRepository(connection).add(approval)
     return Seed(
-        database, storage, settings, channel, profile, item, approval, artifacts, video_bytes
+        database,
+        storage,
+        settings,
+        channel,
+        profile,
+        item,
+        approval,
+        artifacts,
+        video_bytes,
     )
 
 

@@ -1,4 +1,5 @@
-"""Job Retry Manager with Bounded Retries & Exponential Backoff (Prompt Pack v8, task R-208).
+"""Job Retry Manager with Bounded Retries & Exponential Backoff (Prompt Pack v8,
+task R-208).
 
 Coordinates retry evaluation, exponential backoff computation, bounded attempt limits,
 and persistence transitions for failed pipeline jobs.
@@ -25,16 +26,18 @@ from ai_youtube_agent.pipeline.job_queue import JobQueue
 Clock = Callable[[], datetime]
 RETRY_ACTOR: Final[Actor] = Actor(ActorKind.SYSTEM, "retry_manager")
 
-DEFAULT_NON_RETRYABLE_PATTERNS: Final[frozenset[str]] = frozenset({
-    "policy_violation",
-    "rights_block",
-    "copyright_infringement",
-    "validation_error",
-    "unauthorized",
-    "bad_request",
-    "duplicate_blocked",
-    "approval_rejected",
-})
+DEFAULT_NON_RETRYABLE_PATTERNS: Final[frozenset[str]] = frozenset(
+    {
+        "policy_violation",
+        "rights_block",
+        "copyright_infringement",
+        "validation_error",
+        "unauthorized",
+        "bad_request",
+        "duplicate_blocked",
+        "approval_rejected",
+    }
+)
 
 
 class RetryManagerError(DomainError):
@@ -176,7 +179,9 @@ class RetryManager:
                 max_attempts=max_attempts,
                 delay_seconds=0.0,
                 next_eligible_at=None,
-                reason=f"Exceeded max retry attempts ({current_attempts}/{max_attempts})",
+                reason=(
+                    f"Exceeded max retry attempts ({current_attempts}/{max_attempts})"
+                ),
                 is_terminal=True,
             )
 
@@ -205,7 +210,10 @@ class RetryManager:
             max_attempts=max_attempts,
             delay_seconds=delay,
             next_eligible_at=next_eligible,
-            reason=f"Eligible for retry (attempt {current_attempts + 1}/{max_attempts}) after {delay:.1f}s",
+            reason=(
+                f"Eligible for retry (attempt {current_attempts + 1}/{max_attempts}) "
+                f"after {delay:.1f}s"
+            ),
             is_terminal=False,
         )
 
@@ -221,9 +229,7 @@ class RetryManager:
             job = AIJobRepository(conn).get(job_id)
             if job is None:
                 raise RetryManagerError(f"Job {job_id} not found")
-            return self._evaluate_job(
-                job, error_message, jitter_factor=jitter_factor
-            )
+            return self._evaluate_job(job, error_message, jitter_factor=jitter_factor)
 
     def schedule_retry(
         self,
@@ -232,7 +238,9 @@ class RetryManager:
         *,
         jitter_factor: float | None = None,
     ) -> RetryEvaluation:
-        """Transitions job to FAILED (if running), computes retry backoff, and records checkpoint."""
+        """Transitions job to FAILED (if running), computes retry backoff, and records
+        checkpoint.
+        """
         updated_job: AIJob
         with self._database.transaction() as conn:
             repo = AIJobRepository(conn)
@@ -246,7 +254,8 @@ class RetryManager:
                 job = job.fail(error_message, clock=self._clock)
             elif job.status is not AIJobStatus.FAILED:
                 raise RetryManagerError(
-                    f"Job {job_id} must be in RUNNING or FAILED status to schedule retry, "
+                    f"Job {job_id} must be in RUNNING or FAILED status to schedule "
+                    "retry, "
                     f"but was {job.status.value}"
                 )
 
@@ -299,7 +308,9 @@ class RetryManager:
             )
         else:
             self._audit.record(
-                action="job.retry_exhausted" if evaluation.is_terminal else "job.retry_rejected",
+                action="job.retry_exhausted"
+                if evaluation.is_terminal
+                else "job.retry_rejected",
                 actor=RETRY_ACTOR,
                 entity=EntityRef("ai_jobs", updated_job.id),
                 result=AuditResult.FAILURE,

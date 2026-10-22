@@ -15,7 +15,8 @@ Key invariants & rules:
 - Visual files read via VisualSource (default ArtifactVisualSource).
 - Build render request: 16:9 canvas, scene visual layers (background, b-roll, overlays),
   caption text lines, audio mix.
-- Idempotency & AIJob reuse: kind video.render with render_key. Succeeded duplicate replayed.
+- Idempotency & AIJob reuse: kind video.render with render_key. Succeeded duplicate
+  replayed.
 - Video rendered through VideoRenderer.render outside transaction.
 - Output validated with probe_mp4; duration matched against audio within tolerance.
 - Written to ArtifactStorage, ArtifactKind.VIDEO created, stale approvals invalidated,
@@ -25,15 +26,13 @@ Key invariants & rules:
 
 import hashlib
 import json
-import sqlite3
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Final, Protocol, runtime_checkable
+from typing import Final
 
-from ai_youtube_agent.content.asset import Asset
 from ai_youtube_agent.content.longform_audio_mix import (
     LongFormAudioMixer,
 )
@@ -63,7 +62,6 @@ from ai_youtube_agent.content.shorts_render import (
 from ai_youtube_agent.content.shorts_timeline import (
     AssetRole,
     Box,
-    CaptionOverlay,
     Scene,
     SceneAsset,
 )
@@ -74,7 +72,6 @@ from ai_youtube_agent.core.audit import (
     AuditLog,
     AuditResult,
     EntityRef,
-    MetadataValue,
 )
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.content import (
@@ -93,18 +90,15 @@ from ai_youtube_agent.core.version_invalidation import (
     record_invalidations,
 )
 from ai_youtube_agent.pipeline.idempotency import RENDER_KIND, render_key
-from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus, JobCheckpoint
+from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
 from ai_youtube_agent.providers.video_render import (
     AUDIO_INPUT_MEDIA_TYPE,
     AUDIO_KEY,
-    FONT_MEDIA_TYPES,
     IMAGE_MEDIA_TYPES,
     MP4_MEDIA_TYPE,
     VIDEO_MEDIA_TYPES,
     LayerFit,
-    Mp4Info,
     PixelRect,
-    RenderedVideo,
     RenderInput,
     RenderRequest,
     TextAlign,
@@ -154,8 +148,8 @@ USER_MESSAGES = {
         "The LongForm project changed in the meantime. Reload it and try again."
     ),
     LongFormRenderErrorCode.NOT_READY: (
-        "The LongForm project is not ready to render yet. Plan scenes, b-roll, chapters "
-        "and captions first."
+        "The LongForm project is not ready to render yet. Plan scenes, b-roll, "
+        "chapters and captions first."
     ),
     LongFormRenderErrorCode.STALE_INPUT: (
         "The LongForm project is not current with the script or audio. Rebind it first."
@@ -174,7 +168,8 @@ USER_MESSAGES = {
         "Update the timeline."
     ),
     LongFormRenderErrorCode.IN_PROGRESS: (
-        "A render for this LongForm video is already running. Wait for it or take it over."
+        "A render for this LongForm video is already running. "
+        "Wait for it or take it over."
     ),
     LongFormRenderErrorCode.STORAGE_FAILED: (
         "The rendered video could not be written to storage."
@@ -183,7 +178,8 @@ USER_MESSAGES = {
         "The video rendering provider failed to produce an MP4."
     ),
     LongFormRenderErrorCode.RENDER_INVALID: (
-        "The rendered video is not a valid MP4 or its duration does not match the project."
+        "The rendered video is not a valid MP4 or its duration does not match "
+        "the project."
     ),
 }
 
@@ -207,7 +203,10 @@ ASSET_CODES = {
 
 
 class LongFormRenderError(DomainError):
-    """A LongForm render was refused or failed; ``code`` is a ``LongFormRenderErrorCode``."""
+    """A LongForm render was refused or failed.
+
+    ``code`` is a ``LongFormRenderErrorCode``.
+    """
 
     default_code = LongFormRenderErrorCode.RENDER.value
     default_user_message = USER_MESSAGES[LongFormRenderErrorCode.RENDER]
@@ -449,7 +448,8 @@ class LongFormRenderService:
                 )
             if project.version != expected_version:
                 raise LongFormRenderError(
-                    f"project {project_id} version {project.version} != {expected_version}",
+                    f"project {project_id} version {project.version} "
+                    f"!= {expected_version}",
                     code=LongFormRenderErrorCode.CONFLICT,
                 )
             if not longform_project_is_current(connection, project):
@@ -457,7 +457,10 @@ class LongFormRenderService:
                     f"project {project_id} is stale",
                     code=LongFormRenderErrorCode.STALE_INPUT,
                 )
-            if longform_readiness(project.config, project.timeline) != LongFormProjectStatus.READY:
+            if (
+                longform_readiness(project.config, project.timeline)
+                != LongFormProjectStatus.READY
+            ):
                 raise LongFormRenderError(
                     f"project {project_id} is not ready",
                     code=LongFormRenderErrorCode.NOT_READY,
@@ -473,16 +476,16 @@ class LongFormRenderService:
             # D5 checks for all timeline assets
             font_ids = caption_font_ids(project.timeline)
             scene_assets = [
-                asset
-                for scene in project.timeline.scenes
-                for asset in scene.assets
+                asset for scene in project.timeline.scenes for asset in scene.assets
             ]
             try:
                 assets = check_longform_timeline_assets(
                     connection, item, scene_assets, font_ids
                 )
             except LongFormProjectError as error:
-                code = ASSET_CODES.get(error.code, LongFormRenderErrorCode.ASSET_UNAVAILABLE)
+                code = ASSET_CODES.get(
+                    error.code, LongFormRenderErrorCode.ASSET_UNAVAILABLE
+                )
                 raise LongFormRenderError(str(error), code=code) from None
 
             # D7 provenance checks

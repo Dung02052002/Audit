@@ -233,15 +233,12 @@ def _check_scenes(scenes: tuple[Any, ...], duration_ms: int) -> None:
                 "previous scene ends"
             )
         if scene.section_index < section_index:
-            raise ValueError(
-                f"scene {scene.id} goes back to an earlier section"
-            )
+            raise ValueError(f"scene {scene.id} goes back to an earlier section")
         expected_start = scene.end_ms
         section_index = scene.section_index
     if expected_start != duration_ms:
         raise ValueError(
-            f"the scenes end at {expected_start} ms but the audio is "
-            f"{duration_ms} ms"
+            f"the scenes end at {expected_start} ms but the audio is {duration_ms} ms"
         )
 
 
@@ -265,9 +262,7 @@ def _check_chapters(
         if not isinstance(chapter, ChapterMarker):
             raise TypeError("chapters must be ChapterMarker values")
         if chapter.id != f"ch{position}":
-            raise ValueError(
-                f"chapter {position} must have the id ch{position}"
-            )
+            raise ValueError(f"chapter {position} must have the id ch{position}")
         title_key = chapter.title.casefold()
         if title_key in seen_titles:
             raise ValueError(f"chapter title {chapter.title!r} is repeated")
@@ -275,9 +270,7 @@ def _check_chapters(
         start_idx = scene_index_by_id.get(chapter.start_scene_id)
         end_idx = scene_index_by_id.get(chapter.end_scene_id)
         if start_idx is None or end_idx is None:
-            raise ValueError(
-                f"chapter {chapter.id} references an unknown scene id"
-            )
+            raise ValueError(f"chapter {chapter.id} references an unknown scene id")
         if start_idx != next_scene_idx or end_idx < start_idx:
             raise ValueError(
                 f"chapter {chapter.id} scenes must be contiguous starting at "
@@ -285,7 +278,10 @@ def _check_chapters(
             )
         start_scene = scenes[start_idx]
         end_scene = scenes[end_idx]
-        if chapter.start_ms != expected_start or chapter.start_ms != start_scene.start_ms:
+        if (
+            chapter.start_ms != expected_start
+            or chapter.start_ms != start_scene.start_ms
+        ):
             raise ValueError(
                 f"chapter {chapter.id} start_ms ({chapter.start_ms}) must match "
                 f"scene {start_scene.id} start_ms ({start_scene.start_ms})"
@@ -336,9 +332,7 @@ def _check_captions(
                 f"caption {caption.id} starts before the previous caption ends"
             )
         if caption.start_ms < scene.start_ms or caption.end_ms > scene.end_ms:
-            raise ValueError(
-                f"caption {caption.id} must lie within scene {scene.id}"
-            )
+            raise ValueError(f"caption {caption.id} must lie within scene {scene.id}")
         previous_end = caption.end_ms
 
 
@@ -471,4 +465,3 @@ def _decode_v1(data: Mapping[str, Any]) -> LongFormTimeline:
 _DECODERS: dict[int, Callable[[Mapping[str, Any]], LongFormTimeline]] = {
     1: _decode_v1,
 }
-

@@ -3,6 +3,7 @@ explicit human approval (R-08), and controlled/mock publishing.
 """
 
 import json
+
 import pytest
 
 from ai_youtube_agent.content.approval import (
@@ -56,7 +57,8 @@ def test_shorts_e2e_generation_qc_preview_approval_and_mock_publish(
     database: Database, tmp_path
 ) -> None:
     """Runs a Shorts ContentItem from DRAFT through GENERATING -> TESTING ->
-    PREVIEW_READY -> AWAITING_APPROVAL -> APPROVED -> PUBLISHED using controlled mocks."""
+    PREVIEW_READY -> AWAITING_APPROVAL -> APPROVED -> PUBLISHED using controlled
+    mocks."""
     storage = LocalFileStorage(tmp_path / "artifacts")
     settings = Settings(environment=Environment.TEST)
     sink = InMemoryAuditSink()
@@ -78,7 +80,8 @@ def test_shorts_e2e_generation_qc_preview_approval_and_mock_publish(
         StrategyProfileRepository(conn).add(profile)
         ContentItemRepository(conn).add(item)
 
-    # 1. Start generation and store Shorts artifacts (VIDEO, METADATA, THUMBNAIL, SUBTITLES)
+    # 1. Start generation and store Shorts artifacts (VIDEO, METADATA, THUMBNAIL,
+    # SUBTITLES)
     prev = item.updated_at
     item = item.with_status(ContentStatus.GENERATING, clock=at(1))
     with database.transaction() as conn:
@@ -143,9 +146,9 @@ def test_shorts_e2e_generation_qc_preview_approval_and_mock_publish(
 
     # 3. Preview snapshot loads exact artifact versions
     preview_service = PreviewArtifactService(database, storage)
-    snapshot = preview_service.load_snapshot(item.id)
-    assert snapshot.content_item.id == item.id
-    assert snapshot.video.id == video_art.id
+    snapshot = preview_service.get_snapshot(item.id)
+    assert snapshot.content_item_id == item.id
+    assert snapshot.video.artifact_id == video_art.id
 
     # 4. Request approval -> transitions TESTING -> PREVIEW_READY -> AWAITING_APPROVAL
     approval_service = ApprovalService(database, audit, clock=at(3))
@@ -190,9 +193,7 @@ def test_shorts_e2e_generation_qc_preview_approval_and_mock_publish(
         video_bytes=video_bytes,
     )
     pub = build_publishing(seed)
-    publisher = ShortsPublisher(
-        database, storage, pub.executor, flags=PUBLISH_FLAGS
-    )
+    publisher = ShortsPublisher(database, storage, pub.executor, flags=PUBLISH_FLAGS)
     outcome = publisher.publish(
         item.id,
         actor=SYSTEM,
@@ -200,6 +201,10 @@ def test_shorts_e2e_generation_qc_preview_approval_and_mock_publish(
     )
 
     assert outcome.replayed is False
-    assert outcome.item.status is ContentStatus.PUBLISHED
-    assert outcome.result.youtube_video_id != ""
+    assert outcome.receipt is not None
+    assert outcome.receipt.youtube_video_id != ""
+    with database.connection() as conn:
+        published_item = ContentItemRepository(conn).get(item.id)
+    assert published_item is not None
+    assert published_item.status is ContentStatus.PUBLISHED
     assert any(e.action == SHORTS_PUBLISHED for e in pub.sink.events())

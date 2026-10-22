@@ -64,7 +64,11 @@ from ai_youtube_agent.providers.analytics_cache import (
 )
 from ai_youtube_agent.providers.mock_analytics import MockAnalyticsProvider
 from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvider
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthErrorCode,
+    OAuthScope,
+    YouTubeOAuthError,
+)
 from factories import (
     USER,
     make_approval_request,
@@ -103,7 +107,10 @@ def _publish_item(
     approval = make_approval_request(item, [video]).approve(USER)
     job = (
         PublishJob.create(
-            approval, content_type, f"pub:{youtube_video_id}", clock=lambda: published_at
+            approval,
+            content_type,
+            f"pub:{youtube_video_id}",
+            clock=lambda: published_at,
         )
         .start(clock=lambda: published_at)
         .succeed(youtube_video_id, clock=lambda: published_at)
@@ -138,8 +145,8 @@ def test_pagination_across_sparse_pages_and_missing_fields_never_zero_filled(
 
     provider = MockAnalyticsProvider(clock=lambda: now)
     provider.set_channel_metrics(channel.youtube.channel_id, {"views": Decimal("5000")})
-    # Seed sparse video metrics: videos 2 and 4 have no data at all; video 1 has Shorts metrics;
-    # video 6 has LongForm metrics without retention or CTR.
+    # Seed sparse video metrics: videos 2 and 4 have no data at all; video 1 has
+    # Shorts metrics; video 6 has LongForm metrics without retention or CTR.
     provider.set_video_metrics(
         channel.youtube.channel_id,
         _vid(1),
@@ -281,9 +288,7 @@ def test_retention_and_ctr_only_stored_when_present_and_enrich_existing_snapshot
     retention_sync = RetentionSync(
         database, provider, oauth, results, audit, clock=lambda: now
     )
-    ctr_sync = CTRSync(
-        database, provider, oauth, results, audit, clock=lambda: now
-    )
+    ctr_sync = CTRSync(database, provider, oauth, results, audit, clock=lambda: now)
 
     ret_res = retention_sync.sync(
         channel.id, period_start=START, period_end=END, actor=USER
@@ -302,8 +307,13 @@ def test_retention_and_ctr_only_stored_when_present_and_enrich_existing_snapshot
     # Video 1's newest snapshot has both retention and CTR merged cleanly.
     latest_ret = retention_sync.latest_for_video(_vid(1))
     latest_ctr = ctr_sync.latest_for_video(_vid(1))
-    assert latest_ret is not None and latest_ret.average_view_percentage == Decimal("82.5")
-    assert latest_ctr is not None and latest_ctr.impressions_click_through_rate == Decimal("8.0")
+    assert latest_ret is not None and latest_ret.average_view_percentage == Decimal(
+        "82.5"
+    )
+    assert (
+        latest_ctr is not None
+        and latest_ctr.impressions_click_through_rate == Decimal("8.0")
+    )
 
 
 def test_stale_data_lagging_periods_and_cache_fallback_and_invalidation(
@@ -328,9 +338,7 @@ def test_stale_data_lagging_periods_and_cache_fallback_and_invalidation(
     cache = AnalyticsCache(inner, clock=lambda: now)
     oauth = MockYouTubeOAuthProvider(clock=lambda: now)
     audit = AuditLog(InMemoryAuditSink())
-    channel_sync = ChannelMetricsSync(
-        database, cache, oauth, audit, clock=lambda: now
-    )
+    channel_sync = ChannelMetricsSync(database, cache, oauth, audit, clock=lambda: now)
     freshness = AnalyticsFreshnessService(database, clock=lambda: now)
 
     first = channel_sync.sync(
@@ -443,13 +451,14 @@ def test_provider_failure_retries_and_overlapping_period_guards(
     bad_sync = ChannelMetricsSync(
         database, provider, bad_oauth, audit, clock=lambda: now
     )
-    with pytest.raises(Exception):
+    with pytest.raises(YouTubeOAuthError) as scope_err:
         bad_sync.sync(
             channel.id,
             period_start=START + timedelta(days=7),
             period_end=START + timedelta(days=14),
             actor=USER,
         )
+    assert scope_err.value.oauth_code is OAuthErrorCode.INSUFFICIENT_SCOPE
 
     # Future period_end is refused with PERIOD_NOT_ENDED.
     with pytest.raises(MetricsSyncError) as period_err:
@@ -480,6 +489,5 @@ def test_provider_failure_retries_and_overlapping_period_guards(
     with pytest.raises(SubscriberChangeError) as sub_err:
         sub_service.aggregate_for_subject(MetricScope.CHANNEL, channel.id)
     assert (
-        sub_err.value.subscriber_code
-        is SubscriberChangeErrorCode.OVERLAPPING_PERIODS
+        sub_err.value.subscriber_code is SubscriberChangeErrorCode.OVERLAPPING_PERIODS
     )

@@ -365,20 +365,14 @@ def test_container_resolves_preview_and_approval_services(tmp_path: Path) -> Non
     )
     container = build_container(settings)
 
-    assert isinstance(
-        container.resolve(PreviewArtifactService), PreviewArtifactService
-    )
+    assert isinstance(container.resolve(PreviewArtifactService), PreviewArtifactService)
     assert isinstance(container.resolve(PreviewPlayerService), PreviewPlayerService)
-    assert isinstance(
-        container.resolve(PreviewMetadataService), PreviewMetadataService
-    )
+    assert isinstance(container.resolve(PreviewMetadataService), PreviewMetadataService)
     assert isinstance(container.resolve(PreviewReportService), PreviewReportService)
     assert isinstance(
         container.resolve(VersionComparisonService), VersionComparisonService
     )
-    assert isinstance(
-        container.resolve(PreviewEditLoopService), PreviewEditLoopService
-    )
+    assert isinstance(container.resolve(PreviewEditLoopService), PreviewEditLoopService)
     from ai_youtube_agent.content.approval_audit import ApprovalAuditService
 
     assert isinstance(
@@ -419,18 +413,14 @@ def test_container_resolves_youtube_publishing_services(tmp_path: Path) -> None:
     )
     container = build_container(settings)
 
-    assert isinstance(
-        container.resolve(YouTubeOAuthProvider), MockYouTubeOAuthProvider
-    )
+    assert isinstance(container.resolve(YouTubeOAuthProvider), MockYouTubeOAuthProvider)
     assert isinstance(
         container.resolve(YouTubeChannelProvider), MockYouTubeChannelProvider
     )
     assert isinstance(
         container.resolve(YouTubeUploadProvider), MockYouTubeUploadProvider
     )
-    assert isinstance(
-        container.resolve(PublishMetadataMapper), PublishMetadataMapper
-    )
+    assert isinstance(container.resolve(PublishMetadataMapper), PublishMetadataMapper)
     assert isinstance(container.resolve(ShortsPublisher), ShortsPublisher)
     assert isinstance(container.resolve(LongFormPublisher), LongFormPublisher)
     assert isinstance(container.resolve(PublishDuplicateGuard), PublishDuplicateGuard)
@@ -476,9 +466,7 @@ def test_container_resolves_the_analytics_services(tmp_path: Path) -> None:
     assert isinstance(container.resolve(ChannelMetricsSync), ChannelMetricsSync)
     assert isinstance(container.resolve(VideoMetricsSync), VideoMetricsSync)
     assert isinstance(container.resolve(ShortsMetricsService), ShortsMetricsService)
-    assert isinstance(
-        container.resolve(LongFormMetricsService), LongFormMetricsService
-    )
+    assert isinstance(container.resolve(LongFormMetricsService), LongFormMetricsService)
     assert isinstance(container.resolve(WatchTimeService), WatchTimeService)
     assert isinstance(container.resolve(RetentionSync), RetentionSync)
     assert isinstance(container.resolve(CTRSync), CTRSync)
@@ -518,23 +506,15 @@ def test_container_resolves_the_economics_services(tmp_path: Path) -> None:
     )
     container = build_container(settings)
 
-    assert isinstance(
-        container.resolve(EstimatedRevenueSync), EstimatedRevenueSync
-    )
+    assert isinstance(container.resolve(EstimatedRevenueSync), EstimatedRevenueSync)
     assert isinstance(container.resolve(FinalRevenueSync), FinalRevenueSync)
-    assert isinstance(
-        container.resolve(RevenueStreamRegistry), RevenueStreamRegistry
-    )
-    assert isinstance(
-        container.resolve(RevenueSourceService), RevenueSourceService
-    )
+    assert isinstance(container.resolve(RevenueStreamRegistry), RevenueStreamRegistry)
+    assert isinstance(container.resolve(RevenueSourceService), RevenueSourceService)
     assert isinstance(container.resolve(CostLedger), CostLedger)
     assert isinstance(container.resolve(LLMCostRecorder), LLMCostRecorder)
     assert isinstance(container.resolve(TTSCostService), TTSCostService)
     assert isinstance(container.resolve(RenderCostRecorder), RenderCostRecorder)
-    assert isinstance(
-        container.resolve(StorageApiCostRecorder), StorageApiCostRecorder
-    )
+    assert isinstance(container.resolve(StorageApiCostRecorder), StorageApiCostRecorder)
     assert isinstance(
         container.resolve(ContributionMarginCalculator),
         ContributionMarginCalculator,
@@ -598,34 +578,18 @@ def test_container_resolves_the_command_center_dashboard_services(
     )
     container = build_container(settings)
 
-    assert isinstance(
-        container.resolve(DashboardShellService), DashboardShellService
-    )
+    assert isinstance(container.resolve(DashboardShellService), DashboardShellService)
     assert isinstance(container.resolve(HomeScreenService), HomeScreenService)
-    assert isinstance(
-        container.resolve(ChannelOverviewService), ChannelOverviewService
-    )
+    assert isinstance(container.resolve(ChannelOverviewService), ChannelOverviewService)
     assert isinstance(container.resolve(ContentScreenService), ContentScreenService)
     assert isinstance(container.resolve(VideoDetailService), VideoDetailService)
-    assert isinstance(
-        container.resolve(AnalyticsScreenService), AnalyticsScreenService
-    )
+    assert isinstance(container.resolve(AnalyticsScreenService), AnalyticsScreenService)
     assert isinstance(container.resolve(RevenueScreenService), RevenueScreenService)
-    assert isinstance(
-        container.resolve(CommentsScreenService), CommentsScreenService
-    )
-    assert isinstance(
-        container.resolve(AICenterScreenService), AICenterScreenService
-    )
-    assert isinstance(
-        container.resolve(ApprovalCenterService), ApprovalCenterService
-    )
-    assert isinstance(
-        container.resolve(SettingsScreenService), SettingsScreenService
-    )
-    assert isinstance(
-        container.resolve(AlertsScreenService), AlertsScreenService
-    )
+    assert isinstance(container.resolve(CommentsScreenService), CommentsScreenService)
+    assert isinstance(container.resolve(AICenterScreenService), AICenterScreenService)
+    assert isinstance(container.resolve(ApprovalCenterService), ApprovalCenterService)
+    assert isinstance(container.resolve(SettingsScreenService), SettingsScreenService)
+    assert isinstance(container.resolve(AlertsScreenService), AlertsScreenService)
     assert not (tmp_path / "agent.db").exists()
 
 
@@ -760,9 +724,7 @@ def test_container_resolves_pilot_unlock_and_production_readiness_services(
     container = build_container(settings)
 
     assert isinstance(container.resolve(ShortsPilotRunner), ShortsPilotRunner)
-    assert isinstance(
-        container.resolve(LongFormUnlockService), LongFormUnlockService
-    )
+    assert isinstance(container.resolve(LongFormUnlockService), LongFormUnlockService)
     assert isinstance(
         container.resolve(ProductionReadinessAuditor), ProductionReadinessAuditor
     )

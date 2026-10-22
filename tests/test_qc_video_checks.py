@@ -2,7 +2,8 @@
 
 Validates:
 - K-116: VideoArtifactTestHarness orchestration, check execution, persistence and audit;
-- K-117: check_container with valid MP4, empty bytes, corrupt headers and unrecognized brands;
+- K-117: check_container with valid MP4, empty bytes, corrupt headers and
+  unrecognized brands;
 - K-118: check_resolution for Shorts (9:16 vertical) and LongForm (16:9 horizontal);
 - K-119: check_fps for target matching, low fps warning, and invalid fps;
 - K-120: check_duration for content type bounds (Shorts 1..180s, LongForm 181..14400s)
@@ -10,9 +11,10 @@ Validates:
 - K-121: check_audio for presence, duration sync, silence, and clipping thresholds;
 - K-122: check_subtitles for SRT/VTT timing, UTF-8/NFC encoding, and missing captions;
 - K-123: check_black_frames for excessive black/frozen frames;
-- K-124: check_render_integrity for incomplete/corrupt MP4 boxes, checksums, and job lineage;
-- K-125: check_metadata for consistency between artifacts, project/script versions, chapters,
-  attributions, and AI disclosure.
+- K-124: check_render_integrity for incomplete/corrupt MP4 boxes, checksums, and job
+  lineage;
+- K-125: check_metadata for consistency between artifacts, project/script versions,
+  chapters, attributions, and AI disclosure.
 """
 
 import hashlib
@@ -25,11 +27,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from factories import USER, at
 
 from ai_youtube_agent.content.longform_metadata import ChapterMetadata, LongFormMetadata
 from ai_youtube_agent.content.policy_check import PolicyStatus
-from ai_youtube_agent.content.qc import QCCheck, QCResult, QCStatus
+from ai_youtube_agent.content.qc import QCResult, QCStatus
 from ai_youtube_agent.content.qc_harness import (
     QCHarnessError,
     QCHarnessErrorCode,
@@ -73,6 +74,7 @@ from ai_youtube_agent.core.db.repositories.content import (
 )
 from ai_youtube_agent.core.db.repositories.review import QCResultRepository
 from ai_youtube_agent.providers.mock_video_render import stub_mp4
+from factories import USER, at
 
 T0 = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 
@@ -414,10 +416,15 @@ def test_subtitle_check_passes_when_captions_disabled() -> None:
 
 
 def test_subtitle_check_fails_when_missing_or_bom_or_crlf() -> None:
-    assert check_subtitles(make_context(captions_enabled=True, subtitle_data=None)).status == QCStatus.FAIL
+    assert (
+        check_subtitles(make_context(captions_enabled=True, subtitle_data=None)).status
+        == QCStatus.FAIL
+    )
     assert (
         check_subtitles(
-            make_context(captions_enabled=True, subtitle_data=b"\xef\xbb\xbf" + VALID_SRT)
+            make_context(
+                captions_enabled=True, subtitle_data=b"\xef\xbb\xbf" + VALID_SRT
+            )
         ).status
         == QCStatus.FAIL
     )
@@ -469,7 +476,9 @@ def test_black_frame_check_passes_for_normal_video() -> None:
 
 def test_black_frame_check_fails_for_all_zero_mdat_or_excessive_black_luma() -> None:
     black_mp4 = stub_mp4(5000, b"\x00" * 1024)
-    assert check_black_frames(make_context(video_data=black_mp4)).status == QCStatus.FAIL
+    assert (
+        check_black_frames(make_context(video_data=black_mp4)).status == QCStatus.FAIL
+    )
 
     ctx_luma_black = make_context(
         frame_luma_samples=[0.0, 0.01, 0.0, 0.5, 0.6],
@@ -479,7 +488,9 @@ def test_black_frame_check_fails_for_all_zero_mdat_or_excessive_black_luma() -> 
 
 def test_black_frame_check_fails_for_frozen_frames() -> None:
     frozen_mp4 = stub_mp4(5000, b"\x7f" * 1024)
-    assert check_black_frames(make_context(video_data=frozen_mp4)).status == QCStatus.FAIL
+    assert (
+        check_black_frames(make_context(video_data=frozen_mp4)).status == QCStatus.FAIL
+    )
 
     ctx_hashes = make_context(
         frame_hashes=["h1", "h2", "h2", "h2", "h2", "h2", "h2"],
@@ -510,7 +521,10 @@ def test_render_integrity_passes_for_valid_mp4_and_matching_lineage() -> None:
 def test_render_integrity_fails_for_truncated_mp4_or_stale_timeline() -> None:
     raw = stub_mp4(10_000, b"render-ok-payload")
     truncated = raw[:-10]
-    assert check_render_integrity(make_context(video_data=truncated)).status == QCStatus.FAIL
+    assert (
+        check_render_integrity(make_context(video_data=truncated)).status
+        == QCStatus.FAIL
+    )
 
     sha = hashlib.sha256(raw).hexdigest()
     ctx_stale = make_context(
@@ -622,7 +636,10 @@ def test_metadata_check_validates_longform_chapters_in_description() -> None:
 
 
 def test_qc_harness_inspect_and_record(database: Database, tmp_path: Path) -> None:
-    """Validate that VideoArtifactTestHarness executes checks, stores QCResult and audits."""
+    """Validate that VideoArtifactTestHarness executes checks.
+
+    It also stores QCResult and audits.
+    """
     from factories import make_channel, make_strategy_profile
 
     sink = InMemoryAuditSink()
@@ -634,7 +651,7 @@ def test_qc_harness_inspect_and_record(database: Database, tmp_path: Path) -> No
         channel = make_channel()
         ChannelRepository(conn).add(channel)
 
-        strategy = make_strategy_profile(channel.id)
+        strategy = make_strategy_profile(channel)
         StrategyProfileRepository(conn).add(strategy)
 
         item = ContentItem.create(
@@ -694,7 +711,7 @@ def test_qc_harness_inspect_and_record(database: Database, tmp_path: Path) -> No
         assert stored_res.id == qc_result.id
         assert len(stored_res.checks) == 4
 
-    events = [e for e in sink.events if e.action == "qc.evaluated"]
+    events = [e for e in sink.events() if e.action == "qc.evaluated"]
     assert len(events) == 1
     assert events[0].metadata["overall_status"] == "pass"
     assert events[0].metadata["checks_count"] == 4
@@ -714,7 +731,7 @@ def test_qc_harness_missing_video_raises_error(
     with database.transaction() as conn:
         channel = make_channel()
         ChannelRepository(conn).add(channel)
-        strategy = make_strategy_profile(channel.id)
+        strategy = make_strategy_profile(channel)
         StrategyProfileRepository(conn).add(strategy)
         item = ContentItem.create(
             channel.id,

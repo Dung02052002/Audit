@@ -48,7 +48,7 @@ def _snapshot(
     )
 
 
-def test_extract_subscriber_change_computes_net_only_when_both_gained_and_lost_exist() -> None:
+def test_subscriber_net_only_when_gained_and_lost_both_exist() -> None:
     both = _snapshot(
         "s1",
         T0,
@@ -62,9 +62,7 @@ def test_extract_subscriber_change_computes_net_only_when_both_gained_and_lost_e
     assert view.subscribers_lost == Decimal("10")
     assert view.net_subscribers == Decimal("32")
 
-    only_gained = _snapshot(
-        "s2", T0, T0 + timedelta(days=7), subscribers_gained=15
-    )
+    only_gained = _snapshot("s2", T0, T0 + timedelta(days=7), subscribers_gained=15)
     partial = extract_subscriber_change(only_gained)
     assert partial.complete_pair is False
     assert partial.subscribers_gained == Decimal("15")
@@ -159,7 +157,4 @@ def test_service_syncs_and_aggregates_disjoint_periods_and_refuses_overlaps(
     )
     with pytest.raises(SubscriberChangeError) as caught:
         aggregate_subscriber_changes([first.snapshot, overlap])  # type: ignore[list-item]
-    assert (
-        caught.value.subscriber_code
-        is SubscriberChangeErrorCode.OVERLAPPING_PERIODS
-    )
+    assert caught.value.subscriber_code is SubscriberChangeErrorCode.OVERLAPPING_PERIODS

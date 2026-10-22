@@ -98,9 +98,7 @@ class LongFormMixErrorCode(StrEnum):
 
 USER_MESSAGES = {
     LongFormMixErrorCode.MIX: "The audio could not be mixed.",
-    LongFormMixErrorCode.PROJECT_NOT_FOUND: (
-        "This LongForm project does not exist."
-    ),
+    LongFormMixErrorCode.PROJECT_NOT_FOUND: ("This LongForm project does not exist."),
     LongFormMixErrorCode.CONFLICT: (
         "The LongForm project changed in the meantime. Reload it and try again."
     ),
@@ -108,8 +106,7 @@ USER_MESSAGES = {
         "Plan the scenes of this LongForm video before mixing its audio."
     ),
     LongFormMixErrorCode.STALE_INPUT: (
-        "The script or audio of this project is out of date. Rebind the "
-        "project first."
+        "The script or audio of this project is out of date. Rebind the project first."
     ),
     LongFormMixErrorCode.ASSET_UNAVAILABLE: (
         "A sound file of this LongForm video is missing or has changed."
@@ -123,9 +120,7 @@ USER_MESSAGES = {
     LongFormMixErrorCode.FORMAT_UNSUPPORTED: (
         "A sound file of this LongForm video is not in a supported audio format."
     ),
-    LongFormMixErrorCode.MIX_INVALID: (
-        "The mixed audio did not pass its checks."
-    ),
+    LongFormMixErrorCode.MIX_INVALID: ("The mixed audio did not pass its checks."),
 }
 
 HTTP_STATUS = {
@@ -268,9 +263,7 @@ class LongFormAudioMixer:
                     "longer the latest of its content item",
                     code=LongFormMixErrorCode.STALE_INPUT,
                 )
-            item = ContentItemRepository(connection).get(
-                project.content_item_id
-            )
+            item = ContentItemRepository(connection).get(project.content_item_id)
             if item is None:
                 raise LongFormMixError(
                     f"content item {project.content_item_id} does not exist",
@@ -291,9 +284,7 @@ class LongFormAudioMixer:
             provenance_repo = ProvenanceRepository(connection)
             for entry in planned:
                 latest_prov = provenance_repo.latest(entry.asset_id)
-                current_prov = (
-                    latest_prov.id if latest_prov is not None else None
-                )
+                current_prov = latest_prov.id if latest_prov is not None else None
                 if (
                     entry.provenance_id is not None
                     and entry.provenance_id != current_prov
@@ -348,9 +339,7 @@ class LongFormAudioMixer:
                 "; ".join(f"{check.name}: {check.detail}" for check in failed),
                 code=LongFormMixErrorCode.MIX_INVALID,
             )
-        return tuple(
-            check.name for check in checks if check.status is QCStatus.WARN
-        )
+        return tuple(check.name for check in checks if check.status is QCStatus.WARN)
 
     def _event_metadata(
         self,
@@ -368,9 +357,7 @@ class LongFormAudioMixer:
             "size_bytes": len(outcome.wav),
             "asset_ids": ",".join(outcome.asset_ids),
             "asset_count": len(outcome.asset_ids),
-            "music_count": sum(
-                entry.role is MixRole.MUSIC for entry in planned
-            ),
+            "music_count": sum(entry.role is MixRole.MUSIC for entry in planned),
             "sfx_count": sum(entry.role is MixRole.SFX for entry in planned),
             "qc_warned": ",".join(outcome.qc_warnings),
             **self._constraints.to_dict(),
@@ -408,9 +395,7 @@ def _planned(timeline: LongFormTimeline) -> list[_Planned]:
         for effect in scene.assets:
             if effect.role is not AssetRole.SFX:
                 continue
-            length = (
-                scene.duration_ms if effect.end_ms is None else effect.end_ms
-            )
+            length = scene.duration_ms if effect.end_ms is None else effect.end_ms
             planned.append(
                 _Planned(
                     effect.asset_id,
@@ -452,4 +437,3 @@ def _track(entry: _Planned, pcm: PcmAudio) -> MixTrack:
         raise LongFormMixError(
             str(error), code=LongFormMixErrorCode.MIX_INVALID
         ) from None
-

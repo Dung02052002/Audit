@@ -5,13 +5,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
+from ai_youtube_agent.pipeline.job import AIJobStatus
 from ai_youtube_agent.pipeline.job_queue import (
     InMemoryJobQueue,
     JobQueue,
     JobQueueError,
-    JobQueueErrorCode,
-    QueuedJobLease,
     SqliteJobQueue,
 )
 
@@ -66,7 +64,7 @@ def test_sqlite_job_queue_lease_expiration_and_renewal(database: Database) -> No
     clock_time = FIXED_NOW
     queue = SqliteJobQueue(database, clock=lambda: clock_time)
 
-    res = queue.enqueue_new("audio.generate", idempotency_key="key-audio-001")
+    queue.enqueue_new("audio.generate", idempotency_key="key-audio-001")
     lease = queue.dequeue("worker-1", lease_duration=timedelta(minutes=2))
     assert lease is not None
 

@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.test_longform_project import USER, Clock
 
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
@@ -51,7 +52,6 @@ from ai_youtube_agent.core.db.repositories.content import (
     ScriptRepository,
 )
 from ai_youtube_agent.core.flags import FeatureFlags
-from tests.test_longform_project import USER, Clock
 
 
 def _sine_wav(
@@ -64,8 +64,7 @@ def _sine_wav(
     frames = int(rate * duration_ms / 1000)
     peak = int(32767 * amplitude)
     samples = [
-        int(peak * math.sin(2.0 * math.pi * freq_hz * i / rate))
-        for i in range(frames)
+        int(peak * math.sin(2.0 * math.pi * freq_hz * i / rate)) for i in range(frames)
     ]
     pcm = struct.pack(f"<{frames}h", *samples)
     buf = io.BytesIO()
@@ -120,14 +119,14 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
     )
     script = Script.create(
         item.id,
-        (
+        sections=(
             ScriptSection(SectionKind.HOOK, "Hook line.", seconds=2),
             ScriptSection(SectionKind.INTRO, "Intro line.", seconds=2),
             ScriptSection(SectionKind.BODY, "Body part one.", seconds=2),
             ScriptSection(SectionKind.OUTRO, "Outro line.", seconds=2),
             ScriptSection(SectionKind.CTA, "Subscribe.", seconds=2),
         ),
-        actor=USER,
+        created_by=USER,
         clock=clock,
     )
     profile = VoiceProfile.create(
@@ -176,6 +175,7 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
         uri=written_music.uri,
         sha256=written_music.sha256,
         size_bytes=written_music.size_bytes,
+        media_type="audio/wav",
         clock=clock,
     )
     sfx_wav = _sine_wav(1_000, freq_hz=440.0, amplitude=0.2)
@@ -186,6 +186,7 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
         uri=written_sfx.uri,
         sha256=written_sfx.sha256,
         size_bytes=written_sfx.size_bytes,
+        media_type="audio/wav",
         clock=clock,
     )
     # Re-add voice_artifact as latest by version 4 so project binds to voice
@@ -193,18 +194,14 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
         uri=written_voice.uri,
         sha256=written_voice.sha256,
         size_bytes=written_voice.size_bytes,
+        media_type="audio/wav",
         clock=clock,
     )
     voice_latest_meta = AudioMetadata.create(
-        voice_latest.id,
-        script_id=script.id,
-        voice_profile_id=profile.id,
-        voice_profile_version=profile.version,
-        provider="mock",
+        voice_latest,
+        script,
+        profile,
         duration_ms=10_000,
-        sample_rate_hz=24_000,
-        channels=1,
-        format="wav",
         clock=clock,
     )
     with database.transaction() as conn:
@@ -216,22 +213,22 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
     registry = AssetRegistry(database, audit, clock=clock)
     music_asset = registry.register(
         channel.id,
-        kind=AssetKind.AUDIO,
-        category=AssetCategory.ORIGINAL,
+        kind=AssetKind.MUSIC,
+        category=AssetCategory.GENERATED,
         title="Ambient Bed",
         source="internal://music",
         artifact_id=music_artifact.id,
         actor=USER,
-    ).asset
+    )
     sfx_asset = registry.register(
         channel.id,
         kind=AssetKind.AUDIO,
-        category=AssetCategory.ORIGINAL,
+        category=AssetCategory.GENERATED,
         title="Whoosh",
         source="internal://sfx",
         artifact_id=sfx_artifact.id,
         actor=USER,
-    ).asset
+    )
     registry.attach(music_asset.id, item.id, purpose="music", actor=USER)
     registry.attach(sfx_asset.id, item.id, purpose="sfx", actor=USER)
 
@@ -266,16 +263,14 @@ def test_longform_audio_mixer_mixes_voice_music_and_sfx(
     )
 
     mixer = LongFormAudioMixer(database, storage, audit, flags)
-    outcome = mixer.mix(
-        saved.id, expected_version=saved.version, actor=USER
-    )
+    outcome = mixer.mix(saved.id, expected_version=saved.version, actor=USER)
 
     assert outcome.wav.startswith(b"RIFF")
     assert outcome.timeline_sha256 == saved.timeline.sha256
     assert outcome.voice_sha256 == saved.audio_sha256
     assert outcome.asset_ids == tuple(sorted((music_asset.id, sfx_asset.id)))
 
-    events = [e for e in sink.events if e.action == MIXED]
+    events = [e for e in sink.events() if e.action == MIXED]
     assert len(events) == 1
     assert events[0].metadata["music_count"] == 1
     assert events[0].metadata["sfx_count"] == 1
@@ -300,4 +295,3 @@ def test_longform_audio_mixer_refuses_draft_project(tmp_path: Path) -> None:
     with pytest.raises(LongFormMixError) as exc_info:
         mixer.mix(project.id, expected_version=project.version, actor=USER)
     assert exc_info.value.code == LongFormMixErrorCode.NOT_READY.value
-

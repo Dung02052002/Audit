@@ -256,9 +256,7 @@ class _Placement:
             if self.box is not None:
                 raise ValueError(f"a {self.role.value} asset has no box")
         elif self.gain_db is not None or self.fade_in_ms or self.fade_out_ms:
-            raise ValueError(
-                f"gain and fades are for audio, not for {self.role.value}"
-            )
+            raise ValueError(f"gain and fades are for audio, not for {self.role.value}")
 
     def check_within(self, limit_ms: int, what: str) -> None:
         """The timing rules against the length of the scene or timeline."""
@@ -336,9 +334,7 @@ class AssetPlacement(_Placement):
     _required = frozenset({"asset_id"})
 
 
-SCENE_KEYS = frozenset(
-    {"id", "section_index", "start_ms", "end_ms", "title", "assets"}
-)
+SCENE_KEYS = frozenset({"id", "section_index", "start_ms", "end_ms", "title", "assets"})
 SCENE_REQUIRED_KEYS = frozenset({"id", "section_index", "start_ms", "end_ms"})
 
 
@@ -358,9 +354,7 @@ class Scene:
         _whole("start_ms", self.start_ms, 0, MAX_DURATION_MS)
         _whole("end_ms", self.end_ms, 1, MAX_DURATION_MS)
         if self.end_ms - self.start_ms < MIN_SCENE_MS:
-            raise ValueError(
-                f"scene {self.id} must last at least {MIN_SCENE_MS} ms"
-            )
+            raise ValueError(f"scene {self.id} must last at least {MIN_SCENE_MS} ms")
         if self.title is not None and (
             not isinstance(self.title, str)
             or not self.title.strip()
@@ -667,8 +661,7 @@ def _check_scenes(scenes: tuple[Any, ...], duration_ms: int) -> None:
         section_index = scene.section_index
     if expected_start != duration_ms:
         raise ValueError(
-            f"the scenes end at {expected_start} ms but the audio is "
-            f"{duration_ms} ms"
+            f"the scenes end at {expected_start} ms but the audio is {duration_ms} ms"
         )
 
 

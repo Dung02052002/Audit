@@ -8,7 +8,8 @@ navigation destinations, live badge calculation, and XSS-safe HTML app shell:
   ``content``, ``video_detail``, ``analytics``, ``revenue``, ``comments``,
   ``ai_center``, ``approvals``, ``settings``, ``alerts``).
 - ``ViewLoadState``: ``ready``, ``empty``, ``loading``, ``error``.
-- ``BadgeTone``: ``neutral``, ``accent``, ``info``, ``success``, ``warning``, ``danger``.
+- ``BadgeTone``: ``neutral``, ``accent``, ``info``, ``success``, ``warning``,
+  ``danger``.
 - ``DesignSystemTokens`` and ``DEFAULT_IOS_DESIGN_TOKENS``: SF Pro typography,
   frosted-glass blur, rounded card radii, semantic palette, and spacing scale.
 - ``NavDestination`` and ``DashboardShellState``: immutable navigation and channel
@@ -123,7 +124,11 @@ class DesignSystemTokens:
             raise ValueError("font_family_sans must not be empty")
         if not self.font_family_mono or not self.font_family_mono.strip():
             raise ValueError("font_family_mono must not be empty")
-        if isinstance(self.blur_px, bool) or not isinstance(self.blur_px, int) or self.blur_px < 0:
+        if (
+            isinstance(self.blur_px, bool)
+            or not isinstance(self.blur_px, int)
+            or self.blur_px < 0
+        ):
             raise ValueError("blur_px must be a non-negative integer")
         if not self.colors:
             raise ValueError("colors must not be empty")
@@ -305,9 +310,7 @@ class DashboardShellState:
         }
 
 
-_NAVIGATION_SPEC: Final[
-    tuple[tuple[DashboardScreenId, str, str, str, bool], ...]
-] = (
+_NAVIGATION_SPEC: Final[tuple[tuple[DashboardScreenId, str, str, str, bool], ...]] = (
     (DashboardScreenId.HOME, "Home", "house.fill", "/dashboard/home", True),
     (
         DashboardScreenId.CHANNEL,
@@ -345,9 +348,21 @@ _NAVIGATION_SPEC: Final[
         "/dashboard/comments",
         False,
     ),
-    (DashboardScreenId.AI_CENTER, "AI Center", "cpu.fill", "/dashboard/ai-center", True),
+    (
+        DashboardScreenId.AI_CENTER,
+        "AI Center",
+        "cpu.fill",
+        "/dashboard/ai-center",
+        True,
+    ),
     (DashboardScreenId.ALERTS, "Alerts", "bell.badge.fill", "/dashboard/alerts", False),
-    (DashboardScreenId.SETTINGS, "Settings", "gearshape.fill", "/dashboard/settings", False),
+    (
+        DashboardScreenId.SETTINGS,
+        "Settings",
+        "gearshape.fill",
+        "/dashboard/settings",
+        False,
+    ),
 )
 
 _ACTIVE_JOB_STATUSES: Final[frozenset[AIJobStatus]] = frozenset(
@@ -508,12 +523,18 @@ body.cc-body {{
   font-weight: 600;
 }}
 
-.cc-badge-neutral {{ background: rgba(108, 108, 112, 0.16); color: var(--cc-color-text-secondary); }}
-.cc-badge-accent {{ background: rgba(0, 122, 255, 0.16); color: var(--cc-color-accent-blue); }}
-.cc-badge-info {{ background: rgba(0, 122, 255, 0.16); color: var(--cc-color-accent-blue); }}
-.cc-badge-success {{ background: rgba(52, 199, 89, 0.16); color: var(--cc-color-semantic-green); }}
-.cc-badge-warning {{ background: rgba(255, 149, 0, 0.18); color: var(--cc-color-semantic-amber); }}
-.cc-badge-danger {{ background: rgba(255, 59, 48, 0.18); color: var(--cc-color-semantic-red); }}
+.cc-badge-neutral {{ background: rgba(108, 108, 112, 0.16); color: \
+var(--cc-color-text-secondary); }}
+.cc-badge-accent {{ background: rgba(0, 122, 255, 0.16); color: \
+var(--cc-color-accent-blue); }}
+.cc-badge-info {{ background: rgba(0, 122, 255, 0.16); color: \
+var(--cc-color-accent-blue); }}
+.cc-badge-success {{ background: rgba(52, 199, 89, 0.16); color: \
+var(--cc-color-semantic-green); }}
+.cc-badge-warning {{ background: rgba(255, 149, 0, 0.18); color: \
+var(--cc-color-semantic-amber); }}
+.cc-badge-danger {{ background: rgba(255, 59, 48, 0.18); color: \
+var(--cc-color-semantic-red); }}
 
 .cc-tabbar {{
   grid-column: 1 / -1;
@@ -541,7 +562,7 @@ def render_dashboard_shell_html(
     channel_label = html.escape(shell.active_channel_title or "No Channel Selected")
     channel_options = "".join(
         f'<option value="{html.escape(ch.channel_id, quote=True)}"'
-        f'{" selected" if ch.selected else ""}>'
+        f"{' selected' if ch.selected else ''}>"
         f"{html.escape(ch.title)} ({html.escape(ch.status)})</option>"
         for ch in shell.channels
     )
@@ -558,12 +579,17 @@ def render_dashboard_shell_html(
   <title>{title_text}</title>
   <style>{css}</style>
 </head>
-<body class="cc-body" data-theme="{html.escape(shell.design_system.theme_name, quote=True)}" data-load-state="{html.escape(shell.load_state.value, quote=True)}">
+<body class="cc-body" data-theme="{
+        html.escape(shell.design_system.theme_name, quote=True)
+    }" data-load-state="{html.escape(shell.load_state.value, quote=True)}">
   <div class="cc-shell">
     <header class="cc-topbar" role="banner">
       <div class="cc-brand">
         <strong>{app_title}</strong>
-        <span class="cc-badge cc-badge-accent" data-active-screen="{html.escape(shell.active_screen.value, quote=True)}">{html.escape(shell.active_screen.value)}</span>
+        <span class="cc-badge cc-badge-accent" \
+data-active-screen="{html.escape(shell.active_screen.value, quote=True)}">{
+        html.escape(shell.active_screen.value)
+    }</span>
       </div>
       <div class="cc-channel-switcher" aria-label="Active Channel">
         <span class="cc-channel-current">{channel_label}</span>
@@ -589,7 +615,8 @@ def render_dashboard_shell_html(
 def _render_nav_item(dest: NavDestination) -> str:
     current = ' aria-current="page"' if dest.active else ""
     badge = (
-        f'<span class="cc-badge cc-badge-{html.escape(dest.badge_tone.value, quote=True)}">'
+        f'<span class="cc-badge '
+        f'cc-badge-{html.escape(dest.badge_tone.value, quote=True)}">'
         f"{dest.badge_count}</span>"
         if dest.badge_count > 0
         else ""
@@ -735,9 +762,7 @@ class DashboardShellService:
         )
 
 
-def _select_channel(
-    channels: list[Channel], channel_id: str | None
-) -> Channel | None:
+def _select_channel(channels: list[Channel], channel_id: str | None) -> Channel | None:
     if channel_id is not None:
         for ch in channels:
             if ch.id == channel_id:
@@ -778,7 +803,8 @@ def _count_attention_comments(connection: Any, channel_id: str) -> int:
 
 def _count_active_jobs(connection: Any, channel_id: str) -> int:
     item_ids = {
-        item.id for item in ContentItemRepository(connection).list_by_channel(channel_id)
+        item.id
+        for item in ContentItemRepository(connection).list_by_channel(channel_id)
     }
     count = 0
     for job in AIJobRepository(connection).list_all():
@@ -787,4 +813,3 @@ def _count_active_jobs(connection: Any, channel_id: str) -> int:
         ):
             count += 1
     return count
-

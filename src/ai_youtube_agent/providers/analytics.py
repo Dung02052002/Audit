@@ -151,7 +151,9 @@ class AnalyticsQuery:
         if not isinstance(self.youtube_channel_id, str) or not (
             YOUTUBE_CHANNEL_ID_PATTERN.match(self.youtube_channel_id)
         ):
-            raise ValueError("youtube_channel_id must be 'UC' followed by 22 characters")
+            raise ValueError(
+                "youtube_channel_id must be 'UC' followed by 22 characters"
+            )
         if not isinstance(self.scope, MetricScope):
             raise TypeError("scope must be a MetricScope")
         _require_utc(self.period_start, "period_start")
@@ -160,7 +162,10 @@ class AnalyticsQuery:
             raise ValueError("period_start must be earlier than period_end")
         if self.period_end - self.period_start > MAX_PERIOD:
             raise ValueError("the period must not be longer than 366 days")
-        if not isinstance(self.metrics, tuple) or not 1 <= len(self.metrics) <= MAX_METRICS:
+        if (
+            not isinstance(self.metrics, tuple)
+            or not 1 <= len(self.metrics) <= MAX_METRICS
+        ):
             raise ValueError(f"metrics must be a tuple of 1 to {MAX_METRICS} names")
         if len(set(self.metrics)) != len(self.metrics):
             raise ValueError("metrics must not repeat")
@@ -180,14 +185,18 @@ class AnalyticsQuery:
             if len(set(self.video_ids)) != len(self.video_ids):
                 raise ValueError("video_ids must not repeat")
             for video_id in self.video_ids:
-                if not isinstance(video_id, str) or not VIDEO_ID_PATTERN.match(video_id):
+                if not isinstance(video_id, str) or not VIDEO_ID_PATTERN.match(
+                    video_id
+                ):
                     raise ValueError(f"{video_id!r} is not a YouTube video id")
         if (
             isinstance(self.page_size, bool)
             or not isinstance(self.page_size, int)
             or not 1 <= self.page_size <= MAX_PAGE_SIZE
         ):
-            raise ValueError(f"page_size must be a whole number from 1 to {MAX_PAGE_SIZE}")
+            raise ValueError(
+                f"page_size must be a whole number from 1 to {MAX_PAGE_SIZE}"
+            )
         if self.page_token is not None and (
             not isinstance(self.page_token, str)
             or not 1 <= len(self.page_token) <= MAX_PAGE_TOKEN_LENGTH
@@ -263,7 +272,9 @@ class AnalyticsPage:
             "period_start": self.period_start.isoformat(),
             "period_end": self.period_end.isoformat(),
             "retrieved_at": self.retrieved_at.isoformat(),
-            "data_through": self.data_through.isoformat() if self.data_through else None,
+            "data_through": self.data_through.isoformat()
+            if self.data_through
+            else None,
         }
 
 

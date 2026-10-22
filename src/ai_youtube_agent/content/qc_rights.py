@@ -85,9 +85,7 @@ def evaluate_rights_qc(report: RightsReport) -> QCCheck:
             covered_refs.add(record.assessment.asset_id)
 
     uncovered_assets = [
-        asset.asset_id
-        for asset in report.assets
-        if asset.asset_id not in covered_refs
+        asset.asset_id for asset in report.assets if asset.asset_id not in covered_refs
     ]
     if uncovered_assets:
         return QCCheck(

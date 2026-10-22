@@ -1,4 +1,5 @@
-"""Deterministic in-memory mock YouTube Upload provider (Prompt Pack v8, prompt #147), context C12 Publishing.
+"""Deterministic in-memory mock YouTube Upload provider (Prompt Pack v8, prompt #147),
+context C12 Publishing.
 
 Never connects to the network or uploads real videos to YouTube. Verifies OAuth
 token scopes, checks media byte sizes and SHA-256 digests against the payload,
@@ -28,9 +29,7 @@ Clock = Callable[[], datetime]
 
 def deterministic_youtube_video_id(idempotency_key: str, video_sha256: str) -> str:
     """Derive a deterministic 11-character YouTube video ID from key and sha256."""
-    digest = hashlib.sha256(
-        f"{idempotency_key}:{video_sha256}".encode("utf-8")
-    ).digest()
+    digest = hashlib.sha256(f"{idempotency_key}:{video_sha256}".encode()).digest()
     encoded = base64.urlsafe_b64encode(digest).decode("ascii")
     return encoded[:11]
 
@@ -127,14 +126,16 @@ class MockYouTubeUploadProvider:
             if token.channel_id != payload.channel_id:
                 raise YouTubeUploadError(
                     UploadErrorCode.UNAUTHORIZED,
-                    f"token belongs to channel {token.channel_id}, not {payload.channel_id}",
+                    f"token belongs to channel {token.channel_id}, not "
+                    f"{payload.channel_id}",
                     provider=self._name,
                 )
 
         if len(video_bytes) != payload.video_size_bytes:
             raise YouTubeUploadError(
                 UploadErrorCode.INVALID_MEDIA,
-                f"video_bytes length {len(video_bytes)} does not match payload.video_size_bytes {payload.video_size_bytes}",
+                f"video_bytes length {len(video_bytes)} does not match "
+                f"payload.video_size_bytes {payload.video_size_bytes}",
                 provider=self._name,
             )
         actual_video_sha = hashlib.sha256(video_bytes).hexdigest()

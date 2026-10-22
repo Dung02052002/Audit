@@ -20,7 +20,8 @@ mapped the metadata (``PublishContextLoader``, ``PublishMetadataMapper``):
    audited as ``publish.upload_retry``.
 6. On success, in one transaction, store the result on the job and move the item
    ``PUBLISHING -> PUBLISHED``; audit ``<prefix>.published``.
-7. On failure the job becomes ``FAILED`` with the error code (``<prefix>.publish_failed``
+7. On failure the job becomes ``FAILED`` with the error code
+   (``<prefix>.publish_failed``
    is audited with the number of attempts made). If the failure is *resumable*
    (``RESUMABLE_UPLOAD_CODES``, or an unexpected error whose outcome is unknown) the
    item stays ``PUBLISHING``, so a later publish call restarts the same job; any
@@ -56,15 +57,21 @@ from ai_youtube_agent.pipeline.duplicate_guard import (
 from ai_youtube_agent.pipeline.publish import PublishJob
 from ai_youtube_agent.pipeline.publish_audit import (
     PUBLISH_AUTHORIZATION_FAILED as AUTHORIZATION_FAILED,
+)
+from ai_youtube_agent.pipeline.publish_audit import (
     PUBLISH_BLOCKED,
     PUBLISH_DUPLICATE_BLOCKED,
     PUBLISH_REPLAYED,
     PUBLISH_REQUESTED,
-    PUBLISH_TOKEN_RENEWED as TOKEN_RENEWED,
-    PUBLISH_UPLOAD_RETRY as UPLOAD_RETRY,
     PublishAuditRecorder,
     publish_failed_action,
     published_action,
+)
+from ai_youtube_agent.pipeline.publish_audit import (
+    PUBLISH_TOKEN_RENEWED as TOKEN_RENEWED,
+)
+from ai_youtube_agent.pipeline.publish_audit import (
+    PUBLISH_UPLOAD_RETRY as UPLOAD_RETRY,
 )
 from ai_youtube_agent.pipeline.publish_context import (
     PublishContext,
@@ -72,7 +79,10 @@ from ai_youtube_agent.pipeline.publish_context import (
     PublishOutcome,
 )
 from ai_youtube_agent.pipeline.publish_errors import PublishError, PublishErrorCode
-from ai_youtube_agent.pipeline.publish_result import PublishReceiptError, confirm_receipt
+from ai_youtube_agent.pipeline.publish_result import (
+    PublishReceiptError,
+    confirm_receipt,
+)
 from ai_youtube_agent.pipeline.token_recovery import (
     PublishAuthorizationError,
     TokenRecovery,
@@ -148,7 +158,9 @@ class PublishExecutor:
 
     def begin(self, context: PublishContext, *, actor: Actor) -> None:
         """Audit that a publish was requested (`publish.requested`, #156)."""
-        self._recorder.item_event(PUBLISH_REQUESTED, AuditResult.SUCCESS, context, actor)
+        self._recorder.item_event(
+            PUBLISH_REQUESTED, AuditResult.SUCCESS, context, actor
+        )
 
     def record_duplicate(
         self, context: PublishContext, *, actor: Actor, error: DuplicatePublishError
@@ -165,7 +177,9 @@ class PublishExecutor:
     def replay(
         self, context: PublishContext, check: DuplicateCheck, *, actor: Actor
     ) -> PublishOutcome:
-        """Return the stored result of a job that already succeeded (nothing is uploaded)."""
+        """Return the stored result of a job that already succeeded (nothing is
+        uploaded).
+        """
         if check.decision is not DuplicateDecision.REPLAY or check.job is None:
             raise ValueError("only a REPLAY check carries a stored result")
         job = check.job
@@ -210,7 +224,9 @@ class PublishExecutor:
                 AuditResult.DENIED,
                 request,
                 {
-                    "blocked_gates": ",".join(r.gate.value for r in blocked.report.blocked),
+                    "blocked_gates": ",".join(
+                        r.gate.value for r in blocked.report.blocked
+                    ),
                     "reason_codes": ",".join(r.code for r in blocked.report.reasons),
                 },
             )
@@ -243,9 +259,7 @@ class PublishExecutor:
                     raise
                 # YouTube refused the token: renew it once (#154) and try again.
                 renewals += 1
-                token = self._recovery.renew(
-                    context.channel.id, REQUIRED_UPLOAD_SCOPES
-                )
+                token = self._recovery.renew(context.channel.id, REQUIRED_UPLOAD_SCOPES)
                 self._audit_event(
                     TOKEN_RENEWED,
                     AuditResult.SUCCESS,
@@ -284,7 +298,9 @@ class PublishExecutor:
             raise
         return self._succeed(request, running, publishing, receipt, attempts_made)
 
-    def _authorize(self, request: PublishRequest) -> tuple[OAuthToken, RemoteChannelInfo]:
+    def _authorize(
+        self, request: PublishRequest
+    ) -> tuple[OAuthToken, RemoteChannelInfo]:
         """Get a token and verify channel access, renewing an expired or refused token
         once (#154). Nothing is stored; a failure that needs a human is audited as
         `publish.authorization_failed` and raised as `PublishAuthorizationError`."""
@@ -447,9 +463,7 @@ class PublishExecutor:
         request: PublishRequest,
         extra: dict[str, MetadataValue],
     ) -> None:
-        self._recorder.item_event(
-            action, result, request.context, request.actor, extra
-        )
+        self._recorder.item_event(action, result, request.context, request.actor, extra)
 
     def _audit_event(
         self,
@@ -478,8 +492,6 @@ def _is_resumable(error: BaseException, code: str) -> bool:
     """Whether a failed publish may be resumed later (the item stays PUBLISHING)."""
     if isinstance(error, ProviderError):
         return is_resumable_error_code(code)
-    if isinstance(error, PublishReceiptError | PublishError):
-        return False
     # A token that needs renewing by a human, or an unexpected error whose outcome is
     # unknown (the video may already be on YouTube): never mark the item failed.
-    return True
+    return not isinstance(error, PublishReceiptError | PublishError)

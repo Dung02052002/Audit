@@ -108,23 +108,48 @@ class RollbackStep:
 DEFAULT_ROLLBACK_STEPS: Final[tuple[RollbackStep, ...]] = (
     RollbackStep(
         order=1,
-        action="Activate KillSwitchService emergency stop (cancelling all queued AI jobs) and set PUBLISH_ENABLED=false, LONGFORM_ENABLED=false, AUTO_REPLY_ENABLED=false.",
-        verification="Verify KillSwitchService.is_active is True and JobScheduler/PublishGate block new actions.",
+        action=(
+            "Activate KillSwitchService emergency stop (cancelling all queued AI jobs) "
+            "and set PUBLISH_ENABLED=false, LONGFORM_ENABLED=false, "
+            "AUTO_REPLY_ENABLED=false."
+        ),
+        verification=(
+            "Verify KillSwitchService.is_active is True and JobScheduler/PublishGate "
+            "block new actions."
+        ),
     ),
     RollbackStep(
         order=2,
-        action="Trigger GracefulShutdownService to drain in-flight operations and persist job checkpoints.",
-        verification="Verify all running workers exit cleanly and SQLite WAL checkpoints are flushed.",
+        action=(
+            "Trigger GracefulShutdownService to drain in-flight operations and persist "
+            "job checkpoints."
+        ),
+        verification=(
+            "Verify all running workers exit cleanly and SQLite WAL checkpoints are "
+            "flushed."
+        ),
     ),
     RollbackStep(
         order=3,
-        action="Restore the pre-release BackupManager snapshot (SQLite database + artifact storage) and run RestoreVerifier.",
-        verification="Confirm RestoreVerificationReport.passed is True with 100% SHA-256 artifact integrity.",
+        action=(
+            "Restore the pre-release BackupManager snapshot (SQLite database + "
+            "artifact storage) and run RestoreVerifier."
+        ),
+        verification=(
+            "Confirm RestoreVerificationReport.passed is True with 100% SHA-256 "
+            "artifact integrity."
+        ),
     ),
     RollbackStep(
         order=4,
-        action="Redeploy the previous known-good application tag with mock/read-only providers enabled.",
-        verification="Confirm /health and /ready endpoints report HEALTHY before resuming user sessions.",
+        action=(
+            "Redeploy the previous known-good application tag with mock/read-only "
+            "providers enabled."
+        ),
+        verification=(
+            "Confirm /health and /ready endpoints report HEALTHY before resuming user "
+            "sessions."
+        ),
     ),
 )
 
@@ -132,20 +157,35 @@ DEFAULT_OPERATIONAL_RISKS: Final[tuple[ReadinessRisk, ...]] = (
     ReadinessRisk(
         id="RISK-01",
         severity="HIGH",
-        description="Unverified code paths from Build-First implementation if deployed before full automated test execution.",
-        mitigation="Run full pytest, ruff, mypy, and migration verification suites and resolve any failures before enabling production flags.",
+        description=(
+            "Unverified code paths from Build-First implementation if deployed before "
+            "full automated test execution."
+        ),
+        mitigation=(
+            "Run full pytest, ruff, mypy, and migration verification suites and "
+            "resolve any failures before enabling production flags."
+        ),
     ),
     ReadinessRisk(
         id="RISK-02",
         severity="MEDIUM",
-        description="External YouTube API quota exhaustion or transient OAuth token expiration during publishing.",
-        mitigation="Enforce DailyLimitGate, TokenRecovery single-refresh retry, UploadRetryPolicy bounded backoff, and PublishDuplicateGuard.",
+        description=(
+            "External YouTube API quota exhaustion or transient OAuth token expiration "
+            "during publishing."
+        ),
+        mitigation=(
+            "Enforce DailyLimitGate, TokenRecovery single-refresh retry, "
+            "UploadRetryPolicy bounded backoff, and PublishDuplicateGuard."
+        ),
     ),
     ReadinessRisk(
         id="RISK-03",
         severity="MEDIUM",
         description="Unexpected LLM/TTS/render spend spikes across active channels.",
-        mitigation="Keep BudgetGuard and BudgetGate active on every channel StrategyProfile with 50%/80%/100% alert thresholds.",
+        mitigation=(
+            "Keep BudgetGuard and BudgetGate active on every channel StrategyProfile "
+            "with 50%/80%/100% alert thresholds."
+        ),
     ),
 )
 
@@ -197,9 +237,7 @@ class ProductionReadinessReport:
             lines.append("- None. All readiness gates passed.")
         else:
             for b in self.blockers:
-                lines.append(
-                    f"- **`{b.code}` — {b.title}**: {b.remediation}"
-                )
+                lines.append(f"- **`{b.code}` — {b.title}**: {b.remediation}")
 
         lines.extend(
             [
@@ -225,9 +263,7 @@ class ProductionReadinessReport:
             ]
         )
         for step in self.rollback_plan:
-            lines.append(
-                f"| {step.order} | {step.action} | {step.verification} |"
-            )
+            lines.append(f"| {step.order} | {step.action} | {step.verification} |")
         return "\n".join(lines) + "\n"
 
 
@@ -246,7 +282,7 @@ class ProductionReadinessAuditor:
     ) -> None:
         self._settings = settings
         self._audit = audit_log
-        self._security = security_auditor or SecurityAuditor(clock=clock)
+        self._security = security_auditor or SecurityAuditor()
         self._health = health_registry
         self._kill_switch = kill_switch
         self._clock = clock
@@ -279,7 +315,10 @@ class ProductionReadinessAuditor:
                 safety_ok,
                 "approval_required=True and test_required=True enforced"
                 if safety_ok
-                else "Mandatory safety flags (approval_required / test_required) are disabled",
+                else (
+                    "Mandatory safety flags (approval_required / test_required) "
+                    "are disabled"
+                ),
             )
         )
         if not safety_ok:
@@ -287,19 +326,25 @@ class ProductionReadinessAuditor:
                 ReadinessBlocker(
                     code="readiness.safety_flags_disabled",
                     title="Mandatory safety gates disabled",
-                    remediation="Enable FeatureFlags.approval_required=True and FeatureFlags.test_required=True (R-08).",
+                    remediation=(
+                        "Enable FeatureFlags.approval_required=True and "
+                        "FeatureFlags.test_required=True (R-08)."
+                    ),
                 )
             )
 
         # 2. Security audit (S-223)
-        sec_report = self._security.run_audit(self._settings)
+        sec_report = self._security.run_audit(flags=self._settings.flags)
         checks.append(
             ReadinessCheck(
                 "security_audit",
                 sec_report.passed,
-                f"Security audit passed ({len(sec_report.findings)} low/info findings)"
+                f"Security audit passed ({len(sec_report.findings)} checks)"
                 if sec_report.passed
-                else f"Security audit failed ({sec_report.critical_count} critical, {sec_report.high_count} high)",
+                else (
+                    f"Security audit failed ({len(sec_report.critical_failures)} "
+                    "critical)"
+                ),
             )
         )
         if not sec_report.passed:
@@ -307,7 +352,9 @@ class ProductionReadinessAuditor:
                 ReadinessBlocker(
                     code="readiness.security_audit_failed",
                     title="High or critical security findings detected",
-                    remediation="Resolve all HIGH and CRITICAL findings reported by SecurityAuditor.",
+                    remediation=(
+                        "Resolve all CRITICAL findings reported by SecurityAuditor."
+                    ),
                 )
             )
 
@@ -327,7 +374,10 @@ class ProductionReadinessAuditor:
                 ReadinessBlocker(
                     code="readiness.kill_switch_active",
                     title="Emergency stop is active",
-                    remediation="Investigate the emergency stop reason and deactivate KillSwitchService before release.",
+                    remediation=(
+                        "Investigate the emergency stop reason and deactivate "
+                        "KillSwitchService before release."
+                    ),
                 )
             )
 
@@ -347,7 +397,10 @@ class ProductionReadinessAuditor:
                     ReadinessBlocker(
                         code="readiness.health_degraded",
                         title="System or provider health check failed",
-                        remediation="Restore all failing HealthRegistry checks to HealthStatus.OK.",
+                        remediation=(
+                            "Restore all failing HealthRegistry checks to "
+                            "HealthStatus.OK."
+                        ),
                     )
                 )
 
@@ -356,9 +409,15 @@ class ProductionReadinessAuditor:
             ReadinessCheck(
                 "automated_verification_suite",
                 verification_passed,
-                "Full automated test, lint, type-check, and migration suites executed and passed"
+                (
+                    "Full automated test, lint, type-check, and migration suites "
+                    "executed and passed"
+                )
                 if verification_passed
-                else "Automated test execution deferred in Build-First Mode (H-089..T-238 IMPLEMENTED_UNTESTED)",
+                else (
+                    "Automated test execution deferred in Build-First Mode "
+                    "(H-089..T-238 IMPLEMENTED_UNTESTED)"
+                ),
             )
         )
         if not verification_passed:
@@ -366,7 +425,10 @@ class ProductionReadinessAuditor:
                 ReadinessBlocker(
                     code="readiness.automated_verification_pending",
                     title="Automated test & verification suite not yet executed",
-                    remediation="Execute pytest, ruff, mypy, and migration verification on tasks H-089..T-238 and confirm 100% pass rate.",
+                    remediation=(
+                        "Execute pytest, ruff, mypy, and migration verification on "
+                        "tasks H-089..T-238 and confirm 100% pass rate."
+                    ),
                 )
             )
 

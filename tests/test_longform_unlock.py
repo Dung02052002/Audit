@@ -58,7 +58,8 @@ def test_longform_unlock_blocked_until_shorts_pilot_passes_and_requires_user(
             seed.channel.id, actor=SYSTEM, current_flags=initial_flags
         )
 
-    # 2. Before Shorts pilot is published, unlock is blocked by unlock.shorts_pilot_required
+    # 2. Before Shorts pilot is published, unlock is blocked by
+    # unlock.shorts_pilot_required
     with pytest.raises(LongFormUnlockBlockedError) as exc_info:
         unlock_svc.unlock_longform(
             seed.channel.id, actor=USER, current_flags=initial_flags

@@ -20,10 +20,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from factories import USER, at, make_approval_request
-from test_shorts_audio_mix import T1
-from test_shorts_render import Studio
-from test_shorts_thumbnail import make_jpeg
 
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
@@ -59,18 +55,22 @@ from ai_youtube_agent.content.shorts_timeline import (
     Box,
     SceneAsset,
 )
-from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
 from ai_youtube_agent.pipeline.job import AIJobStatus
 from ai_youtube_agent.providers.video_render import (
-    RenderErrorCode,
+    MP4_MEDIA_TYPE,
     RenderedVideo,
+    RenderErrorCode,
     VideoRenderError,
     probe_mp4,
 )
+from factories import USER, at, make_approval_request
+from test_shorts_audio_mix import T1
+from test_shorts_render import Studio
+from test_shorts_thumbnail import make_jpeg
 
 
 class EndToEndShortsFixture(Studio):
@@ -91,9 +91,7 @@ class EndToEndShortsFixture(Studio):
         self.metadata = ShortsMetadataRecorder(
             database, self.storage, self.audit, clock=at(T1)
         )
-        self.rights_reporter = RightsReporter(
-            database, self.settings, clock=at(T1)
-        )
+        self.rights_reporter = RightsReporter(database, self.settings, clock=at(T1))
         self.policy_reporter = PolicyReporter(database, clock=at(T1))
         self.bundles = ShortsBundleBuilder(
             database,
@@ -123,15 +121,11 @@ def test_end_to_end_shorts_pipeline_validates_all_output_fixtures(
         media_type="image/png",
         data=make_jpeg(1080, 1920),
     )
-    sfx = fx.sfx_asset()
-    music = fx.music_asset()
+    sfx = fx.sound(AssetKind.AUDIO)
+    music = fx.sound(AssetKind.MUSIC)
     fx.save(
         fx.build(
             sfx=[
-                *(
-                    (idx, SceneAsset(bg.id, AssetRole.BACKGROUND))
-                    for idx, bg in enumerate(fx.backgrounds)
-                ),
                 (
                     0,
                     SceneAsset(
@@ -160,10 +154,16 @@ def test_end_to_end_shorts_pipeline_validates_all_output_fixtures(
         fx.project.id, expected_version=fx.project.version, actor=USER
     )
 
-    # 1. Record AI disclosure
+    # 1. Record AI disclosure (the rule needs an attached generated visual)
+    fx.add_asset(AssetKind.IMAGE, AssetCategory.GENERATED, source="mock-provider")
     disclosure = fx.decider.decide(
         fx.world.item.id,
-        DisclosureFacts(realistic_visual=True),
+        DisclosureFacts(
+            realistic_person=False,
+            realistic_event=False,
+            synthetic_voice_of_real_person=False,
+            realistic_visual=True,
+        ),
         rule_set=DISCLOSURE_RULES,
         actor=USER,
     )
@@ -194,9 +194,7 @@ def test_end_to_end_shorts_pipeline_validates_all_output_fixtures(
         actor=USER,
         expected_version=fx.project.version,
     )
-    parsed_meta = ShortsMetadata.from_json_bytes(
-        fx.storage.read(meta_res.artifact.uri)
-    )
+    parsed_meta = ShortsMetadata.from_json_bytes(fx.storage.read(meta_res.artifact.uri))
     assert "Attribution: B-roll by Studio X" in parsed_meta.description
     assert parsed_meta.contains_synthetic_media is True
     assert parsed_meta.disclosure_decision_id == disclosure.id
@@ -226,13 +224,16 @@ def test_timeline_mutation_invalidates_bundle_until_artifacts_are_refreshed(
     fx = EndToEndShortsFixture(database, tmp_path)
     fx.decider.decide(
         fx.world.item.id,
-        DisclosureFacts(),
+        DisclosureFacts(
+            realistic_person=False,
+            realistic_event=False,
+            synthetic_voice_of_real_person=False,
+            realistic_visual=False,
+        ),
         rule_set=DISCLOSURE_RULES,
         actor=USER,
     )
-    fx.subtitles.record(
-        fx.project.id, expected_version=fx.project.version, actor=USER
-    )
+    fx.subtitles.record(fx.project.id, expected_version=fx.project.version, actor=USER)
     fx.thumbnails.generate(fx.project.id, title_text="Hook", actor=USER)
     fx.metadata.record(
         fx.project.id,
@@ -243,10 +244,7 @@ def test_timeline_mutation_invalidates_bundle_until_artifacts_are_refreshed(
     fx.render()
 
     initial_bundle = fx.bundles.build(fx.project.id, actor=USER)
-    approval = make_approval_request(
-        content_item_id=fx.world.item.id,
-        artifacts=initial_bundle.artifacts,
-    )
+    approval = make_approval_request(fx.world.item, list(initial_bundle.artifacts))
     with database.transaction() as connection:
         ApprovalRequestRepository(connection).add(approval)
 
@@ -272,9 +270,7 @@ def test_timeline_mutation_invalidates_bundle_until_artifacts_are_refreshed(
         fx.bundles.build(fx.project.id, actor=USER)
     assert exc_info.value.code == ShortsBundleErrorCode.SUBTITLES_STALE.value
 
-    fx.subtitles.record(
-        fx.project.id, expected_version=fx.project.version, actor=USER
-    )
+    fx.subtitles.record(fx.project.id, expected_version=fx.project.version, actor=USER)
 
     # Metadata is still bound to the old project_version
     with pytest.raises(ShortsBundleError) as exc_info:
@@ -304,29 +300,34 @@ def test_renderer_timeout_and_invalid_mp4_fail_the_job_and_block_bundle(
 
         def render(self, request):
             raise VideoRenderError(
-                "ffmpeg timed out",
-                code=RenderErrorCode.TIMEOUT,
-                retryable=True,
+                RenderErrorCode.TIMEOUT, "ffmpeg timed out", provider=self.name
             )
 
     with pytest.raises(VideoRenderError) as exc_info:
         fx.render(service=fx.service(renderer=TimeoutRenderer()))
-    assert exc_info.value.code is RenderErrorCode.TIMEOUT
+    assert exc_info.value.render_code is RenderErrorCode.TIMEOUT
 
     with database.transaction() as connection:
-        jobs = AIJobRepository(connection).list_by_content_item(
-            fx.world.item.id
-        )
+        jobs = AIJobRepository(connection).list_by_content_item(fx.world.item.id)
         assert len(jobs) == 1
         assert jobs[0].status is AIJobStatus.FAILED
 
-    assert any(e.action == RENDER_FAILED for e in fx.sink.events)
+    assert any(e.action == RENDER_FAILED for e in fx.sink.events())
 
     class BadMp4Renderer:
         name = "bad-mp4-mock"
 
         def render(self, request):
-            return RenderedVideo(b"not-an-mp4-stream", self.name)
+            return RenderedVideo(
+                b"not-an-mp4-stream",
+                MP4_MEDIA_TYPE,
+                request.duration_ms,
+                1080,
+                1920,
+                30,
+                self.name,
+                at(T1)(),
+            )
 
     with pytest.raises(ShortsRenderError) as render_err:
         fx.render(service=fx.service(renderer=BadMp4Renderer()))
@@ -339,13 +340,16 @@ def test_disclosure_drift_and_provenance_drift_are_refused(
     fx = EndToEndShortsFixture(database, tmp_path)
     fx.decider.decide(
         fx.world.item.id,
-        DisclosureFacts(realistic_visual=False),
+        DisclosureFacts(
+            realistic_person=False,
+            realistic_event=False,
+            synthetic_voice_of_real_person=False,
+            realistic_visual=False,
+        ),
         rule_set=DISCLOSURE_RULES,
         actor=USER,
     )
-    fx.subtitles.record(
-        fx.project.id, expected_version=fx.project.version, actor=USER
-    )
+    fx.subtitles.record(fx.project.id, expected_version=fx.project.version, actor=USER)
     fx.thumbnails.generate(fx.project.id, title_text="Hook", actor=USER)
     fx.metadata.record(
         fx.project.id,
@@ -361,7 +365,12 @@ def test_disclosure_drift_and_provenance_drift_are_refused(
     )
     later_decider.decide(
         fx.world.item.id,
-        DisclosureFacts(realistic_person=True),
+        DisclosureFacts(
+            realistic_person=True,
+            realistic_event=False,
+            synthetic_voice_of_real_person=False,
+            realistic_visual=False,
+        ),
         rule_set=DISCLOSURE_RULES,
         actor=USER,
     )
@@ -370,9 +379,9 @@ def test_disclosure_drift_and_provenance_drift_are_refused(
         fx.bundles.build(fx.project.id, actor=USER)
     assert exc_info.value.code == ShortsBundleErrorCode.DISCLOSURE_MISMATCH.value
 
-    # Adding new provenance to a background asset without re-saving timeline refuses render
+    # Adding new provenance to a background asset without re-saving timeline refuses
+    # render
     fx.add_provenance(fx.backgrounds[0].id)
     with pytest.raises(ShortsRenderError) as render_err:
         fx.render()
     assert render_err.value.code == ShortsRenderErrorCode.ASSET_CHANGED.value
-

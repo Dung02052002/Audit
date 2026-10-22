@@ -104,7 +104,11 @@ def allocate(total: int, weights: Sequence[int]) -> list[int]:
         free = [index for index in range(count) if index not in fixed]
         remaining = total - MIN_SCENE_MS * len(fixed)
         shares = _largest_remainder(remaining, [values[index] for index in free])
-        low = [index for index, share in zip(free, shares) if share < MIN_SCENE_MS]
+        low = [
+            index
+            for index, share in zip(free, shares, strict=True)
+            if share < MIN_SCENE_MS
+        ]
         if not low:
             break
         fixed.update(low)

@@ -29,15 +29,6 @@ import zlib
 from pathlib import Path
 
 import pytest
-from test_video_render import (
-    SECRET,
-    audio,
-    image,
-    layer,
-    line,
-    rect,
-    request,
-)
 
 from ai_youtube_agent.providers.ffmpeg_video_render import (
     CHECK_TIMEOUT_S,
@@ -58,6 +49,15 @@ from ai_youtube_agent.providers.video_render import (
     VideoRenderer,
     VideoRenderError,
     probe_mp4,
+)
+from test_video_render import (
+    SECRET,
+    audio,
+    image,
+    layer,
+    line,
+    rect,
+    request,
 )
 
 VIET = unicodedata.normalize("NFC", "Tiếng Việt")
@@ -287,7 +287,7 @@ def test_the_command_of_an_image_layer() -> None:
         "v1.png",
     ]
     assert argv[14:16] == ["-i", "audio.wav"]
-    assert value_after(argv, "-filter_complex_script") == "graph.txt"
+    assert value_after(argv, "-/filter_complex") == "graph.txt"
     assert argv[argv.index("-map") : argv.index("-map") + 4] == [
         "-map",
         "[vout]",
@@ -412,9 +412,8 @@ def test_a_failing_exit_hides_the_error_output(
 ) -> None:
     runner = FakeRunner(returncode=1, stderr=f"boom {SECRET}".encode())
 
-    with caplog.at_level(logging.WARNING):
-        with pytest.raises(VideoRenderError) as info:
-            renderer(runner).render(request())
+    with caplog.at_level(logging.WARNING), pytest.raises(VideoRenderError) as info:
+        renderer(runner).render(request())
 
     error = info.value
     assert error.render_code is RenderErrorCode.FAILED
@@ -433,9 +432,8 @@ def test_only_the_end_of_a_long_error_output_is_logged(
 ) -> None:
     runner = FakeRunner(returncode=2, stderr=b"a" * 5000 + b"THE END")
 
-    with caplog.at_level(logging.WARNING):
-        with pytest.raises(VideoRenderError):
-            renderer(runner).render(request())
+    with caplog.at_level(logging.WARNING), pytest.raises(VideoRenderError):
+        renderer(runner).render(request())
 
     (record,) = [r for r in caplog.records if r.getMessage() == "ffmpeg render failed"]
     assert len(record.fields["stderr_tail"]) == 2000

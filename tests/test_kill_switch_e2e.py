@@ -125,7 +125,10 @@ def test_kill_switch_activation_during_session_stops_production_and_publish(
     assert step.transitioned is False
     assert step.gate_report is not None
     assert bool(step.gate_report.blocked) is True
-    assert any(r.code in ("killswitch.active", "kill_switch.active") for r in step.gate_report.reasons)
+    assert any(
+        r.code in ("killswitch.active", "kill_switch.active")
+        for r in step.gate_report.reasons
+    )
 
     # 6. Deactivate kill switch -> item2 can now be scheduled
     kill_switch.deactivate(actor=USER, reason="All clear")

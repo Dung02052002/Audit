@@ -1,4 +1,6 @@
-"""Comments Screen view and service (Prompt Pack v8, prompt Q-198), context X3 Command Center.
+"""Comments Screen view and service.
+
+(Prompt Pack v8, prompt Q-198), context X3 Command Center.
 
 Builds the Command Center Comments Screen view model and iOS-style HTML rendering,
 presenting:
@@ -20,7 +22,6 @@ from datetime import datetime
 from typing import Any, Final
 
 from ai_youtube_agent.content.comment import (
-    Comment,
     CommentClassification,
     CommentLabel,
     ReplyDraft,
@@ -191,7 +192,10 @@ class CommentsScreenView:
 
 
 class CommentsScreenService:
-    """Builds the Comments Screen view model, renders HTML, and exposes human draft review actions."""
+    """Builds the Comments Screen view model, renders HTML, and exposes review actions.
+
+    The review actions are the human draft review actions.
+    """
 
     def __init__(
         self,
@@ -247,7 +251,10 @@ class CommentsScreenService:
                     new_comments=(),
                     all_comments=(),
                     reply_drafts=(),
-                    empty_message="No comments found or channel configured yet. Create a channel to review comments and reply drafts.",
+                    empty_message=(
+                        "No comments found or channel configured yet. "
+                        "Create a channel to review comments and reply drafts."
+                    ),
                 )
 
             comment_repo = CommentRepository(connection)
@@ -309,10 +316,7 @@ class CommentsScreenService:
                     posted_reply_count += 1
                 dv = ReplyDraftViewItem.from_draft(d)
                 draft_views.append(dv)
-                if (
-                    parsed_draft_status is None
-                    or d.status is parsed_draft_status
-                ):
+                if parsed_draft_status is None or d.status is parsed_draft_status:
                     all_draft_items.append(dv)
 
             if parsed_label is not None and label_str != parsed_label:
@@ -331,9 +335,7 @@ class CommentsScreenService:
                     label=label_str,
                     label_tone=_LABEL_TONES.get(label_str, BadgeTone.NEUTRAL),
                     rationale=latest_cls.rationale if latest_cls else None,
-                    classified_at=(
-                        latest_cls.classified_at if latest_cls else None
-                    ),
+                    classified_at=(latest_cls.classified_at if latest_cls else None),
                     is_new_unclassified=is_new,
                     requires_attention=requires_att,
                     reply_drafts=tuple(draft_views),
@@ -346,7 +348,9 @@ class CommentsScreenService:
         return CommentsScreenView(
             shell=shell,
             load_state=(
-                ViewLoadState.READY if thread_items or all_draft_items else ViewLoadState.EMPTY
+                ViewLoadState.READY
+                if thread_items or all_draft_items
+                else ViewLoadState.EMPTY
             ),
             channel_id=selected_channel.id,
             auto_reply_enabled=self._flags.auto_reply_enabled,
@@ -376,7 +380,10 @@ class CommentsScreenService:
         actor: Actor,
         edited_text: str | None = None,
     ) -> ReplyApprovalOutcome:
-        """Delegate human approval (and optional edit) of a reply draft to ``ReplyApprovalService``."""
+        """Delegate human approval (and optional edit) of a reply draft.
+
+        Delegates to ``ReplyApprovalService``.
+        """
         if self._reply_approval is None:
             raise RuntimeError("ReplyApprovalService is not configured")
         return self._reply_approval.approve(
@@ -413,14 +420,17 @@ class CommentsScreenService:
             )
 
         auto_reply_badge = (
-            '<span class="yt-pill yt-pill--warning" data-testid="auto-reply-flag">AUTO_REPLY_ENABLED=true</span>'
+            '<span class="yt-pill yt-pill--warning" data-testid="auto-reply-flag">'
+            "AUTO_REPLY_ENABLED=true</span>"
             if view.auto_reply_enabled
-            else '<span class="yt-pill yt-pill--neutral" data-testid="auto-reply-flag">AUTO_REPLY_ENABLED=false (Manual Approval Required)</span>'
+            else '<span class="yt-pill yt-pill--neutral" data-testid="auto-reply-flag">'
+            "AUTO_REPLY_ENABLED=false (Manual Approval Required)</span>"
         )
 
         attention_rows = "".join(
             f"<li><strong>{html.escape(c.author_display_name)}</strong> "
-            f'<span class="yt-pill yt-pill--{c.label_tone.value}">{html.escape(c.label)}</span>: '
+            f'<span class="yt-pill yt-pill--{c.label_tone.value}">'
+            f"{html.escape(c.label)}</span>: "
             f"{html.escape(c.text)}</li>"
             for c in (*view.attention_comments, *view.new_comments)
         )
@@ -433,7 +443,8 @@ class CommentsScreenService:
         draft_rows = "".join(
             f"<tr><td><code>{html.escape(d.draft_id[:8])}</code></td>"
             f"<td>{html.escape(d.text)}</td>"
-            f'<td><span class="yt-pill yt-pill--{d.tone.value}">{html.escape(d.status)}</span></td></tr>'
+            f'<td><span class="yt-pill yt-pill--{d.tone.value}">'
+            f"{html.escape(d.status)}</span></td></tr>"
             for d in view.reply_drafts
         )
         drafts_html = (
@@ -453,7 +464,11 @@ class CommentsScreenService:
       </div>
       {auto_reply_badge}
     </div>
-    <p class="yt-card__subtitle">Total: {view.total_comments} · New: {view.new_unclassified_count} · Needs attention: {view.needs_attention_count} · Moderation: {view.moderation_count} · Reply candidates: {view.reply_candidate_count}</p>
+    <p class="yt-card__subtitle">Total: {view.total_comments} · New: {
+            view.new_unclassified_count
+        } · Needs attention: {view.needs_attention_count} · Moderation: {
+            view.moderation_count
+        } · Reply candidates: {view.reply_candidate_count}</p>
     {attention_html}
   </section>
 
@@ -465,7 +480,9 @@ class CommentsScreenService:
       </div>
       <span class="yt-pill yt-pill--warning">{view.pending_draft_count} pending</span>
     </div>
-    <p class="yt-card__subtitle">Draft: {view.pending_draft_count} · Approved: {view.approved_draft_count} · Posted: {view.posted_reply_count}</p>
+    <p class="yt-card__subtitle">Draft: {view.pending_draft_count} · Approved: {
+            view.approved_draft_count
+        } · Posted: {view.posted_reply_count}</p>
     {drafts_html}
   </section>
 </div>"""
@@ -495,4 +512,3 @@ def _parse_draft_status_filter(
     if isinstance(value, ReplyStatus):
         return value
     return ReplyStatus(str(value).strip().lower())
-

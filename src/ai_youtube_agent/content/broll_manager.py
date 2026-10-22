@@ -24,7 +24,7 @@ Rules:
   to the scene's assets (or replace existing assets of that role when
   ``replace_role=True``).
 - ``auto_assign_backgrounds`` selects eligible attached visual assets
-  (``AssetKind.VIDEO`` or ``AssetKind.IMAGE``) in deterministic attachment order
+  (``AssetKind.VIDEO_CLIP`` or ``AssetKind.IMAGE``) in deterministic attachment order
   and assigns them round-robin to scenes without a background (or all scenes
   when ``replace_existing=True``).
 - Updating the timeline recomputes ``LongFormProjectStatus`` via
@@ -39,7 +39,7 @@ from datetime import datetime
 from enum import StrEnum
 from http import HTTPStatus
 
-from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset import Asset, AssetCategory
 from ai_youtube_agent.content.longform_captions import check_longform_captions
 from ai_youtube_agent.content.longform_project import LongFormProject
 from ai_youtube_agent.content.longform_script_generator import LongFormDisabledError
@@ -57,9 +57,6 @@ from ai_youtube_agent.content.shorts_timeline import (
     Scene,
     SceneAsset,
 )
-
-# Backwards-compatible alias for callers referring to CropMode.
-CropMode = AssetFit
 from ai_youtube_agent.core.audit import (
     Actor,
     AuditLog,
@@ -78,6 +75,9 @@ from ai_youtube_agent.core.db.repositories.provenance import ProvenanceRepositor
 from ai_youtube_agent.core.db.repositories.review import RightsRecordRepository
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.core.flags import FeatureFlags
+
+# Backwards-compatible alias for callers referring to CropMode.
+CropMode = AssetFit
 
 Clock = Callable[[], datetime]
 
@@ -156,9 +156,7 @@ class BrollAssignment:
     provenance_id: str | None = None
 
     def __post_init__(self) -> None:
-        if isinstance(self.scene_index, bool) or not isinstance(
-            self.scene_index, int
-        ):
+        if isinstance(self.scene_index, bool) or not isinstance(self.scene_index, int):
             raise TypeError("scene_index must be an int")
         if self.scene_index < 0:
             raise ValueError("scene_index must be >= 0")
@@ -312,9 +310,7 @@ class BrollManager:
             assigned_count = 0
             cursor = 0
             for scene in stored.timeline.scenes:
-                has_bg = any(
-                    a.role is AssetRole.BACKGROUND for a in scene.assets
-                )
+                has_bg = any(a.role is AssetRole.BACKGROUND for a in scene.assets)
                 if has_bg and not replace_existing:
                     scenes.append(scene)
                     continue
@@ -405,9 +401,7 @@ def _load_project(
     return stored
 
 
-def _load_item(
-    connection: sqlite3.Connection, content_item_id: str
-) -> ContentItem:
+def _load_item(connection: sqlite3.Connection, content_item_id: str) -> ContentItem:
     item = ContentItemRepository(connection).get(content_item_id)
     if item is None:
         raise LongFormProjectError(
@@ -420,9 +414,7 @@ def _load_item(
 def _blocked_asset_ids(
     connection: sqlite3.Connection, content_item_id: str
 ) -> set[str]:
-    records = RightsRecordRepository(connection).list_by_content_item(
-        content_item_id
-    )
+    records = RightsRecordRepository(connection).list_by_content_item(content_item_id)
     blocked: set[str] = set()
     for record in records:
         if (
@@ -473,10 +465,7 @@ def _validate_and_snapshot(
         )
     latest = ProvenanceRepository(connection).latest(asset.id)
     current = latest.id if latest is not None else None
-    if (
-        assignment.provenance_id is not None
-        and assignment.provenance_id != current
-    ):
+    if assignment.provenance_id is not None and assignment.provenance_id != current:
         raise LongFormProjectError(
             f"asset {asset.id} has provenance {current}, not "
             f"{assignment.provenance_id}",
@@ -502,9 +491,7 @@ def _eligible_visual_assets(
     ]
 
 
-def _apply_to_scene(
-    scene: Scene, placed: SceneAsset, *, replace_role: bool
-) -> Scene:
+def _apply_to_scene(scene: Scene, placed: SceneAsset, *, replace_role: bool) -> Scene:
     if placed.role is AssetRole.BACKGROUND or replace_role:
         kept = [a for a in scene.assets if a.role is not placed.role]
     else:
@@ -539,8 +526,5 @@ def _save_scenes(
     try:
         projects.update(project, expected_version=expected_version)
     except ConcurrencyError as error:
-        raise BrollError(
-            str(error), code=BrollErrorCode.PROJECT_CONFLICT
-        ) from None
+        raise BrollError(str(error), code=BrollErrorCode.PROJECT_CONFLICT) from None
     return project
-

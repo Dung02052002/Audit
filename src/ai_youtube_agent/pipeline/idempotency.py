@@ -73,7 +73,9 @@ def upload_key(job_key: str, youtube_channel_id: str, video_sha256: str) -> str:
         raise ValueError("job_key must be a publish key")
     if not _DIGEST_PATTERN.fullmatch(video_sha256):
         raise ValueError("video_sha256 must be 64 lower-case hex digits")
-    return UPLOAD_PREFIX + _digest(UPLOAD_KIND, job_key, youtube_channel_id, video_sha256)
+    return UPLOAD_PREFIX + _digest(
+        UPLOAD_KIND, job_key, youtube_channel_id, video_sha256
+    )
 
 
 @dataclass(frozen=True)

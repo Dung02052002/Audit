@@ -93,7 +93,9 @@ class PreviewError(DomainError):
         super().__init__(
             detail,
             code=code.value,
-            user_message=USER_MESSAGES.get(code, USER_MESSAGES[PreviewErrorCode.PREVIEW]),
+            user_message=USER_MESSAGES.get(
+                code, USER_MESSAGES[PreviewErrorCode.PREVIEW]
+            ),
         )
         self.default_http_status = HTTPStatus(status)
 
@@ -248,10 +250,7 @@ def _parse_byte_range(range_header: str, total_bytes: int) -> tuple[int, int]:
 
 def _compute_bundle_sha256(descriptors: tuple[PreviewArtifactDescriptor, ...]) -> str:
     canonical = json.dumps(
-        [
-            [d.kind.value, d.version, d.artifact_id, d.sha256]
-            for d in descriptors
-        ],
+        [[d.kind.value, d.version, d.artifact_id, d.sha256] for d in descriptors],
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
@@ -294,7 +293,8 @@ class PreviewArtifactService:
         *,
         video_version: int | None = None,
     ) -> PreviewSnapshot:
-        """Return the preview snapshot for ``content_item_id`` at ``video_version`` (or latest)."""
+        """Return the preview snapshot for ``content_item_id`` at ``video_version`` (or
+        latest)."""
         if video_version is not None:
             _validate_positive_version(video_version, "video_version")
 
@@ -329,7 +329,8 @@ class PreviewArtifactService:
             matching = [v for v in videos if v.version == video_version]
             if not matching:
                 raise PreviewError(
-                    f"video artifact version {video_version} not found for item {content_item_id}",
+                    f"video artifact version {video_version} not found for item "
+                    f"{content_item_id}",
                     code=PreviewErrorCode.ARTIFACT_NOT_FOUND,
                 )
             selected_video = matching[0]

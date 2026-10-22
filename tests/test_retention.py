@@ -26,7 +26,6 @@ from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
     ContentItemRepository,
 )
-from ai_youtube_agent.core.db.repositories.economics import MetricSnapshotRepository
 from ai_youtube_agent.core.db.repositories.publish import PublishJobRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
 from ai_youtube_agent.pipeline.publish import PublishJob
@@ -136,7 +135,8 @@ def test_sync_stores_retention_only_when_actually_available_and_is_idempotent(
 
     provider = MockAnalyticsProvider(clock=lambda: now)
     provider.set_channel_metrics(channel.youtube.channel_id, {"views": Decimal("1")})
-    # Video 1 has full retention; Video 2 has only duration (no percentage); Video 3 has no data.
+    # Video 1 has full retention; Video 2 has only duration (no percentage); Video 3
+    # has no data.
     provider.set_video_metrics(
         channel.youtube.channel_id,
         _vid(1),

@@ -1,8 +1,9 @@
-"""AUTO_REPLY_ENABLED flag enforcement (Prompt Pack v8, prompt #188), context C15 Community.
+"""AUTO_REPLY_ENABLED flag enforcement (Prompt Pack v8, prompt #188), context C15
+Community.
 
-``AutoReplyGuard`` and ``AutoReplyService`` enforce that ``FeatureFlags.auto_reply_enabled``
-is ``False`` by default (#006, #188) and that no comment reply is ever auto-posted
-while the flag is off:
+``AutoReplyGuard`` and ``AutoReplyService`` enforce that
+``FeatureFlags.auto_reply_enabled`` is ``False`` by default (#006, #188) and that no
+comment reply is ever auto-posted while the flag is off:
 
 - ``FeatureFlags().auto_reply_enabled`` is ``False`` by default.
 - ``AutoReplyGuard.require_enabled(draft_id=..., actor=...)`` raises
@@ -52,9 +53,7 @@ from ai_youtube_agent.core.flags import FeatureFlags
 
 AUTO_REPLY_BLOCKED: Final[str] = "comment.auto_reply_blocked"
 AUTO_REPLY_POSTED: Final[str] = "comment.auto_reply_posted"
-DEFAULT_AUTO_REPLY_ACTOR: Final[Actor] = Actor(
-    ActorKind.AI, "auto_reply_service"
-)
+DEFAULT_AUTO_REPLY_ACTOR: Final[Actor] = Actor(ActorKind.AI, "auto_reply_service")
 
 
 class AutoReplyErrorCode(StrEnum):
@@ -139,7 +138,9 @@ class AutoReplyGuard:
         comment_id: str | None = None,
         actor: Actor = DEFAULT_AUTO_REPLY_ACTOR,
     ) -> None:
-        """Raise ``AutoReplyDisabledError`` and audit when ``auto_reply_enabled`` is ``False``."""
+        """Raise ``AutoReplyDisabledError`` and audit when ``auto_reply_enabled``
+        is ``False``.
+        """
         if self.is_enabled:
             return
         if self._audit is not None:
@@ -151,9 +152,7 @@ class AutoReplyGuard:
                 metadata={
                     "channel_id": channel_id,
                     "comment_id": comment_id,
-                    "reply_draft_id": (
-                        entity_id if entity_id != "global" else None
-                    ),
+                    "reply_draft_id": (entity_id if entity_id != "global" else None),
                     "auto_reply_enabled": False,
                     "reason_code": AutoReplyErrorCode.DISABLED.value,
                 },
@@ -192,7 +191,9 @@ class AutoReplyService:
         actor: Actor = DEFAULT_AUTO_REPLY_ACTOR,
         instructions: str | None = None,
     ) -> AutoReplyOutcome:
-        """Always generate a ``ReplyDraft``; only post when ``auto_reply_enabled`` is ``True``."""
+        """Always generate a ``ReplyDraft``; only post when ``auto_reply_enabled``
+        is ``True``.
+        """
         draft_outcome: ReplyDraftOutcome = self._drafts.generate_draft(
             comment_id, actor=actor, instructions=instructions
         )
@@ -202,9 +203,7 @@ class AutoReplyService:
                 posted=False,
                 post_outcome=None,
             )
-        post_outcome = self.auto_post_draft(
-            draft_outcome.draft.id, actor=actor
-        )
+        post_outcome = self.auto_post_draft(draft_outcome.draft.id, actor=actor)
         return AutoReplyOutcome(
             draft=post_outcome.draft,
             posted=True,
@@ -223,13 +222,9 @@ class AutoReplyService:
             repo = CommentRepository(connection)
             draft = repo.get_reply_draft(draft_id)
             comment = repo.get(draft.comment_id) if draft else None
-            classifications = (
-                repo.list_classifications(comment.id) if comment else []
-            )
+            classifications = repo.list_classifications(comment.id) if comment else []
             strategy = (
-                StrategyProfileRepository(connection).get_by_channel(
-                    comment.channel_id
-                )
+                StrategyProfileRepository(connection).get_by_channel(comment.channel_id)
                 if comment
                 else None
             )
@@ -248,14 +243,10 @@ class AutoReplyService:
                 f"reply draft {draft_id} does not exist",
             )
 
-        latest_label = (
-            classifications[-1].label if classifications else None
-        )
+        latest_label = classifications[-1].label if classifications else None
         if latest_label is None:
             banned = (
-                strategy.brand.banned_phrases
-                if strategy and strategy.brand
-                else ()
+                strategy.brand.banned_phrases if strategy and strategy.brand else ()
             )
             latest_label = evaluate_comment_rules(
                 comment.text, banned_phrases=banned

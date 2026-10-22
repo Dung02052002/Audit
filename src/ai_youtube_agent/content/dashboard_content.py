@@ -1,4 +1,5 @@
-"""Content Screen view and service (Prompt Pack v8, prompt Q-194), context X3 Command Center.
+"""Content Screen view and service (Prompt Pack v8, prompt Q-194), context X3
+Command Center.
 
 Builds the Command Center Content Screen view model and iOS-style HTML rendering,
 strictly separating the two content types (``ContentType.SHORTS`` and
@@ -28,7 +29,7 @@ from ai_youtube_agent.content.dashboard_shell import (
     render_dashboard_shell_html,
 )
 from ai_youtube_agent.core.artifact import ArtifactKind
-from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
+from ai_youtube_agent.core.content_item import ContentStatus, ContentType
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from ai_youtube_agent.core.db.repositories.content import (
@@ -179,7 +180,9 @@ class ContentScreenView:
 
 
 class ContentScreenService:
-    """Builds the Content Screen view model separating Shorts and LongForm by lifecycle state."""
+    """Builds the Content Screen view model separating Shorts and LongForm by
+    lifecycle state.
+    """
 
     def __init__(
         self,
@@ -219,14 +222,15 @@ class ContentScreenService:
                     shell=shell,
                     load_state=ViewLoadState.EMPTY,
                     channel_id=None,
-                    selected_content_type=(
-                        parsed_type.value if parsed_type else None
-                    ),
+                    selected_content_type=(parsed_type.value if parsed_type else None),
                     selected_status=parsed_status.value if parsed_status else None,
                     shorts_column=empty_shorts,
                     longform_column=empty_longform,
                     total_items=0,
-                    empty_message="No content items or channels configured yet. Create a channel to manage Shorts and LongForm content.",
+                    empty_message=(
+                        "No content items or channels configured yet. "
+                        "Create a channel to manage Shorts and LongForm content."
+                    ),
                 )
 
             items = ContentItemRepository(connection).list_by_channel(
@@ -284,9 +288,7 @@ class ContentScreenService:
         finally:
             connection.close()
 
-        shorts_cards = [
-            c for c in cards if c.content_type == ContentType.SHORTS.value
-        ]
+        shorts_cards = [c for c in cards if c.content_type == ContentType.SHORTS.value]
         longform_cards = [
             c for c in cards if c.content_type == ContentType.LONGFORM.value
         ]
@@ -307,9 +309,7 @@ class ContentScreenService:
             longform_column=longform_col,
             total_items=total,
             empty_message=(
-                "No content items match the current filter."
-                if total == 0
-                else None
+                "No content items match the current filter." if total == 0 else None
             ),
         )
 
@@ -400,8 +400,10 @@ def _render_column_html(column: ContentTypeColumn, *, testid: str) -> str:
     for stage in column.stages:
         if stage.items:
             rows = "".join(
-                f'<li><a href="{html.escape(item.detail_href)}">{html.escape(item.title)}</a> '
-                f'<span class="yt-pill yt-pill--{item.tone.value}">{html.escape(stage.label)}</span>'
+                f'<li><a href="{html.escape(item.detail_href)}">'
+                f"{html.escape(item.title)}</a> "
+                f'<span class="yt-pill yt-pill--{item.tone.value}">'
+                f"{html.escape(stage.label)}</span>"
                 + (
                     f" <small>v{item.latest_video_version}</small>"
                     if item.latest_video_version is not None
@@ -421,7 +423,8 @@ def _render_column_html(column: ContentTypeColumn, *, testid: str) -> str:
         stage_blocks.append(
             f'<div class="yt-stage-group" data-stage="{html.escape(stage.status)}">'
             f"<h3>{html.escape(stage.label)} "
-            f'<span class="yt-pill yt-pill--{stage.tone.value}">{stage.count}</span></h3>'
+            f'<span class="yt-pill yt-pill--{stage.tone.value}">'
+            f"{stage.count}</span></h3>"
             f"{items_html}"
             f"</div>"
         )
@@ -435,4 +438,3 @@ def _render_column_html(column: ContentTypeColumn, *, testid: str) -> str:
         f"{joined_stages}"
         f"</section>"
     )
-

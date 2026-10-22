@@ -27,9 +27,16 @@ from urllib.request import url2pathname
 from ai_youtube_agent.content.approval_service import ApprovalService
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
-from ai_youtube_agent.content.audio_artifact import AudioArtifactRecorder
+from ai_youtube_agent.content.audio_artifact import (
+    AudioArtifactRecord,
+    AudioArtifactRecorder,
+)
 from ai_youtube_agent.content.audio_validation import AudioValidator
-from ai_youtube_agent.content.broll_manager import BrollAssignment, BrollManager, CropMode
+from ai_youtube_agent.content.broll_manager import (
+    BrollAssignment,
+    BrollManager,
+    CropMode,
+)
 from ai_youtube_agent.content.channel import Channel, ChannelStatus, YouTubeIdentifiers
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.disclosure_rule import DISCLOSURE_RULES, DisclosureFacts
@@ -41,7 +48,10 @@ from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
 from ai_youtube_agent.content.policy_report import PolicyReporter
-from ai_youtube_agent.content.preview_artifact import PreviewArtifactService, PreviewSnapshot
+from ai_youtube_agent.content.preview_artifact import (
+    PreviewArtifactService,
+    PreviewSnapshot,
+)
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.qc_report import QCReport, QCReportBuilder
@@ -72,7 +82,6 @@ from ai_youtube_agent.content.story_bible import (
 )
 from ai_youtube_agent.content.strategy import (
     AgeRange,
-    AspectRatio,
     Audience,
     AudienceLevel,
     Brand,
@@ -100,7 +109,7 @@ from ai_youtube_agent.core.audit import (
     AuditResult,
     EntityRef,
 )
-from ai_youtube_agent.core.config import Settings, get_settings
+from ai_youtube_agent.core.config import get_settings
 from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.asset import AssetRepository
@@ -111,6 +120,7 @@ from ai_youtube_agent.core.db.repositories.channel import (
 )
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
+    AudioMetadataRepository,
     ContentItemRepository,
     ScriptRepository,
 )
@@ -118,7 +128,9 @@ from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.db.repositories.provenance import ProvenanceRepository
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.core.flags import FeatureFlags
-from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus, JobCheckpoint
+from ai_youtube_agent.core.log import get_logger
+from ai_youtube_agent.core.production import start_production
+from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
 from ai_youtube_agent.providers.image_generation import (
     ImageGenerationError,
     ImageGenerationRequest,
@@ -133,6 +145,7 @@ from ai_youtube_agent.providers.video_generation import (
 from ai_youtube_agent.providers.video_render import VideoRenderer
 
 Clock = Callable[[], datetime]
+logger = get_logger(__name__)
 
 SCRIPT_TO_VIDEO_JOB_KIND = "pipeline.script_to_video"
 DEFAULT_SYSTEM_ACTOR = Actor(ActorKind.SYSTEM, "script_to_video")
@@ -168,14 +181,18 @@ class ScriptToVideoErrorCode(StrEnum):
 
 USER_MESSAGES: dict[ScriptToVideoErrorCode, str] = {
     ScriptToVideoErrorCode.FAILED: "The script-to-video pipeline could not complete.",
-    ScriptToVideoErrorCode.EMPTY_SCRIPT: "Please provide a non-empty script text or valid script file.",
+    ScriptToVideoErrorCode.EMPTY_SCRIPT: (
+        "Please provide a non-empty script text or valid script file."
+    ),
     ScriptToVideoErrorCode.INVALID_INPUT: "The script-to-video parameters are invalid.",
     ScriptToVideoErrorCode.CHANNEL_NOT_FOUND: "The specified channel does not exist.",
     ScriptToVideoErrorCode.MODE_UNAVAILABLE: (
         "The requested production mode is unavailable because its required "
         "provider is not configured."
     ),
-    ScriptToVideoErrorCode.STAGE_FAILED: "A production stage failed while building the video.",
+    ScriptToVideoErrorCode.STAGE_FAILED: (
+        "A production stage failed while building the video."
+    ),
 }
 
 _HTTP_STATUS: dict[ScriptToVideoErrorCode, HTTPStatus] = {
@@ -208,12 +225,15 @@ class ScriptToVideoError(DomainError):
             user_message=USER_MESSAGES[code],
         )
         self.stage = stage
-        self.default_http_status = _HTTP_STATUS.get(code, HTTPStatus.UNPROCESSABLE_ENTITY)
+        self.default_http_status = _HTTP_STATUS.get(
+            code, HTTPStatus.UNPROCESSABLE_ENTITY
+        )
 
 
 @dataclass(frozen=True)
 class ProviderCapabilityReport:
-    """Honest runtime capability report across voice, image, video-clip, and render providers."""
+    """Honest runtime capability report across voice, image, video-clip, and render
+    providers."""
 
     voice_provider: str
     voice_available: bool
@@ -407,7 +427,8 @@ def _idempotency_key(
 
 
 class ScriptToVideoService:
-    """End-to-end orchestrator transforming an input script into a rendered MP4 video."""
+    """End-to-end orchestrator transforming an input script into a rendered MP4
+    video."""
 
     def __init__(
         self,
@@ -453,6 +474,10 @@ class ScriptToVideoService:
         self._video_clip_gen = video_clip_generator
         self._renderer = video_renderer
         self._clock = clock
+        # One chunk store per service, so a rerun of a succeeded TTS job in
+        # this process rebuilds its audio instead of failing (chunks are not
+        # persisted across restarts).
+        self._chunk_store = InMemoryChunkStore()
 
         self._analyzer = script_analyzer or ScriptAnalyzer()
         self._planner = scene_planner or SceneBreakdownPlanner()
@@ -479,10 +504,8 @@ class ScriptToVideoService:
         active_settings = get_settings()
         rights_reporter = RightsReporter(database, active_settings, clock=clock)
         policy_reporter = PolicyReporter(database, clock=clock)
-        shorts_mixer = ShortsAudioMixer(database, storage, audit, clock=clock)
-        longform_mixer = LongFormAudioMixer(
-            database, storage, audit, lf_flags, clock=clock
-        )
+        shorts_mixer = ShortsAudioMixer(database, storage, audit)
+        longform_mixer = LongFormAudioMixer(database, storage, audit, lf_flags)
 
         self._shorts_service = shorts_service or ShortsProjectService(
             database, audit, clock=clock
@@ -607,9 +630,7 @@ class ScriptToVideoService:
                     f"image provider '{self._image_gen.name}' is unavailable"
                 )
             if not render_ok:
-                reasons.append(
-                    f"video renderer '{self._renderer.name}' is unhealthy"
-                )
+                reasons.append(f"video renderer '{self._renderer.name}' is unhealthy")
             unavailable[ProductionMode.STORY_VIDEO.value] = "; ".join(reasons)
 
         if voice_ok and render_ok and clip_ok:
@@ -618,8 +639,10 @@ class ScriptToVideoService:
             clip_reasons: list[str] = []
             if not clip_ok:
                 clip_reasons.append(
-                    f"video clip generator '{self._video_clip_gen.name}' is not configured "
-                    "for motion video synthesis (use story_video mode or configure a video clip provider)"
+                    f"video clip generator '{self._video_clip_gen.name}' is not "
+                    f"configured "
+                    "for motion video synthesis (use story_video mode or configure a "
+                    "video clip provider)"
                 )
             if not voice_ok:
                 clip_reasons.append(
@@ -647,16 +670,11 @@ class ScriptToVideoService:
     def analyze_only(
         self, request: ScriptToVideoRequest
     ) -> tuple[StoryBible, SceneBreakdownPlan]:
-        """Parse and analyze the script into a StoryBible and SceneBreakdownPlan without rendering."""
+        """Parse and analyze the script into a StoryBible and SceneBreakdownPlan without
+        rendering."""
         analysis = self._analyze_script(request)
-        breakdown = self._planner.plan(
-            analysis,
-            target_duration_ms=(
-                request.target_duration_seconds * 1000
-                if request.target_duration_seconds
-                else None
-            ),
-        )
+        # The analyzer already scales the sections to target_duration_seconds.
+        breakdown = self._planner.plan(analysis)
         return analysis.story_bible, breakdown
 
     def run(
@@ -665,12 +683,20 @@ class ScriptToVideoService:
         *,
         actor: Actor | None = None,
         take_over: bool = True,
+        on_job_started: Callable[[str, str], None] | None = None,
     ) -> VideoProjectManifest:
-        """Execute the full Script-to-Video pipeline and return the ``VideoProjectManifest``."""
+        """Execute the full Script-to-Video pipeline and return the
+        ``VideoProjectManifest``.
+
+        ``on_job_started`` (APP-01) is called with the job id and the content
+        item id once the job is started or resumed, so a background runner can
+        follow its checkpoints; an error in it is logged and ignored.
+        """
         active_actor = actor or DEFAULT_SYSTEM_ACTOR
         capabilities = self.check_capabilities()
 
-        # 1. Parse and analyze script first so empty/invalid script errors surface immediately
+        # 1. Parse and analyze script first so empty/invalid script errors surface
+        # immediately
         analysis = self._analyze_script(request)
         story_bible = analysis.story_bible
 
@@ -700,6 +726,11 @@ class ScriptToVideoService:
             story_bible=story_bible,
             take_over=take_over,
         )
+        if on_job_started is not None:
+            try:
+                on_job_started(job.id, item.id)
+            except Exception:
+                logger.exception("on_job_started hook failed")
         completed_stages: list[ScriptToVideoStage] = []
 
         try:
@@ -734,28 +765,37 @@ class ScriptToVideoService:
             tts_runner = TtsJobRunner(
                 self._database,
                 self._speech,
-                InMemoryChunkStore(),
+                self._chunk_store,
                 clock=self._clock,
                 sleep=lambda _s: None,
             )
-            tts_result = tts_runner.run(script, voice_profile, take_over=True)
-            audio_record = self._audio_recorder.record(
-                tts_result, script, voice_profile
-            )
-            self._audio_validator.validate(audio_record.artifact.id)
-            item = self._advance_item_status(item, ContentStatus.VOICED)
+            # Chunks live in memory only, so after a restart a succeeded TTS job
+            # cannot be rebuilt; the recorded audio of the same script and voice
+            # profile version is reused instead.
+            audio_record = self._recorded_audio(item.id, script, voice_profile)
+            chunk_count = 0
+            if audio_record is None:
+                tts_result = tts_runner.run(script, voice_profile, take_over=True)
+                chunk_count = tts_result.chunks
+                audio_record = self._audio_recorder.record(
+                    tts_result, script, voice_profile
+                )
+            self._audio_validator.validate(audio_record.artifact, audio_record.audio)
+            item = self._advance_item_status(item, ContentStatus.GENERATING)
             job = self._checkpoint(
                 job,
                 ScriptToVideoStage.VOICE_GENERATED,
                 {
                     "audio_artifact_id": audio_record.artifact.id,
                     "duration_ms": audio_record.audio.duration_ms,
-                    "chunks": tts_result.chunks,
+                    "chunks": chunk_count,
+                    "reused": chunk_count == 0,
                 },
                 completed_stages,
             )
 
-            # 7. Create/rebind project and plan timeline scenes from actual audio duration
+            # 7. Create/rebind project and plan timeline scenes from actual audio
+            # duration
             if request.content_type is ContentType.SHORTS:
                 project_id, timeline_scenes = self._prepare_shorts_scenes(
                     item.id, active_actor
@@ -765,10 +805,9 @@ class ScriptToVideoService:
                     item.id, active_actor
                 )
 
-            scene_durations_ms = [sc.duration_ms for sc in timeline_scenes]
             scene_breakdown = self._planner.plan(
                 analysis,
-                scene_durations_ms=scene_durations_ms,
+                scene_windows_ms=[(sc.start_ms, sc.end_ms) for sc in timeline_scenes],
             )
             job = self._checkpoint(
                 job,
@@ -781,7 +820,8 @@ class ScriptToVideoService:
                 completed_stages,
             )
 
-            # 8. Generate or reuse visual assets per scene, register provenance, Rights & Disclosure
+            # 8. Generate or reuse visual assets per scene, register provenance, Rights
+            # & Disclosure
             scene_assets, scene_breakdown = self._generate_or_reuse_scene_assets(
                 item=item,
                 story_bible=story_bible,
@@ -791,7 +831,12 @@ class ScriptToVideoService:
             self._rights_engine.assess(item.id, actor=active_actor)
             self._disclosure.decide(
                 item.id,
-                DisclosureFacts(realistic_visual=True),
+                DisclosureFacts(
+                    realistic_person=False,
+                    realistic_event=False,
+                    synthetic_voice_of_real_person=False,
+                    realistic_visual=True,
+                ),
                 rule_set=DISCLOSURE_RULES,
                 actor=active_actor,
             )
@@ -805,7 +850,8 @@ class ScriptToVideoService:
                 completed_stages,
             )
 
-            # 9. Assign scene visuals, chapters, captions, subtitles, thumbnail, metadata, and render MP4
+            # 9. Assign scene visuals, chapters, captions, subtitles, thumbnail,
+            # metadata, and render MP4
             if request.content_type is ContentType.SHORTS:
                 (
                     subtitle_art,
@@ -841,7 +887,7 @@ class ScriptToVideoService:
                     completed_stages=completed_stages,
                 )
 
-            item = self._advance_item_status(item, ContentStatus.RENDERED)
+            item = self._advance_item_status(item, ContentStatus.TESTING)
             scene_breakdown = replace(
                 scene_breakdown,
                 scenes=tuple(
@@ -861,14 +907,17 @@ class ScriptToVideoService:
                 job,
                 ScriptToVideoStage.QC_COMPLETED,
                 {
-                    "qc_result_id": qc_report.qc_result_id,
-                    "overall_status": qc_report.overall_status.value,
-                    "Passed": qc_report.overall_status is not QCStatus.FAIL,
+                    "qc_result_id": qc_report.qc_result.id,
+                    "overall_status": qc_report.status.value,
+                    "passed": qc_report.status is not QCStatus.FAIL,
                 },
                 completed_stages,
             )
 
-            # 11. Advance ContentItem to PREVIEW_READY (or keep QC_PENDING if QC failed) and build PreviewSnapshot
+            # 11. Advance ContentItem to PREVIEW_READY (it stays TESTING if QC failed)
+            # and build PreviewSnapshot
+            if qc_report.status is not QCStatus.FAIL:
+                item = self._advance_item_status(item, ContentStatus.PREVIEW_READY)
             with self._database.transaction() as conn:
                 latest_item = ContentItemRepository(conn).get(item.id)
                 if latest_item is not None:
@@ -884,9 +933,10 @@ class ScriptToVideoService:
                 completed_stages,
             )
 
-            # 12. Optional human approval request (never auto-approves or auto-publishes)
+            # 12. Optional human approval request (never auto-approves or
+            # auto-publishes)
             approval_id: str | None = None
-            if request.request_approval and qc_report.overall_status is not QCStatus.FAIL:
+            if request.request_approval and qc_report.status is not QCStatus.FAIL:
                 approval_decision = self._approval_service.request_approval(
                     item.id,
                     requested_by=active_actor,
@@ -905,7 +955,10 @@ class ScriptToVideoService:
             with self._database.transaction() as conn:
                 jobs_repo = AIJobRepository(conn)
                 current_job = jobs_repo.get(job.id)
-                if current_job is not None and current_job.status is AIJobStatus.RUNNING:
+                if (
+                    current_job is not None
+                    and current_job.status is AIJobStatus.RUNNING
+                ):
                     succeeded_job = current_job.succeed(clock=self._clock)
                     jobs_repo.update(
                         succeeded_job, expected_updated_at=current_job.updated_at
@@ -924,7 +977,7 @@ class ScriptToVideoService:
                     "content_type": request.content_type.value,
                     "production_mode": request.production_mode.value,
                     "video_artifact_id": video_art.id,
-                    "qc_status": qc_report.overall_status.value,
+                    "qc_status": qc_report.status.value,
                     "approval_requested": approval_id is not None,
                 },
             )
@@ -1029,7 +1082,9 @@ class ScriptToVideoService:
             canon_lang = canonical_language_tag(request.language or "vi")
         except ValueError:
             canon_lang = "vi"
-        default_voice_id = (request.voice_id or "vi-VN-Standard-A").strip() or "vi-VN-Standard-A"
+        default_voice_id = (
+            request.voice_id or "vi-VN-Standard-A"
+        ).strip() or "vi-VN-Standard-A"
 
         with self._database.transaction() as conn:
             channels = ChannelRepository(conn)
@@ -1061,7 +1116,7 @@ class ScriptToVideoService:
                     id=ch_id,
                     title="Script-to-Film Studio Channel",
                     youtube=YouTubeIdentifiers(
-                        channel_id="UC_S2V_DEFAULT_STUDIO",
+                        channel_id="UCS2V_DEFAULT_STUDIO_000",
                         handle="@scripttofilmstudio",
                     ),
                     status=ChannelStatus.ACTIVE,
@@ -1075,13 +1130,13 @@ class ScriptToVideoService:
                 shorts=ShortsFormat(
                     min_seconds=12,
                     max_seconds=90,
-                    resolution=Resolution.FHD_1080P,
+                    resolution=Resolution.FULL_HD_1080,
                     captions=request.subtitles_enabled,
                 ),
                 longform=LongFormFormat(
                     min_seconds=181,
                     max_seconds=3600,
-                    resolution=Resolution.FHD_1080P,
+                    resolution=Resolution.FULL_HD_1080,
                     chapters=True,
                     captions=request.subtitles_enabled,
                 ),
@@ -1095,7 +1150,7 @@ class ScriptToVideoService:
                     audience=Audience(
                         description="Storytelling and cinematic AI video viewers",
                         age_range=AgeRange(18, 45),
-                        level=AudienceLevel.GENERAL,
+                        level=AudienceLevel.MIXED,
                         interests=("storytelling", "cinema", "short films"),
                     ),
                     niche=Niche(
@@ -1119,7 +1174,7 @@ class ScriptToVideoService:
                     cadence=Cadence(
                         shorts_per_day=5,
                         longform_per_day=2,
-                        timezone="Asia/Ho_Chi_Minh",
+                        time_zone="Asia/Ho_Chi_Minh",
                     ),
                     budget=Budget(
                         daily_limit=Decimal("50.00"),
@@ -1205,6 +1260,7 @@ class ScriptToVideoService:
                 item = ContentItem.create(
                     channel_id=channel_id,
                     strategy_profile_id=strategy.id,
+                    strategy_version=strategy.version,
                     content_type=request.content_type,
                     title=story_bible.title,
                     clock=self._clock,
@@ -1228,7 +1284,7 @@ class ScriptToVideoService:
                     failed_job = job.fail("interrupted", clock=self._clock)
                     jobs_repo.update(failed_job, expected_updated_at=job.updated_at)
                     job = failed_job
-                if job.status in (AIJobStatus.PENDING, AIJobStatus.FAILED):
+                if job.status in (AIJobStatus.QUEUED, AIJobStatus.FAILED):
                     started_job = job.start(clock=self._clock)
                     jobs_repo.update(started_job, expected_updated_at=job.updated_at)
                     job = started_job
@@ -1252,12 +1308,7 @@ class ScriptToVideoService:
             current = jobs_repo.get(job.id)
             if current is None or current.status is not AIJobStatus.RUNNING:
                 return current or job
-            cp = JobCheckpoint(
-                step=stage.value,
-                recorded_at=self._now(),
-                data=dict(data),
-            )
-            updated = current.add_checkpoint(cp, clock=self._clock)
+            updated = current.checkpoint(stage.value, dict(data), clock=self._clock)
             jobs_repo.update(updated, expected_updated_at=current.updated_at)
             return updated
 
@@ -1291,37 +1342,26 @@ class ScriptToVideoService:
             items_repo = ContentItemRepository(conn)
             current_item = items_repo.get(item.id) or item
 
-            latest_script = scripts_repo.latest_for_content_item(current_item.id)
+            versions = scripts_repo.list_by_content_item(current_item.id)
+            latest_script = versions[-1] if versions else None
             if latest_script is not None and [
                 (s.kind, s.text, s.title) for s in latest_script.sections
             ] == [(s.kind, s.text, s.title) for s in analysis.sections]:
                 script = latest_script
             else:
-                next_ver = (latest_script.version + 1) if latest_script else 1
                 script = self._analyzer.build_domain_script(
                     analysis,
                     content_item_id=current_item.id,
-                    channel_id=current_item.channel_id,
                     strategy_version=strategy.version,
-                    version=next_ver,
+                    previous=latest_script,
                     clock=self._clock,
                 )
                 scripts_repo.add(script)
 
-            if current_item.status is ContentStatus.IDEA:
-                Scripting = current_item.transition_to(
-                    ContentStatus.SCRIPTING, clock=self._clock
+            if current_item.status is ContentStatus.DRAFT:
+                current_item, _ = start_production(
+                    conn, current_item, clock=self._clock
                 )
-                items_repo.update(
-                    Scripting, expected_updated_at=current_item.updated_at
-                )
-                current_item = Scripting
-            if current_item.status is ContentStatus.SCRIPTING:
-                scripted = current_item.transition_to(
-                    ContentStatus.SCRIPTED, clock=self._clock
-                )
-                items_repo.update(scripted, expected_updated_at=current_item.updated_at)
-                current_item = scripted
 
             return script, current_item
 
@@ -1329,14 +1369,9 @@ class ScriptToVideoService:
         self, item: ContentItem, target: ContentStatus
     ) -> ContentItem:
         progression = (
-            ContentStatus.IDEA,
-            ContentStatus.SCRIPTING,
-            ContentStatus.SCRIPTED,
-            ContentStatus.VOICING,
-            ContentStatus.VOICED,
-            ContentStatus.RENDERING,
-            ContentStatus.RENDERED,
-            ContentStatus.QC_PENDING,
+            ContentStatus.DRAFT,
+            ContentStatus.GENERATING,
+            ContentStatus.TESTING,
             ContentStatus.PREVIEW_READY,
         )
         with self._database.transaction() as conn:
@@ -1350,7 +1385,7 @@ class ScriptToVideoService:
             target_idx = progression.index(target)
             while curr_idx < target_idx:
                 next_status = progression[curr_idx + 1]
-                updated = curr.transition_to(next_status, clock=self._clock)
+                updated = curr.with_status(next_status, clock=self._clock)
                 repo.update(updated, expected_updated_at=curr.updated_at)
                 curr = updated
                 curr_idx += 1
@@ -1411,7 +1446,7 @@ class ScriptToVideoService:
                 f"script_to_video:{story_bible.story_id}:{scene.scene_id}:"
                 f"{story_bible.production_mode.value}"
             )
-            title = f"Scene {scene.section_index + 1} - {scene.heading[:48]}"
+            title = f"Scene {scene.section_index + 1} - {scene.title[:48]}"
             reused_rec = self._try_reuse_scene_asset(
                 item=item,
                 scene=scene,
@@ -1422,9 +1457,7 @@ class ScriptToVideoService:
             )
             if reused_rec is not None:
                 records.append(reused_rec)
-                updated_scenes.append(
-                    replace(scene, status=SceneStatus.ASSET_GENERATED)
-                )
+                updated_scenes.append(replace(scene, status=SceneStatus.ASSETS_READY))
                 continue
 
             location = story_bible.location_by_id(scene.location_id)
@@ -1437,18 +1470,18 @@ class ScriptToVideoService:
 
             if story_bible.production_mode is ProductionMode.AI_FILM:
                 try:
-                    clip = self._video_clip_gen.generate(
+                    clip = self._video_clip_gen.generate_clip(
                         VideoClipGenerationRequest(
-                            prompt=scene.visual_prompt,
-                            width=width,
-                            height=height,
-                            duration_ms=scene.duration_ms,
-                            fps=30,
                             scene_id=scene.scene_id,
                             shot_id=primary_shot.shot_id,
+                            prompt=scene.visual_prompt,
+                            duration_ms=scene.duration_ms,
+                            width=width,
+                            height=height,
+                            fps=30,
                             camera_motion=primary_shot.camera_motion.value,
-                            style=story_bible.visual_style,
-                            seed_key=f"{story_bible.story_id}:{scene.scene_id}",
+                            character_ids=scene.character_ids,
+                            location_id=scene.location_id,
                         )
                     )
                 except VideoClipGenerationError as error:
@@ -1508,7 +1541,10 @@ class ScriptToVideoService:
                 license_ref="generated-internal-v1",
                 owner=item.channel_id,
                 file_sha256=artifact.sha256,
-                proof=f"Generated by {provider_name} for {story_bible.story_id}/{scene.scene_id}",
+                proof=(
+                    f"Generated by {provider_name} for "
+                    f"{story_bible.story_id}/{scene.scene_id}"
+                ),
                 actor=actor,
             )
             self._asset_registry.attach(
@@ -1531,13 +1567,42 @@ class ScriptToVideoService:
                     reused=False,
                 )
             )
-            updated_scenes.append(
-                replace(scene, status=SceneStatus.ASSET_GENERATED)
-            )
+            updated_scenes.append(replace(scene, status=SceneStatus.ASSETS_READY))
 
         return (
             tuple(records),
             replace(breakdown, scenes=tuple(updated_scenes)),
+        )
+
+    def _recorded_audio(
+        self, content_item_id: str, script: Script, profile: VoiceProfile
+    ) -> AudioArtifactRecord | None:
+        """The newest recorded audio of ``script`` with this exact voice profile
+        version whose stored file still matches its checksum, else ``None``."""
+        with self._database.transaction() as conn:
+            audio_repo = AudioMetadataRepository(conn)
+            artifacts = ArtifactRepository(conn).list_by_content_item(
+                content_item_id, kind=ArtifactKind.AUDIO
+            )
+            for artifact in reversed(artifacts):
+                audio = audio_repo.get_by_artifact(artifact.id)
+                if (
+                    audio is not None
+                    and audio.script_id == script.id
+                    and audio.voice_profile_id == profile.id
+                    and audio.voice_profile_version == profile.version
+                ):
+                    break
+            else:
+                return None
+        try:
+            data = self._storage.read(artifact.uri)
+        except Exception:
+            return None
+        if hashlib.sha256(data).hexdigest() != artifact.sha256:
+            return None
+        return AudioArtifactRecord(
+            artifact=artifact, audio=audio, created=False, invalidation=None
         )
 
     def _try_reuse_scene_asset(
@@ -1556,7 +1621,11 @@ class ScriptToVideoService:
             provs_repo = ProvenanceRepository(conn)
             attached = assets_repo.list_by_content_item(item.id)
             for asset in attached:
-                if asset.source == source and asset.title == title and asset.artifact_id:
+                if (
+                    asset.source == source
+                    and asset.title == title
+                    and asset.artifact_id
+                ):
                     art = artifacts_repo.get(asset.artifact_id)
                     prov = provs_repo.latest(asset.id)
                     if art is not None and prov is not None:
@@ -1592,10 +1661,10 @@ class ScriptToVideoService:
             artifacts = ArtifactRepository(conn)
             existing = [
                 a
-                for a in artifacts.list_by_content_item(
-                    content_item_id, kind=ArtifactKind.THUMBNAIL
-                )
-                if a.sha256 == checksum and a.media_type == media_type
+                for a in artifacts.list_by_content_item(content_item_id)
+                if a.kind is ArtifactKind.THUMBNAIL
+                and a.sha256 == checksum
+                and a.media_type == media_type
             ]
             if existing:
                 return existing[-1]
@@ -1727,7 +1796,7 @@ class ScriptToVideoService:
         )
         meta_art = meta_res.artifact
 
-        self._advance_item_status(item, ContentStatus.RENDERING)
+        self._advance_item_status(item, ContentStatus.GENERATING)
         render_res = self._shorts_render.render(
             proj.id, expected_version=proj.version, actor=actor, take_over=True
         )
@@ -1834,11 +1903,6 @@ class ScriptToVideoService:
             completed_stages,
         )
 
-        meta_lang = (
-            strategy.languages.primary
-            if strategy.languages is not None
-            else story_bible.language
-        )
         description = (
             f"{story_bible.story_arc.logline}\n\n"
             f"Opening: {story_bible.story_arc.opening_situation}\n"
@@ -1849,13 +1913,12 @@ class ScriptToVideoService:
             title=story_bible.title,
             description=description,
             tags=("StoryVideo", "Narrative", "Cinematic"),
-            language=meta_lang,
             expected_version=proj.version,
             actor=actor,
         )
         meta_art = meta_res.artifact
 
-        self._advance_item_status(item, ContentStatus.RENDERING)
+        self._advance_item_status(item, ContentStatus.GENERATING)
         render_res = self._longform_render.render(
             proj.id, expected_version=proj.version, actor=actor, take_over=True
         )
@@ -1877,9 +1940,7 @@ class ScriptToVideoService:
             completed_stages,
         )
 
-        self._longform_bundle.build(
-            proj.id, expected_version=proj.version, actor=actor
-        )
+        self._longform_bundle.build(proj.id, expected_version=proj.version, actor=actor)
         return subtitle_art, thumb_art, meta_art, video_art
 
 

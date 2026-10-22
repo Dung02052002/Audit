@@ -9,7 +9,8 @@ human reviewer can inspect what changed after a re-render or metadata edit:
   - ``AUDIO``: audio duration delta from ``AudioMetadataRepository``.
   - ``SUBTITLES``: cue count delta and modified cue indices.
   - ``THUMBNAIL``: image dimensions and media type changes via ``probe_image``.
-  - ``METADATA``: title/description/tags/chapters/project_version/script_version/disclosure changes.
+  - ``METADATA``: title/description/tags/chapters/project_version/script_version/
+    disclosure changes.
 - Reports ``invalidated_approval_ids`` and ``stale_approval_ids`` caused by
   artifact version changes.
 """
@@ -42,7 +43,9 @@ from ai_youtube_agent.providers.video_render import probe_mp4
 
 @dataclass(frozen=True)
 class ArtifactKindComparison:
-    """Comparison between previous and current versions of one ``ArtifactKind`` (#135)."""
+    """Comparison between previous and current versions of one ``ArtifactKind``
+    (#135).
+    """
 
     kind: ArtifactKind
     change_status: str  # "modified" | "added" | "unchanged" | "missing"
@@ -114,7 +117,9 @@ class VersionComparisonService:
         base_version: int | None = None,
         target_version: int | None = None,
     ) -> VersionComparisonResult:
-        """Compare ``target_version`` (default latest) against ``base_version`` (default preceding)."""
+        """Compare ``target_version`` (default latest) against ``base_version``
+        (default preceding).
+        """
         if base_version is not None:
             _validate_positive_version(base_version, "base_version")
         if target_version is not None:
@@ -192,10 +197,17 @@ class VersionComparisonService:
 
             latest_ver = versions[-1].version
             curr_art = self._select_version(
-                versions, target_version, kind=kind, require_exact=(kind is ArtifactKind.VIDEO)
+                versions,
+                target_version,
+                kind=kind,
+                require_exact=(kind is ArtifactKind.VIDEO),
             )
             prev_art = self._select_previous(
-                versions, curr_art, base_version, kind=kind, require_exact=(kind is ArtifactKind.VIDEO)
+                versions,
+                curr_art,
+                base_version,
+                kind=kind,
+                require_exact=(kind is ArtifactKind.VIDEO),
             )
 
             curr_desc = PreviewArtifactDescriptor.from_artifact(
@@ -227,9 +239,7 @@ class VersionComparisonService:
             if sha_changed:
                 changed_kinds.append(kind)
 
-            details = self._diff_details(
-                kind, prev_art, curr_art, audio_durations
-            )
+            details = self._diff_details(kind, prev_art, curr_art, audio_durations)
             comparisons.append(
                 ArtifactKindComparison(
                     kind=kind,
@@ -244,14 +254,10 @@ class VersionComparisonService:
             )
 
         invalidated_ids = tuple(
-            req.id
-            for req in approvals
-            if req.status is ApprovalStatus.INVALIDATED
+            req.id for req in approvals if req.status is ApprovalStatus.INVALIDATED
         )
         stale_ids = tuple(
-            req.id
-            for req in approvals
-            if bool(stale_kinds(req, all_artifacts))
+            req.id for req in approvals if bool(stale_kinds(req, all_artifacts))
         )
 
         return VersionComparisonResult(
@@ -368,9 +374,7 @@ class VersionComparisonService:
                 curr_map = {c.index: (c.start_ms, c.end_ms, c.text) for c in curr_cues}
                 all_indices = sorted(set(prev_map) | set(curr_map))
                 modified_indices = [
-                    idx
-                    for idx in all_indices
-                    if prev_map.get(idx) != curr_map.get(idx)
+                    idx for idx in all_indices if prev_map.get(idx) != curr_map.get(idx)
                 ]
                 return {
                     "previous_cue_count": len(prev_cues),
@@ -417,13 +421,9 @@ class VersionComparisonService:
                     "chapters_changed": (
                         prev_json.get("chapters") != curr_json.get("chapters")
                     ),
-                    "project_version_delta": int(
-                        curr_json.get("project_version", 0)
-                    )
+                    "project_version_delta": int(curr_json.get("project_version", 0))
                     - int(prev_json.get("project_version", 0)),
-                    "script_version_delta": int(
-                        curr_json.get("script_version", 0)
-                    )
+                    "script_version_delta": int(curr_json.get("script_version", 0))
                     - int(prev_json.get("script_version", 0)),
                     "contains_synthetic_media_changed": (
                         prev_json.get("contains_synthetic_media")

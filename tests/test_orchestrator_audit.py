@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from tests.factories import make_channel, make_content_item, make_strategy_profile
 
 from ai_youtube_agent.core.audit import (
     Actor,
@@ -13,6 +14,11 @@ from ai_youtube_agent.core.audit import (
     InMemoryAuditSink,
 )
 from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.channel import (
+    ChannelRepository,
+    StrategyProfileRepository,
+)
+from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.pipeline.job import AIJob
 from ai_youtube_agent.pipeline.job_queue import SqliteJobQueue
@@ -46,10 +52,18 @@ def test_orchestrator_audit_records_and_queries_job_session_and_runtime_trails(
     session_mgr = SessionManager(database, audit, clock=_FixedClock(t0))
     session = session_mgr.start_session(user)
 
+    channel = make_channel()
+    profile = make_strategy_profile(channel)
+    item = make_content_item(channel, profile)
+    with database.transaction() as conn:
+        ChannelRepository(conn).add(channel)
+        StrategyProfileRepository(conn).add(profile)
+        ContentItemRepository(conn).add(item)
+
     job = AIJob.create(
         "content.generate",
         "gen:audit-job-1",
-        content_item_id="item-audit-1",
+        content_item_id=item.id,
         session_id=session.id,
         clock=_FixedClock(t0),
     ).start(clock=_FixedClock(t0 + timedelta(seconds=1)))
@@ -120,7 +134,7 @@ def test_orchestrator_audit_records_and_queries_job_session_and_runtime_trails(
     assert session_trail.action_counts["session.stopped"] == 1
     assert session_trail.action_counts[JOB_COMPLETED] == 1
 
-    item_trail = audit_svc.trail_for_content_item("item-audit-1")
+    item_trail = audit_svc.trail_for_content_item(item.id)
     assert item_trail.total_events == 6
 
     runtime_trail = audit_svc.trail_for_runtime()

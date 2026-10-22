@@ -27,6 +27,7 @@ from ai_youtube_agent.content.cost import CostCategory
 from ai_youtube_agent.content.disclosure import DisclosureDecision
 from ai_youtube_agent.content.experiment import ExperimentStatus, ExperimentType
 from ai_youtube_agent.content.fact_check import FactCheckStatus
+from ai_youtube_agent.content.longform_project import LongFormProjectStatus
 from ai_youtube_agent.content.originality import (
     MAX_FINDINGS,
     MAX_METHOD,
@@ -45,7 +46,6 @@ from ai_youtube_agent.content.script import (
     NumberAgreement,
     SectionKind,
 )
-from ai_youtube_agent.content.longform_project import LongFormProjectStatus
 from ai_youtube_agent.content.script_validation import ValidationStatus
 from ai_youtube_agent.content.shorts_project import ShortsProjectStatus
 from ai_youtube_agent.content.source import DuplicateReason

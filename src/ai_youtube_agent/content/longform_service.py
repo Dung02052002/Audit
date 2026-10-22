@@ -1,4 +1,5 @@
-"""LongForm Project service (Prompt Pack v8, prompt #105), context C9 LongForm Production.
+"""LongForm Project service (Prompt Pack v8, prompt #105), context C9 LongForm
+Production.
 
 ``LongFormProjectService`` makes and keeps the ``LongFormProject`` of a LongForm
 content item (``content/longform_project.py``, table ``longform_projects`` of
@@ -39,7 +40,7 @@ from http import HTTPStatus
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.longform_captions import (
-     check_longform_captions,
+    check_longform_captions,
     covers_every_longform_scene,
     plan_longform_captions,
 )
@@ -257,9 +258,7 @@ def longform_readiness(
         sum(asset.role is AssetRole.BACKGROUND for asset in scene.assets) == 1
         for scene in timeline.scenes
     )
-    chapters = (
-        bool(timeline.chapters) if config.chapters else not timeline.chapters
-    )
+    chapters = bool(timeline.chapters) if config.chapters else not timeline.chapters
     captions = check_longform_captions(config, timeline).ok and (
         not config.captions or covers_every_longform_scene(timeline)
     )
@@ -328,9 +327,7 @@ class LongFormProjectService:
             _check_version(stored, expected_version)
             item = _longform_item(connection, stored.content_item_id)
             inputs = _latest_inputs(connection, item)
-            project = stored.rebind(
-                **inputs.bind(), actor=actor, clock=self._clock
-            )
+            project = stored.rebind(**inputs.bind(), actor=actor, clock=self._clock)
             _update(projects, project, expected_version)
         self._audit.record(
             REBOUND,
@@ -453,9 +450,7 @@ class LongFormProjectService:
         status = _status_of(stored, timeline, script)
         _check_sections(stored, timeline, script)
         timeline = _check_assets(connection, stored, timeline)
-        project = stored.with_timeline(
-            timeline, status, actor=actor, clock=self._clock
-        )
+        project = stored.with_timeline(timeline, status, actor=actor, clock=self._clock)
         _update(projects, project, expected_version)
         return project
 
@@ -472,9 +467,7 @@ class LongFormProjectService:
                 "chapter_count": len(project.timeline.chapters),
                 "caption_count": len(project.timeline.captions),
                 "caption_warning_count": len(
-                    check_longform_captions(
-                        project.config, project.timeline
-                    ).warnings
+                    check_longform_captions(project.config, project.timeline).warnings
                 ),
                 "music_count": len(project.timeline.music),
                 "timing_source": project.timeline.timing_source.value,
@@ -486,9 +479,7 @@ class LongFormProjectService:
         with self._database.transaction() as connection:
             return _stored(LongFormProjectRepository(connection), project_id)
 
-    def get_by_content_item(
-        self, content_item_id: str
-    ) -> LongFormProject | None:
+    def get_by_content_item(self, content_item_id: str) -> LongFormProject | None:
         self._require_enabled()
         with self._database.transaction() as connection:
             if ContentItemRepository(connection).get(content_item_id) is None:
@@ -517,9 +508,7 @@ def longform_project_is_current(
     connection: sqlite3.Connection, project: LongFormProject
 ) -> bool:
     """True when the bound script and audio are still the item's latest."""
-    scripts = ScriptRepository(connection).list_by_content_item(
-        project.content_item_id
-    )
+    scripts = ScriptRepository(connection).list_by_content_item(project.content_item_id)
     audio = ArtifactRepository(connection).latest(
         project.content_item_id, ArtifactKind.AUDIO
     )
@@ -578,9 +567,7 @@ def _exists(content_item_id: str) -> LongFormProjectError:
     )
 
 
-def _stored(
-    projects: LongFormProjectRepository, project_id: str
-) -> LongFormProject:
+def _stored(projects: LongFormProjectRepository, project_id: str) -> LongFormProject:
     project = projects.get(project_id)
     if project is None:
         raise LongFormProjectError(
@@ -645,14 +632,17 @@ def _check_chapters(
             code=LongFormProjectErrorCode.CHAPTER_INVALID,
         )
     sections = len(script.sections)
+    scene_sections = {scene.id: scene.section_index for scene in timeline.scenes}
     for marker in timeline.chapters:
-        if marker.section_index >= sections:
-            raise LongFormProjectError(
-                f"chapter marker {marker.index} references section "
-                f"{marker.section_index}, but script version "
-                f"{project.script_version} has {sections} sections",
-                code=LongFormProjectErrorCode.CHAPTER_INVALID,
-            )
+        for scene_id in (marker.start_scene_id, marker.end_scene_id):
+            index = scene_sections.get(scene_id)
+            if index is None or index >= sections:
+                raise LongFormProjectError(
+                    f"chapter marker {marker.id} references scene {scene_id}, "
+                    f"which is not a scene of script version "
+                    f"{project.script_version} ({sections} sections)",
+                    code=LongFormProjectErrorCode.CHAPTER_INVALID,
+                )
 
 
 def _refuse_caption_errors(
@@ -670,9 +660,7 @@ def _refuse_caption_errors(
             )
 
 
-def _bound_script(
-    connection: sqlite3.Connection, project: LongFormProject
-) -> Script:
+def _bound_script(connection: sqlite3.Connection, project: LongFormProject) -> Script:
     script = ScriptRepository(connection).get(project.script_id)
     if script is None:
         raise LongFormProjectError(
@@ -785,9 +773,7 @@ class _AssetChecker:
         return replace(placed, provenance_id=current)
 
 
-def _asset_error(
-    detail: str, code: LongFormProjectErrorCode
-) -> LongFormProjectError:
+def _asset_error(detail: str, code: LongFormProjectErrorCode) -> LongFormProjectError:
     return LongFormProjectError(detail, code=code)
 
 
@@ -805,9 +791,7 @@ def _chunk_durations(
     return chunk_durations(job) if job is not None else None
 
 
-def _longform_item(
-    connection: sqlite3.Connection, content_item_id: str
-) -> ContentItem:
+def _longform_item(connection: sqlite3.Connection, content_item_id: str) -> ContentItem:
     item = ContentItemRepository(connection).get(content_item_id)
     if item is None:
         raise LongFormProjectError(
@@ -885,4 +869,3 @@ def _event_metadata(project: LongFormProject) -> Mapping[str, MetadataValue]:
         "status": project.status.value,
         "version": project.version,
     }
-

@@ -575,8 +575,8 @@ def test_a_media_type_the_storage_keeps_is_refused_when_it_is_not_audio(
 
 
 def test_only_wav_is_audio_and_the_storage_can_keep_it() -> None:
-    assert AUDIO_MEDIA_TYPES == frozenset({"audio/wav"})
-    assert AUDIO_MEDIA_TYPES <= set(artifact_storage.MEDIA_EXTENSIONS)
+    assert frozenset({"audio/wav"}) == AUDIO_MEDIA_TYPES
+    assert set(artifact_storage.MEDIA_EXTENSIONS) >= AUDIO_MEDIA_TYPES
 
 
 def test_every_error_code_has_a_user_message() -> None:

@@ -58,7 +58,9 @@ class OperationScopeSpec:
         return {
             "operation": self.operation.value,
             "required_scopes": sorted(s.value for s in self.required_scopes),
-            "accepted_alternatives": sorted(s.value for s in self.accepted_alternatives),
+            "accepted_alternatives": sorted(
+                s.value for s in self.accepted_alternatives
+            ),
             "justification": self.justification,
         }
 
@@ -68,37 +70,54 @@ OPERATION_SCOPE_MATRIX: Final[dict[YouTubeOperation, OperationScopeSpec]] = {
         operation=YouTubeOperation.CHANNEL_READ,
         required_scopes=frozenset({OAuthScope.YOUTUBE_READONLY}),
         accepted_alternatives=frozenset(),
-        justification="Read-only channel metadata verification requires only youtube.readonly.",
+        justification=(
+            "Read-only channel metadata verification requires only youtube.readonly."
+        ),
     ),
     YouTubeOperation.VIDEO_UPLOAD: OperationScopeSpec(
         operation=YouTubeOperation.VIDEO_UPLOAD,
         required_scopes=frozenset({OAuthScope.YOUTUBE_UPLOAD}),
         accepted_alternatives=frozenset(),
-        justification="Uploading approved videos requires youtube.upload without full account management.",
+        justification=(
+            "Uploading approved videos requires youtube.upload without full account "
+            "management."
+        ),
     ),
     YouTubeOperation.ANALYTICS_READ: OperationScopeSpec(
         operation=YouTubeOperation.ANALYTICS_READ,
         required_scopes=frozenset({OAuthScope.YT_ANALYTICS_READONLY}),
         accepted_alternatives=frozenset(),
-        justification="Reading non-monetary channel and video metrics requires only yt-analytics.readonly.",
+        justification=(
+            "Reading non-monetary channel and video metrics requires only "
+            "yt-analytics.readonly."
+        ),
     ),
     YouTubeOperation.REVENUE_READ: OperationScopeSpec(
         operation=YouTubeOperation.REVENUE_READ,
         required_scopes=frozenset({OAuthScope.YT_ANALYTICS_MONETARY_READONLY}),
         accepted_alternatives=frozenset(),
-        justification="Reading estimated and finalized revenue requires yt-analytics-monetary.readonly.",
+        justification=(
+            "Reading estimated and finalized revenue requires "
+            "yt-analytics-monetary.readonly."
+        ),
     ),
     YouTubeOperation.COMMENT_READ: OperationScopeSpec(
         operation=YouTubeOperation.COMMENT_READ,
         required_scopes=frozenset({OAuthScope.YOUTUBE_READONLY}),
         accepted_alternatives=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}),
-        justification="Syncing comments prefers youtube.readonly and accepts youtube.force-ssl when reply posting is authorized.",
+        justification=(
+            "Syncing comments prefers youtube.readonly and accepts youtube.force-ssl "
+            "when reply posting is authorized."
+        ),
     ),
     YouTubeOperation.COMMENT_REPLY_POST: OperationScopeSpec(
         operation=YouTubeOperation.COMMENT_REPLY_POST,
         required_scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}),
         accepted_alternatives=frozenset(),
-        justification="Posting approved comment replies requires youtube.force-ssl per YouTube Data API v3.",
+        justification=(
+            "Posting approved comment replies requires youtube.force-ssl per YouTube "
+            "Data API v3."
+        ),
     ),
 }
 
@@ -113,7 +132,9 @@ ALLOWED_ACTORS_BY_ACTION: Final[dict[PrivilegedAction, frozenset[ActorKind]]] = 
     PrivilegedAction.CONCLUDE_EXPERIMENT: frozenset({ActorKind.USER}),
     PrivilegedAction.CANCEL_EXPERIMENT: frozenset({ActorKind.USER}),
     PrivilegedAction.START_SESSION: frozenset({ActorKind.USER}),
-    PrivilegedAction.ACTIVATE_KILL_SWITCH: frozenset({ActorKind.USER, ActorKind.SYSTEM}),
+    PrivilegedAction.ACTIVATE_KILL_SWITCH: frozenset(
+        {ActorKind.USER, ActorKind.SYSTEM}
+    ),
     PrivilegedAction.DEACTIVATE_KILL_SWITCH: frozenset({ActorKind.USER}),
     PrivilegedAction.APPROVE_COMMENT_REPLY: frozenset({ActorKind.USER}),
 }
@@ -127,7 +148,9 @@ class LeastPrivilegeError(DomainError):
         detail: str,
         *,
         code: str = "domain.least_privilege_violation",
-        user_message: str = "The requested operation is not permitted under least-privilege policy.",
+        user_message: str = (
+            "The requested operation is not permitted under least-privilege policy."
+        ),
     ) -> None:
         super().__init__(detail, code=code, user_message=user_message)
 
@@ -169,7 +192,8 @@ class LeastPrivilegePolicy:
         spec = OPERATION_SCOPE_MATRIX[operation]
         allowed = spec.required_scopes | spec.accepted_alternatives
         if spec.required_scopes.issubset(token.scopes) or (
-            spec.accepted_alternatives and bool(spec.accepted_alternatives & token.scopes)
+            spec.accepted_alternatives
+            and bool(spec.accepted_alternatives & token.scopes)
         ):
             missing: frozenset[OAuthScope] = frozenset()
             authorized = True
@@ -216,7 +240,8 @@ class LeastPrivilegePolicy:
         allowed_kinds = ALLOWED_ACTORS_BY_ACTION[action]
         if actor.kind not in allowed_kinds:
             raise LeastPrivilegeError(
-                f"Actor {actor.kind.value}:{actor.id} is not permitted to perform {action.value}.",
+                f"Actor {actor.kind.value}:{actor.id} is not permitted to perform "
+                f"{action.value}.",
                 code="domain.actor_privilege_denied",
                 user_message="Only an authorized human user may perform this action.",
             )

@@ -41,20 +41,14 @@ from ai_youtube_agent.core.http import current_actor, provide
 
 router = APIRouter(prefix="/previews", tags=["previews"])
 
-ArtifactServiceDep = Annotated[
-    PreviewArtifactService, provide(PreviewArtifactService)
-]
+ArtifactServiceDep = Annotated[PreviewArtifactService, provide(PreviewArtifactService)]
 PlayerServiceDep = Annotated[PreviewPlayerService, provide(PreviewPlayerService)]
-MetadataServiceDep = Annotated[
-    PreviewMetadataService, provide(PreviewMetadataService)
-]
+MetadataServiceDep = Annotated[PreviewMetadataService, provide(PreviewMetadataService)]
 ReportServiceDep = Annotated[PreviewReportService, provide(PreviewReportService)]
 ComparisonServiceDep = Annotated[
     VersionComparisonService, provide(VersionComparisonService)
 ]
-EditLoopServiceDep = Annotated[
-    PreviewEditLoopService, provide(PreviewEditLoopService)
-]
+EditLoopServiceDep = Annotated[PreviewEditLoopService, provide(PreviewEditLoopService)]
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 
 
@@ -91,9 +85,7 @@ def get_preview_snapshot(
     service: ArtifactServiceDep,
     version: int | None = None,
 ) -> dict[str, Any]:
-    return service.get_snapshot(
-        content_item_id, video_version=version
-    ).as_dict()
+    return service.get_snapshot(content_item_id, video_version=version).as_dict()
 
 
 @router.get("/{content_item_id}/artifacts/{artifact_id}")
@@ -154,9 +146,7 @@ def get_preview_player(
     service: PlayerServiceDep,
     version: int | None = None,
 ) -> dict[str, Any]:
-    return service.build_player(
-        content_item_id, video_version=version
-    ).as_dict()
+    return service.build_player(content_item_id, video_version=version).as_dict()
 
 
 @router.get("/{content_item_id}/player.html")
@@ -165,9 +155,7 @@ def get_preview_player_html(
     service: PlayerServiceDep,
     version: int | None = None,
 ) -> HTMLResponse:
-    html_text = service.render_player_html(
-        content_item_id, video_version=version
-    )
+    html_text = service.render_player_html(content_item_id, video_version=version)
     return HTMLResponse(content=html_text)
 
 

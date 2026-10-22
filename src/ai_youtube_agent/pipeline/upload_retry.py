@@ -62,7 +62,11 @@ class UploadRetryPolicy:
             raise ValueError("max_attempts must be a whole number from 1 to 10")
         for name in ("base_delay_seconds", "max_delay_seconds"):
             value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or value < 0
+            ):
                 raise ValueError(f"{name} must be a number of 0 or more")
         if self.max_delay_seconds < self.base_delay_seconds:
             raise ValueError("max_delay_seconds must not be below base_delay_seconds")
@@ -72,7 +76,10 @@ class UploadRetryPolicy:
         if isinstance(failed_attempt, bool) or failed_attempt < 1:
             raise ValueError("failed_attempt must be a whole number of 1 or more")
         return float(
-            min(self.max_delay_seconds, self.base_delay_seconds * 2 ** (failed_attempt - 1))
+            min(
+                self.max_delay_seconds,
+                self.base_delay_seconds * 2 ** (failed_attempt - 1),
+            )
         )
 
 

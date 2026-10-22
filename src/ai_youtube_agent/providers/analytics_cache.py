@@ -29,7 +29,7 @@ from typing import Any
 
 from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.content.analytics_freshness import (
-     DEFAULT_FRESHNESS_POLICY,
+    DEFAULT_FRESHNESS_POLICY,
     AnalyticsFreshnessPolicy,
 )
 from ai_youtube_agent.providers.analytics import (
@@ -183,13 +183,10 @@ class AnalyticsCache:
         try:
             fresh_page = self.inner.query(query, token=token)
         except AnalyticsProviderError as error:
-            if (
-                existing is not None
-                and self._allow_stale_fallback
-                and error.retryable
-            ):
+            if existing is not None and self._allow_stale_fallback and error.retryable:
                 with self._lock:
-                    # Only fall back if the entry was not invalidated while calling inner.
+                    # Only fall back if the entry was not invalidated while calling
+                    # inner.
                     current = self._entries.get(key)
                     if current is not None:
                         self._stale_fallbacks += 1
@@ -270,7 +267,8 @@ class AnalyticsCache:
         period_start: datetime,
         period_end: datetime,
     ) -> int:
-        """Remove cached entries for a channel whose period overlaps ``[period_start, period_end)``."""
+        """Remove cached entries for a channel whose period overlaps ``[period_start,
+        period_end)``."""
         if period_start >= period_end:
             raise ValueError("period_start must be earlier than period_end")
         with self._lock:
@@ -306,9 +304,7 @@ class AnalyticsCache:
             )
 
     def _is_expired(self, entry: _CacheEntry, now: datetime) -> bool:
-        ttl = self._policy.max_age_for(
-            entry.query.scope, is_complete=entry.is_complete
-        )
+        ttl = self._policy.max_age_for(entry.query.scope, is_complete=entry.is_complete)
         return now - entry.cached_at >= ttl
 
     def _verify_token(self, token: OAuthToken | None, now: datetime) -> None:

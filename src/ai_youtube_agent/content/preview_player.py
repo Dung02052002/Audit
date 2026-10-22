@@ -1,8 +1,11 @@
-"""Preview Player component and service (Prompt Pack v8, prompt L-132), context C11 Review.
+"""Preview Player component and service.
+
+(Prompt Pack v8, prompt L-132), context C11 Review.
 
 Builds the actual HTML5 video playback component and configuration model for
 previewing an exact rendered ``VIDEO`` artifact version:
-- Probes the rendered MP4 file via ``probe_mp4`` for exact duration and container metadata.
+- Probes the rendered MP4 file via ``probe_mp4`` for exact duration and container
+  metadata.
 - Resolves canvas dimensions (9:16 vertical for Shorts, 16:9 horizontal for LongForm),
   frame rate, safe area guides, and chapter seek markers.
 - Converts SRT subtitles to WebVTT on demand via ``srt_to_vtt`` so browser
@@ -130,7 +133,9 @@ class PreviewPlayerConfig:
 
 def srt_to_vtt(srt_text: str) -> str:
     """Convert SubRip (SRT) subtitle text into WebVTT for HTML5 ``<track>`` playback."""
-    stripped = srt_text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").strip()
+    stripped = (
+        srt_text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").strip()
+    )
     if stripped.startswith("WEBVTT"):
         return stripped + "\n"
 
@@ -195,33 +200,52 @@ def render_preview_player_html(config: PreviewPlayerConfig) -> str:
         )
 
     rate_options = "\n".join(
-        f'        <option value="{rate}"{" selected" if rate == 1.0 else ""}>{rate}x</option>'
+        f'        <option value="{rate}"{" selected" if rate == 1.0 else ""}'
+        f">{rate}x</option>"
         for rate in config.playback_rates
     )
 
-    return f"""<section class="preview-player-component" data-content-item-id="{esc_item_id}" data-content-type="{config.content_type.value}" data-aspect-ratio="{esc_aspect}" data-video-artifact-id="{esc_video_id}" data-video-version="{config.video.version}" data-video-sha256="{esc_video_sha}" data-bundle-sha256="{esc_bundle_sha}">
+    return f"""<section class="preview-player-component" \
+data-content-item-id="{esc_item_id}" data-content-type="{config.content_type.value}" \
+data-aspect-ratio="{esc_aspect}" data-video-artifact-id="{esc_video_id}" \
+data-video-version="{config.video.version}" data-video-sha256="{esc_video_sha}" \
+data-bundle-sha256="{esc_bundle_sha}">
   <header class="preview-player-header">
     <h2 class="preview-player-title">{esc_title}</h2>
     <div class="preview-player-badges">
-      <span class="badge badge-format">{esc_aspect} ({config.width}x{config.height} @ {config.fps}fps)</span>
+      <span class="badge badge-format">{esc_aspect} ({config.width}x{config.height} \
+@ {config.fps}fps)</span>
       <span class="badge badge-version">v{config.video.version}</span>
-      <span class="badge badge-sha256" title="{esc_video_sha}">sha256:{esc_video_sha[:12]}</span>
+      <span class="badge badge-sha256" title="{esc_video_sha}">sha256:{
+        esc_video_sha[:12]
+    }</span>
     </div>
   </header>
-  <div class="preview-player-stage" style="aspect-ratio: {config.width} / {config.height}; max-width: {config.width}px;">
-    <video id="preview-video-player" class="preview-video-element" width="{config.width}" height="{config.height}" controls preload="metadata" playsinline data-duration-ms="{config.duration_ms}"{poster_attr}>
-      <source src="{esc_video_src}" type="{html.escape(config.video.media_type, quote=True)}" />{track_html}
+  <div class="preview-player-stage" \
+style="aspect-ratio: {config.width} / {config.height}; max-width: {config.width}px;">
+    <video id="preview-video-player" class="preview-video-element" \
+width="{config.width}" height="{config.height}" controls preload="metadata" \
+playsinline data-duration-ms="{config.duration_ms}"{poster_attr}>
+      <source src="{esc_video_src}" type="{
+        html.escape(config.video.media_type, quote=True)
+    }" />{track_html}
     </video>
-    <div class="preview-safe-area-guide" data-safe-area-overlay style="top: {top_pct:.1f}%; bottom: {bottom_pct:.1f}%; left: {left_pct:.1f}%; right: {right_pct:.1f}%; pointer-events: none;"></div>
+    <div class="preview-safe-area-guide" data-safe-area-overlay \
+style="top: {top_pct:.1f}%; bottom: {bottom_pct:.1f}%; left: {left_pct:.1f}%; \
+right: {right_pct:.1f}%; pointer-events: none;"></div>
   </div>
-  <div class="preview-player-controls" role="toolbar" aria-label="Preview Player Controls">
-    <span class="preview-timecode" data-timecode-display>00:00.000 / {format_chapter_timestamp(config.duration_ms)}</span>
+  <div class="preview-player-controls" role="toolbar" \
+aria-label="Preview Player Controls">
+    <span class="preview-timecode" data-timecode-display>00:00.000 / {
+        format_chapter_timestamp(config.duration_ms)
+    }</span>
     <label class="preview-rate-control">Speed
       <select data-playback-rate-select>
 {rate_options}
       </select>
     </label>
-    <button type="button" data-safe-area-toggle aria-pressed="true">Toggle Safe Area</button>
+    <button type="button" data-safe-area-toggle \
+aria-pressed="true">Toggle Safe Area</button>
   </div>{chapters_section}
   <script>
     (function() {{
@@ -246,7 +270,8 @@ def render_preview_player_html(config: PreviewPlayerConfig) -> str:
       seekButtons.forEach(function(btn) {{
         btn.addEventListener('click', function() {{
           if (video) {{
-            video.currentTime = (parseInt(btn.getAttribute('data-seek-ms'), 10) || 0) / 1000.0;
+            video.currentTime = (parseInt(btn.getAttribute('data-seek-ms'), 10) || 0) \
+/ 1000.0;
             video.play();
           }}
         }});
@@ -276,7 +301,10 @@ class PreviewPlayerService:
         *,
         video_version: int | None = None,
     ) -> PreviewPlayerConfig:
-        """Build ``PreviewPlayerConfig`` bound to the exact rendered artifact version."""
+        """Build ``PreviewPlayerConfig`` bound to the exact rendered artifact.
+
+        The artifact version is the exact one rendered.
+        """
         snapshot: PreviewSnapshot = self._artifacts.get_snapshot(
             content_item_id, video_version=video_version
         )
@@ -329,10 +357,10 @@ class PreviewPlayerService:
                 fps = shorts_proj.config.fps
                 sa = shorts_proj.config.safe_area
                 safe_area = SafeAreaBox(
-                    sa.top_permille,
-                    sa.bottom_permille,
-                    sa.left_permille,
-                    sa.right_permille,
+                    sa.top,
+                    sa.bottom,
+                    sa.left,
+                    sa.right,
                 )
         else:
             aspect_ratio = "16:9"
@@ -344,10 +372,10 @@ class PreviewPlayerService:
                 fps = lf_proj.config.fps
                 sa = lf_proj.config.safe_area
                 safe_area = SafeAreaBox(
-                    sa.top_permille,
-                    sa.bottom_permille,
-                    sa.left_permille,
-                    sa.right_permille,
+                    sa.top,
+                    sa.bottom,
+                    sa.left,
+                    sa.right,
                 )
 
         title = snapshot.title
@@ -446,7 +474,10 @@ class PreviewPlayerService:
         artifact_id: str | None = None,
         expected_sha256: str | None = None,
     ) -> tuple[PreviewArtifactDescriptor, str]:
-        """Return the item's subtitle artifact converted to WebVTT text for player ``<track>``."""
+        """Return the item's subtitle artifact converted to WebVTT text.
+
+        For the player ``<track>``.
+        """
         if artifact_id is not None:
             desc = self._artifacts.get_artifact(
                 content_item_id,

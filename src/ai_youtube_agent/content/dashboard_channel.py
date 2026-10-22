@@ -1,4 +1,5 @@
-"""Channel Overview screen view and service (Prompt Pack v8, prompt Q-193), context X3 Command Center.
+"""Channel Overview screen view and service (Prompt Pack v8, prompt Q-193), context
+X3 Command Center.
 
 Builds the Command Center Channel Overview screen view model and iOS-style HTML
 rendering, presenting:
@@ -16,7 +17,7 @@ rendering, presenting:
 import html
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Final
 
@@ -42,8 +43,6 @@ from ai_youtube_agent.content.watch_time import (
     TWO_PLACES,
     WatchTimeError,
     WatchTimeErrorCode,
-    WatchTimeMeasurement,
-    WatchTimeUnit,
     aggregate_watch_time,
     normalize_snapshot_watch_time,
 )
@@ -146,9 +145,7 @@ class ChannelSubscribersSummary:
                 else None
             ),
             "net_subscribers": (
-                str(self.net_subscribers)
-                if self.net_subscribers is not None
-                else None
+                str(self.net_subscribers) if self.net_subscribers is not None else None
             ),
             "included_periods": self.included_periods,
             "incomplete_period_count": self.incomplete_period_count,
@@ -333,7 +330,10 @@ class ChannelOverviewService:
                     subscribers=None,
                     views_and_watch_time=None,
                     content_counts=_empty_content_counts(),
-                    empty_message="No channel selected or configured yet. Create a channel to view its overview.",
+                    empty_message=(
+                        "No channel selected or configured yet. "
+                        "Create a channel to view its overview."
+                    ),
                 )
 
             strategy = StrategyProfileRepository(connection).get_by_channel(
@@ -357,9 +357,7 @@ class ChannelOverviewService:
         non_overlapping = _select_non_overlapping_snapshots(filtered_snapshots)
 
         identity = _build_identity_card(selected_channel, strategy)
-        subscribers = _build_subscribers_summary(
-            selected_channel.id, non_overlapping
-        )
+        subscribers = _build_subscribers_summary(selected_channel.id, non_overlapping)
         views_and_watch_time = _build_views_watch_time_summary(
             selected_channel.id, non_overlapping
         )
@@ -410,19 +408,13 @@ class ChannelOverviewService:
 
         views_text = _fmt_metric(vw.views if vw else None)
         wt_hours_text = _fmt_metric(vw.watch_time_hours if vw else None, suffix=" hrs")
-        wt_mins_text = _fmt_metric(
-            vw.watch_time_minutes if vw else None, suffix=" min"
-        )
+        wt_mins_text = _fmt_metric(vw.watch_time_minutes if vw else None, suffix=" min")
         avg_dur_text = _fmt_metric(
             vw.average_view_duration_seconds if vw else None, suffix=" s"
         )
 
-        net_subs_text = _fmt_signed_metric(
-            subs.net_subscribers if subs else None
-        )
-        gained_subs_text = _fmt_metric(
-            subs.subscribers_gained if subs else None
-        )
+        net_subs_text = _fmt_signed_metric(subs.net_subscribers if subs else None)
+        gained_subs_text = _fmt_metric(subs.subscribers_gained if subs else None)
         lost_subs_text = _fmt_metric(subs.subscribers_lost if subs else None)
 
         status_rows = "".join(
@@ -440,11 +432,15 @@ class ChannelOverviewService:
         <p class="yt-card__subtitle">Channel Identity</p>
         <h2 class="yt-card__title">{html.escape(ident.title)}</h2>
       </div>
-      <span class="yt-pill yt-pill--{ident.tone.value}">{html.escape(ident.status)}</span>
+      <span class="yt-pill yt-pill--{ident.tone.value}">\
+{html.escape(ident.status)}</span>
     </div>
-    <p class="yt-card__subtitle">{html.escape(ident.youtube_channel_id)} · {handle_display}</p>
-    <p class="yt-card__subtitle">Niche: {niche_display} · Audience: {audience_display}</p>
-    <p class="yt-card__subtitle">Language: {lang_display} · TZ: {tz_display} · Windows: {windows_display}</p>
+    <p class="yt-card__subtitle">\
+{html.escape(ident.youtube_channel_id)} · {handle_display}</p>
+    <p class="yt-card__subtitle">\
+Niche: {niche_display} · Audience: {audience_display}</p>
+    <p class="yt-card__subtitle">\
+Language: {lang_display} · TZ: {tz_display} · Windows: {windows_display}</p>
   </section>
 
   <section class="yt-card yt-grid__span-6" data-testid="channel-subscribers-card">
@@ -453,13 +449,15 @@ class ChannelOverviewService:
         <p class="yt-card__subtitle">Subscribers</p>
         <h2 class="yt-card__title">Audience Growth</h2>
       </div>
-      <span class="yt-pill yt-pill--info">{subs.included_periods if subs else 0} periods</span>
+      <span class="yt-pill yt-pill--info">\
+{subs.included_periods if subs else 0} periods</span>
     </div>
     <div class="yt-kpi">
       <span class="yt-kpi__value">{html.escape(net_subs_text)}</span>
       <span class="yt-kpi__unit">net subscribers</span>
     </div>
-    <p class="yt-card__subtitle">Gained: {html.escape(gained_subs_text)} · Lost: {html.escape(lost_subs_text)}</p>
+    <p class="yt-card__subtitle">\
+Gained: {html.escape(gained_subs_text)} · Lost: {html.escape(lost_subs_text)}</p>
   </section>
 
   <section class="yt-card yt-grid__span-6" data-testid="channel-views-watch-time-card">
@@ -468,11 +466,13 @@ class ChannelOverviewService:
         <p class="yt-card__subtitle">Views &amp; Watch Time</p>
         <h2 class="yt-card__title">Channel Reach</h2>
       </div>
-      <span class="yt-pill yt-pill--info">{vw.included_periods if vw else 0} periods</span>
+      <span class="yt-pill yt-pill--info">\
+{vw.included_periods if vw else 0} periods</span>
     </div>
     <div class="yt-kpi">
       <span class="yt-kpi__value">{html.escape(views_text)}</span>
-      <span class="yt-kpi__unit">views · {html.escape(wt_hours_text)} ({html.escape(wt_mins_text)})</span>
+      <span class="yt-kpi__unit">\
+views · {html.escape(wt_hours_text)} ({html.escape(wt_mins_text)})</span>
     </div>
     <p class="yt-card__subtitle">Avg view duration: {html.escape(avg_dur_text)}</p>
   </section>
@@ -489,9 +489,13 @@ class ChannelOverviewService:
       <span class="yt-kpi__value">{counts.shorts_total} / {counts.longform_total}</span>
       <span class="yt-kpi__unit">Shorts / LongForm</span>
     </div>
-    <p class="yt-card__subtitle">Published: {counts.published_shorts} Shorts · {counts.published_longform} LongForm | In progress: {counts.in_progress_shorts} Shorts · {counts.in_progress_longform} LongForm</p>
+    <p class="yt-card__subtitle">\
+Published: {counts.published_shorts} Shorts · {counts.published_longform} LongForm \
+| In progress: {counts.in_progress_shorts} Shorts · \
+{counts.in_progress_longform} LongForm</p>
     <table class="yt-table" data-testid="channel-content-status-table">
-      <thead><tr><th>Lifecycle Status</th><th>Shorts</th><th>LongForm</th><th>Total</th></tr></thead>
+      <thead><tr><th>Lifecycle Status</th><th>Shorts</th>\
+<th>LongForm</th><th>Total</th></tr></thead>
       <tbody>{status_rows}</tbody>
     </table>
   </section>
@@ -506,7 +510,9 @@ class ChannelOverviewService:
 def _select_non_overlapping_snapshots(
     snapshots: Sequence[MetricSnapshot],
 ) -> list[MetricSnapshot]:
-    """Deduplicate identical windows (keeping newest retrieved_at) and greedily keep non-overlapping windows."""
+    """Deduplicate identical windows (keeping newest retrieved_at) and greedily keep
+    non-overlapping windows.
+    """
     by_window: dict[tuple[datetime, datetime], MetricSnapshot] = {}
     for snap in snapshots:
         window = (snap.period_start, snap.period_end)
@@ -551,32 +557,20 @@ def _build_identity_card(
         missing_settings=missing_settings,
         niche=strategy.niche.name if strategy and strategy.niche else None,
         target_audience=(
-            strategy.audience.description
-            if strategy and strategy.audience
-            else None
+            strategy.audience.description if strategy and strategy.audience else None
         ),
-        tone_and_style=(
-            strategy.brand.tone if strategy and strategy.brand else None
-        ),
+        tone_and_style=(strategy.brand.tone if strategy and strategy.brand else None),
         primary_language=(
-            strategy.languages.primary
-            if strategy and strategy.languages
-            else None
+            strategy.languages.primary if strategy and strategy.languages else None
         ),
         time_zone=(
-            strategy.cadence.time_zone
-            if strategy and strategy.cadence
-            else None
+            strategy.cadence.time_zone if strategy and strategy.cadence else None
         ),
         shorts_per_day=(
-            strategy.cadence.shorts_per_day
-            if strategy and strategy.cadence
-            else None
+            strategy.cadence.shorts_per_day if strategy and strategy.cadence else None
         ),
         longform_per_day=(
-            strategy.cadence.longform_per_day
-            if strategy and strategy.cadence
-            else None
+            strategy.cadence.longform_per_day if strategy and strategy.cadence else None
         ),
         publish_windows=(
             strategy.cadence.shorts_schedule.times
@@ -704,9 +698,9 @@ def _weighted_or_simple_avg_duration(
     if total_views > 0:
         return (weighted_sum / total_views).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     if simple_values:
-        return (sum(simple_values, Decimal("0")) / Decimal(len(simple_values))).quantize(
-            TWO_PLACES, rounding=ROUND_HALF_UP
-        )
+        return (
+            sum(simple_values, Decimal("0")) / Decimal(len(simple_values))
+        ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     return None
 
 

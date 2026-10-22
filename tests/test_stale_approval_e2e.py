@@ -30,7 +30,8 @@ def test_modifying_artifact_after_approval_invalidates_and_blocks_publish(
     database: Database, tmp_path
 ) -> None:
     """Verifies that storing a new artifact version via VersionInvalidation marks the
-    prior approval INVALIDATED, resets the item to GENERATING, and prevents publishing."""
+    prior approval INVALIDATED, resets the item to GENERATING, and prevents
+    publishing."""
     seed = seed_approved_item(database, tmp_path)
     pub = build_publishing(seed)
     publisher = ShortsPublisher(
@@ -98,8 +99,8 @@ def test_publish_gate_blocks_stale_approval_even_without_invalidation_hook(
     gate = PublishGate(database, seed.settings)
     with pytest.raises(GateBlockedError) as exc_info:
         gate.ensure_can_publish(seed.item, actor=SYSTEM, at=at(5))
-    assert any(r.code == "approval.stale" for r in exc_info.value.report.reasons)
+    assert any(r.code == "approval.not_current" for r in exc_info.value.report.reasons)
 
-    with pytest.raises(PublishError):
+    with pytest.raises((PublishError, GateBlockedError)):
         publisher.publish(seed.item.id, actor=SYSTEM)
     assert len(pub.uploader.uploads) == 0

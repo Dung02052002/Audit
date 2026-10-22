@@ -1,4 +1,5 @@
-"""End-to-end Phase R Orchestrator & Session Runtime scenario tests (R-215, prompt #215).
+"""End-to-end Phase R Orchestrator & Session Runtime scenario tests (R-215, prompt
+#215).
 
 Covers:
 1. Session lifecycle, job scheduling within cadence/budget limits, and concurrent
@@ -123,7 +124,12 @@ def test_orchestrator_end_to_end_lifecycle_concurrency_wait_retry_and_limits(
         ch.id, sp.id, sp.version, ContentType.SHORTS, "Short #1", clock=_FixedClock(t0)
     )
     item2 = ContentItem.create(
-        ch.id, sp.id, sp.version, ContentType.SHORTS, "Short #2", clock=_FixedClock(t0 + timedelta(seconds=1))
+        ch.id,
+        sp.id,
+        sp.version,
+        ContentType.SHORTS,
+        "Short #2",
+        clock=_FixedClock(t0 + timedelta(seconds=1)),
     )
     with database.transaction() as conn:
         ContentItemRepository(conn).add(item1)
@@ -177,7 +183,8 @@ def test_orchestrator_end_to_end_lifecycle_concurrency_wait_retry_and_limits(
     assert stop_eval.used_today == 1
     daily_stop.record_stop_event(ch.id, ContentType.SHORTS, stop_eval)
 
-    # 2. Concurrent worker dequeue: worker-a acquires the single queued job; worker-b gets None
+    # 2. Concurrent worker dequeue: worker-a acquires the single queued job; worker-b
+    # gets None
     lease_a = queue.dequeue(worker_id="worker-a")
     lease_b = queue.dequeue(worker_id="worker-b")
     assert lease_a is not None
@@ -192,14 +199,15 @@ def test_orchestrator_end_to_end_lifecycle_concurrency_wait_retry_and_limits(
     assert restarted_job.status is AIJobStatus.RUNNING
     assert restarted_job.attempts == 2
 
-    # 4. Commit rendered video artifact and advance item1 through TESTING -> PREVIEW_READY -> AWAITING_APPROVAL
+    # 4. Commit rendered video artifact and advance item1 through TESTING ->
+    # PREVIEW_READY -> AWAITING_APPROVAL
     video = Artifact.create(
         item1.id,
         ArtifactKind.VIDEO,
-        "file:///tmp/short1.mp4",
-        "a" * 64,
-        1024,
-        "video/mp4",
+        uri="file:///tmp/short1.mp4",
+        sha256="a" * 64,
+        size_bytes=1024,
+        media_type="video/mp4",
         clock=_FixedClock(t0 + timedelta(seconds=15)),
     )
     with database.transaction() as conn:
@@ -222,9 +230,7 @@ def test_orchestrator_end_to_end_lifecycle_concurrency_wait_retry_and_limits(
     # Human user approves the request; polling resumes the job to RUNNING
     approved_req = req.approve(user, clock=_FixedClock(t0 + timedelta(seconds=25)))
     with database.transaction() as conn:
-        ApprovalRequestRepository(conn).update(
-            approved_req, expected_status=req.status
-        )
+        ApprovalRequestRepository(conn).update(approved_req, expected_status=req.status)
     poll_approved = wait_svc.check_and_resolve(job_id)
     assert poll_approved.status is ApprovalWaitStatus.RESUMED
 
@@ -306,12 +312,15 @@ def test_orchestrator_crash_resume_graceful_shutdown_and_kill_switch(
         queue=queue,
         clock=_FixedClock(t0 + timedelta(minutes=2)),
     )
-    recovery_report = crash_resume.recover_after_restart(actor=user)
-    assert len(recovery_report.requeued_jobs) == 1
-    plan = recovery_report.requeued_jobs[0]
+    # The old process is gone, so its worker lease is dead: take the job over.
+    recovery_report = crash_resume.recover_interrupted_jobs(
+        force_reclaim=True, actor=user
+    )
+    assert len(recovery_report.recovered_jobs) == 1
+    plan = recovery_report.recovered_jobs[0]
     assert plan.job.id == lease.job.id
-    assert plan.safe_checkpoint is not None
-    assert plan.safe_checkpoint.last_safe_step == "runtime.shutdown_checkpoint"
+    assert plan.checkpoint_state.has_safe_checkpoint
+    assert plan.checkpoint_state.last_safe_step == "runtime.shutdown_checkpoint"
 
     # Activate kill switch and verify new scheduling is blocked immediately
     kill_switch.activate(user, reason="emergency maintenance", cancel_queued_jobs=True)

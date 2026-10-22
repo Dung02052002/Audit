@@ -32,8 +32,6 @@ from ai_youtube_agent.content.budget_guard import (
     BUDGET_GUARD_BLOCKED,
     BudgetGuard,
     BudgetGuardBlockedError,
-    BudgetGuardError,
-    BudgetGuardErrorCode,
     BudgetWindowKind,
 )
 from ai_youtube_agent.content.channel import Channel, ChannelStatus
@@ -115,7 +113,6 @@ from ai_youtube_agent.core.db.repositories.content import (
 )
 from ai_youtube_agent.core.db.repositories.economics import (
     CostRecordRepository,
-    RevenueRecordRepository,
 )
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.db.repositories.publish import PublishJobRepository
@@ -194,7 +191,8 @@ def _publish_video(
 def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_videos(
     database: Database,
 ) -> None:
-    """Estimated and final revenue stay strictly separate across revisions, pagination, and freshness."""
+    """Estimated and final revenue stay strictly separate across revisions, pagination,
+    and freshness."""
     channel = make_channel(status=ChannelStatus.ACTIVE)
     profile = make_strategy_profile(channel)
     with database.transaction() as connection:
@@ -211,9 +209,7 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
         published_at=PERIOD_END + timedelta(days=1),
     )
 
-    provider = MockRevenueProvider(
-        data_lag=timedelta(hours=6), clock=lambda: NOW
-    )
+    provider = MockRevenueProvider(data_lag=timedelta(hours=6), clock=lambda: NOW)
     oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
     oauth.seed_token(
         channel.id, scopes=frozenset({OAuthScope.YT_ANALYTICS_MONETARY_READONLY})
@@ -247,7 +243,8 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
         clock=lambda: NOW,
     )
 
-    # 1. Seed initial ESTIMATED channel and video revenue (v2 has no revenue -> never zero-filled)
+    # 1. Seed initial ESTIMATED channel and video revenue (v2 has no revenue -> never
+    # zero-filled)
     provider.set_channel_revenue(
         channel.youtube.channel_id,
         stage=RevenueStage.ESTIMATED,
@@ -303,7 +300,8 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
     assert ch_est_revised.unchanged_count == 1
     assert len(est_sync.channel_records(channel.id, revenue_type="ads")) == 2
 
-    # 2. Sync per-video ESTIMATED revenue across 2 pages (v3 published after period_end is skipped)
+    # 2. Sync per-video ESTIMATED revenue across 2 pages (v3 published after period_end
+    # is skipped)
     vid_est = est_sync.sync_videos(
         channel.id,
         period_start=PERIOD_START,
@@ -318,11 +316,13 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
     assert vid_est.created_count == 1
     assert est_sync.video_records(_vid(2)) == []
 
-    # 3. Final revenue is empty until seeded; querying final does not return estimated rows
+    # 3. Final revenue is empty until seeded; querying final does not return estimated
+    # rows
     assert fin_sync.channel_records(channel.id) == []
     assert fin_sync.video_records(_vid(1)) == []
 
-    # Period rules: estimated refuses future period_start; final refuses unended period_end
+    # Period rules: estimated refuses future period_start; final refuses unended
+    # period_end
     with pytest.raises(EstimatedRevenueError) as exc_future:
         est_sync.sync_channel(
             channel.id,
@@ -330,10 +330,7 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
             period_end=NOW + timedelta(days=2),
             actor=USER,
         )
-    assert (
-        exc_future.value.revenue_code
-        is EstimatedRevenueErrorCode.PERIOD_NOT_STARTED
-    )
+    assert exc_future.value.revenue_code is EstimatedRevenueErrorCode.PERIOD_NOT_STARTED
 
     with pytest.raises(MetricsSyncError) as exc_unended:
         fin_sync.sync_channel(
@@ -368,9 +365,7 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
     assert all(not o.freshness.is_stale for o in ch_fin.outcomes)
 
     # Freshness becomes stale after max_age (14 days)
-    stale_check = fin_sync.freshness(
-        ch_fin.records[0], now=NOW + timedelta(days=15)
-    )
+    stale_check = fin_sync.freshness(ch_fin.records[0], now=NOW + timedelta(days=15))
     assert stale_check.is_stale is True
 
     vid_fin = fin_sync.sync_videos(
@@ -384,11 +379,13 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
     assert vid_fin.created_count == 1
     assert vid_fin.no_data_video_ids == (_vid(2),)
 
-    # Estimated history (2 ads + 1 shorts_ads) and final records (1 ads + 1 shorts_ads) remain distinct
+    # Estimated history (2 ads + 1 shorts_ads) and final records (1 ads + 1 shorts_ads)
+    # remain distinct
     assert len(est_sync.channel_records(channel.id)) == 3
     assert len(fin_sync.channel_records(channel.id)) == 2
 
-    # 5. Side-by-side comparison computes final - latest_estimated variance without mutating either
+    # 5. Side-by-side comparison computes final - latest_estimated variance without
+    # mutating either
     comparison = fin_sync.compare_with_estimated(
         MetricScope.CHANNEL,
         channel.id,
@@ -407,7 +404,8 @@ def test_estimated_and_final_revenue_lifecycle_across_channel_and_paginated_vide
 def test_multi_source_revenue_breakdown_and_non_guaranteed_monetization_goals(
     database: Database,
 ) -> None:
-    """Multi-source revenue supports ads, memberships, affiliate, sponsorships, and custom streams."""
+    """Multi-source revenue supports ads, memberships, affiliate, sponsorships, and
+    custom streams."""
     channel = make_channel(status=ChannelStatus.ACTIVE)
     monetization = Monetization(
         currency="USD",
@@ -441,7 +439,8 @@ def test_multi_source_revenue_breakdown_and_non_guaranteed_monetization_goals(
         database, audit, registry=registry, clock=lambda: NOW
     )
 
-    # Record FINAL revenue across ads, memberships, sponsorships, affiliate, and custom stream
+    # Record FINAL revenue across ads, memberships, sponsorships, affiliate, and custom
+    # stream
     for rtype, amount in (
         ("ads", Decimal("180.00")),
         ("memberships", Decimal("65.00")),
@@ -461,7 +460,8 @@ def test_multi_source_revenue_breakdown_and_non_guaranteed_monetization_goals(
         )
         assert outcome.created is True
 
-    # Also record ESTIMATED ads revenue in the same period to prove single-stage isolation
+    # Also record ESTIMATED ads revenue in the same period to prove single-stage
+    # isolation
     service.record(
         channel.id,
         stage=RevenueStage.ESTIMATED,
@@ -511,7 +511,8 @@ def test_multi_source_revenue_breakdown_and_non_guaranteed_monetization_goals(
 def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
     database: Database, tmp_path
 ) -> None:
-    """LLM, TTS, render, storage, and API costs flow into CostLedger and ContributionMarginCalculator."""
+    """LLM, TTS, render, storage, and API costs flow into CostLedger and
+    ContributionMarginCalculator."""
     channel = make_channel(status=ChannelStatus.ACTIVE)
     profile = make_strategy_profile(channel)
     with database.transaction() as connection:
@@ -562,7 +563,8 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
         is False
     )
 
-    # 2. TTS cost via AudioArtifactRecorder + TTSCostService (1000 chars @ $0.015/1k = $0.015000)
+    # 2. TTS cost via AudioArtifactRecorder + TTSCostService (1000 chars @ $0.015/1k =
+    # $0.015000)
     synth = MockSpeechSynthesizer(clock=lambda: IN_WINDOW)
     speech = synth.synthesize(
         SpeechRequest(
@@ -572,8 +574,10 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
         )
     )
     import hashlib
+
     from ai_youtube_agent.content.tts_job import COMPLETED
     from ai_youtube_agent.pipeline.idempotency import audio_key
+
     checksum = hashlib.sha256(speech.audio).hexdigest()
     tts_job = (
         make_ai_job(
@@ -631,9 +635,7 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
     )
     assert tts_corr.created is True
     assert tts_corr.cost.amount == Decimal("0.005000")
-    assert tts_service.summarize_channel(channel.id).total_amount == Decimal(
-        "0.020000"
-    )
+    assert tts_service.summarize_channel(channel.id).total_amount == Decimal("0.020000")
 
     # 3. Render cost (30,000 ms = 0.5 min @ $0.20/min = $0.100000)
     rendered = MockVideoRenderer(clock=lambda: IN_WINDOW).render(
@@ -641,9 +643,7 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
     )
     render_recorder = RenderCostRecorder(
         ledger,
-        policy=RenderPricingPolicy(
-            price_per_minute=Decimal("0.20"), currency="USD"
-        ),
+        policy=RenderPricingPolicy(price_per_minute=Decimal("0.20"), currency="USD"),
     )
     render_entry = render_recorder.record_rendered_artifact(
         channel.id, video_artifact, rendered
@@ -689,13 +689,12 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
         ref="api:channel_research",
     )
 
-    # Verify CostLedger summary: item costs = 0.025 + 0.020 + 0.100 + 0.025 + 0.030 = 0.200000
+    # Verify CostLedger summary: item costs = 0.025 + 0.020 + 0.100 + 0.025 + 0.030 =
+    # 0.200000
     # Channel total costs = 0.200000 + 0.050000 = 0.250000
     item_summary = ledger.summarize(channel.id, content_item_id=item.id)
     assert item_summary.total_amount == Decimal("0.200000")
-    channel_summary = ledger.summarize(
-        channel.id, start=PERIOD_START, end=PERIOD_END
-    )
+    channel_summary = ledger.summarize(channel.id, start=PERIOD_START, end=PERIOD_END)
     assert channel_summary.total_amount == Decimal("0.250000")
     assert channel_summary.by_category == {
         "llm": Decimal("0.025000"),
@@ -785,7 +784,8 @@ def test_end_to_end_cost_recorders_rate_corrections_and_contribution_margin(
 def test_currency_consistency_enforced_across_revenue_cost_ledger_and_margin(
     database: Database,
 ) -> None:
-    """Cross-currency mixing is refused across CostLedger, FinalRevenueSync, RevenueSourceService, and Margin."""
+    """Cross-currency mixing is refused across CostLedger, FinalRevenueSync,
+    RevenueSourceService, and Margin."""
     channel = make_channel(status=ChannelStatus.ACTIVE)
     budget = Budget(
         currency="USD",
@@ -825,9 +825,7 @@ def test_currency_consistency_enforced_across_revenue_cost_ledger_and_margin(
             currency="EUR",
             ref="api:eur",
         )
-    assert (
-        exc_cost_curr.value.ledger_code is CostLedgerErrorCode.CURRENCY_MISMATCH
-    )
+    assert exc_cost_curr.value.ledger_code is CostLedgerErrorCode.CURRENCY_MISMATCH
 
     # 2. FinalRevenueSync.compare_with_estimated refuses mismatched currencies
     rev_service.record(
@@ -860,7 +858,8 @@ def test_currency_consistency_enforced_across_revenue_cost_ledger_and_margin(
         )
     assert exc_comp.value.revenue_code is FinalRevenueErrorCode.CURRENCY_MISMATCH
 
-    # 3. RevenueSourceService.breakdown refuses when recorded currency (EUR) != monetization goal currency (USD)
+    # 3. RevenueSourceService.breakdown refuses when recorded currency (EUR) !=
+    # monetization goal currency (USD)
     with pytest.raises(RevenueSourceError) as exc_goal_curr:
         rev_service.breakdown(
             MetricScope.CHANNEL,
@@ -869,10 +868,7 @@ def test_currency_consistency_enforced_across_revenue_cost_ledger_and_margin(
             period_start=PERIOD_START,
             period_end=PERIOD_END,
         )
-    assert (
-        exc_goal_curr.value.source_code
-        is RevenueSourceErrorCode.CURRENCY_MISMATCH
-    )
+    assert exc_goal_curr.value.source_code is RevenueSourceErrorCode.CURRENCY_MISMATCH
 
     # 4. ContributionMarginCalculator maps currency mismatch to ContributionMarginError
     with pytest.raises(ContributionMarginError) as exc_margin_curr:
@@ -891,7 +887,8 @@ def test_currency_consistency_enforced_across_revenue_cost_ledger_and_margin(
 def test_budget_guard_timezone_windows_projected_blocking_and_budget_gate_parity(
     database: Database,
 ) -> None:
-    """BudgetGuard respects the strategy time zone, triggers alerts, blocks projections, and aligns with BudgetGate."""
+    """BudgetGuard respects the strategy time zone, triggers alerts, blocks projections,
+    and aligns with BudgetGate."""
     channel = make_channel(status=ChannelStatus.ACTIVE)
     cadence = Cadence(
         shorts_per_day=2,
@@ -907,9 +904,7 @@ def test_budget_guard_timezone_windows_projected_blocking_and_budget_gate_parity
     profile = dataclasses.replace(
         make_strategy_profile(channel), cadence=cadence, budget=budget
     )
-    item = make_content_item(
-        channel, profile, status=ContentStatus.DRAFT
-    )
+    item = make_content_item(channel, profile, status=ContentStatus.DRAFT)
     with database.transaction() as connection:
         ChannelRepository(connection).add(channel)
         StrategyProfileRepository(connection).add(profile)
@@ -973,7 +968,8 @@ def test_budget_guard_timezone_windows_projected_blocking_and_budget_gate_parity
     )
     assert gate.evaluate(gate_ctx).outcome is GateOutcome.PASS
 
-    # 2. Pre-execution projection of +$6.00 pushes projected daily ($11 > $10) AND projected monthly ($26 > $25)
+    # 2. Pre-execution projection of +$6.00 pushes projected daily ($11 > $10) AND
+    # projected monthly ($26 > $25)
     with pytest.raises(BudgetGuardBlockedError) as exc_proj:
         guard.enforce(
             channel.id,
@@ -987,7 +983,8 @@ def test_budget_guard_timezone_windows_projected_blocking_and_budget_gate_parity
     assert sink.entries[-1].action == BUDGET_GUARD_BLOCKED
     assert sink.entries[-1].result is AuditResult.DENIED
 
-    # 3. Record actual spend of +$5.00 today -> daily reaches $10.00, monthly reaches $25.00
+    # 3. Record actual spend of +$5.00 today -> daily reaches $10.00, monthly reaches
+    # $25.00
     CostLedger(database, audit, clock=lambda: eval_at).record(
         channel.id,
         CostCategory.RENDER,

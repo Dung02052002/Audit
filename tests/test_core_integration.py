@@ -1,4 +1,5 @@
-"""T-224 Core Integration: Persistence, transitions, and control gates integration tests.
+"""T-224 Core Integration: Persistence, transitions, and control gates
+integration tests.
 
 Verifies end-to-end integration across SQLite repositories, ContentItem state machine
 transitions (ALLOWED_TRANSITIONS), version invalidation, and control gates
@@ -7,8 +8,9 @@ IdempotencyGate, and PublishGate).
 """
 
 import dataclasses
-from decimal import Decimal
 import json
+from decimal import Decimal
+
 import pytest
 
 from ai_youtube_agent.content.approval import ApprovalRequest
@@ -47,7 +49,6 @@ from ai_youtube_agent.core.db.repositories.review import (
 from ai_youtube_agent.core.gates import (
     GateBlockedError,
     GateContext,
-    GateName,
     evaluate_gates,
 )
 from ai_youtube_agent.core.kill_switch_gate import KillSwitchGate
@@ -130,7 +131,8 @@ def test_persistence_and_lifecycle_transitions_with_gates(
         )
     assert gen_report.passed is True
 
-    # 3. Advance DRAFT -> GENERATING -> TESTING -> PREVIEW_READY -> AWAITING_APPROVAL -> APPROVED
+    # 3. Advance DRAFT -> GENERATING -> TESTING -> PREVIEW_READY -> AWAITING_APPROVAL
+    # -> APPROVED
     for next_status in (
         ContentStatus.GENERATING,
         ContentStatus.TESTING,
@@ -173,7 +175,8 @@ def test_persistence_and_lifecycle_transitions_with_gates(
         ProvenanceRepository(conn).add(prov)
         RightsRecordRepository(conn).add(rights_rec)
 
-    # Assess rights via RightsRiskEngine so FreshnessSource sees current basis + RULES_VERSION
+    # Assess rights via RightsRiskEngine so FreshnessSource sees current basis +
+    # RULES_VERSION
     risk_engine = RightsRiskEngine(database, audit, clock=at(3))
     run = risk_engine.assess(item.id, actor=SYSTEM)
     assessment = run.assessments[0]
@@ -199,7 +202,8 @@ def test_persistence_and_lifecycle_transitions_with_gates(
         item = item.with_status(ContentStatus.APPROVED, clock=at(5))
         ContentItemRepository(conn).update(item, expected_updated_at=prev_updated)
 
-    # 5. PublishGate must pass when item is APPROVED, rights are fresh & low risk, policy passes
+    # 5. PublishGate must pass when item is APPROVED, rights are fresh & low risk,
+    # policy passes
     publish_gate = PublishGate(database, settings)
     report = publish_gate.ensure_can_publish(item, actor=SYSTEM, at=T0)
     assert report.passed is True
@@ -208,7 +212,12 @@ def test_persistence_and_lifecycle_transitions_with_gates(
     # 6. Version invalidation resets item to GENERATING and causes PublishGate to block
     invalidation = VersionInvalidation(database, audit, clock=at(6))
     video_art_v2 = store_artifact_detached(
-        storage, item.id, ArtifactKind.VIDEO, "video/mp4", stub_mp4(25_000, b"v2"), version=2
+        storage,
+        item.id,
+        ArtifactKind.VIDEO,
+        "video/mp4",
+        stub_mp4(25_000, b"v2"),
+        version=2,
     )
     inv_res = invalidation.store_artifact_version(video_art_v2)
     assert inv_res.item_reset is True
@@ -217,7 +226,13 @@ def test_persistence_and_lifecycle_transitions_with_gates(
 
 
 def store_artifact_detached(
-    storage, content_item_id: str, kind: ArtifactKind, media_type: str, data: bytes, *, version: int
+    storage,
+    content_item_id: str,
+    kind: ArtifactKind,
+    media_type: str,
+    data: bytes,
+    *,
+    version: int,
 ):
     from ai_youtube_agent.core.artifact import Artifact
 
@@ -237,21 +252,29 @@ def store_artifact_detached(
 def test_publish_gate_blocks_when_policy_fails_or_daily_limit_reached(
     database: Database, tmp_path
 ) -> None:
-    """Verifies PublishGate blocks when title contains a banned phrase or daily limit is met."""
+    """Verifies PublishGate blocks when title contains a banned phrase.
+
+    Or when the daily limit is met.
+    """
     seed = seed_approved_item(database, tmp_path)
     gate = PublishGate(database, seed.settings)
 
     # Mutate strategy profile to include banned phrase ("guaranteed profit")
     banned_profile = dataclasses.replace(
         seed.profile,
-        brand=Brand(seed.profile.brand.name, seed.profile.brand.tone, banned_phrases=("guaranteed profit",)),
+        brand=Brand(
+            seed.profile.brand.name,
+            seed.profile.brand.tone,
+            banned_phrases=("guaranteed profit",),
+        ),
     )
     with database.transaction() as conn:
         StrategyProfileRepository(conn).update(
             banned_profile, expected_version=seed.profile.version
         )
 
-    # Mutate item title to include banned phrase from strategy profile ("guaranteed profit")
+    # Mutate item title to include banned phrase from strategy profile
+    # ("guaranteed profit")
     bad_item = seed.item.rename("How to get guaranteed profit today", clock=at(2))
     with database.transaction() as conn:
         ContentItemRepository(conn).update(

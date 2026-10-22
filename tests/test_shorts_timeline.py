@@ -242,9 +242,7 @@ def make_scenes(*lengths: int, section_indexes=None) -> tuple[Scene, ...]:
 
 
 def make_timeline(*lengths: int) -> Timeline:
-    return Timeline(
-        1, sum(lengths), TimingSource.AUDIO_CHUNKS, make_scenes(*lengths)
-    )
+    return Timeline(1, sum(lengths), TimingSource.AUDIO_CHUNKS, make_scenes(*lengths))
 
 
 def test_a_scene_is_frozen_and_knows_its_duration() -> None:

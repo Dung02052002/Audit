@@ -127,4 +127,3 @@ def test_ai_center_shows_active_jobs_progress_errors_retries_provider_cost_and_s
     assert 'data-testid="ai-center-screen"' in html_out
     assert "render.frames_composited" in html_out
     assert "upstream timeout" in html_out
-

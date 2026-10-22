@@ -154,9 +154,7 @@ class ShortsMetadataErrorCode(StrEnum):
 
 
 USER_MESSAGES: Final[dict[ShortsMetadataErrorCode, str]] = {
-    ShortsMetadataErrorCode.METADATA: (
-        "The Shorts metadata could not be recorded."
-    ),
+    ShortsMetadataErrorCode.METADATA: ("The Shorts metadata could not be recorded."),
     ShortsMetadataErrorCode.TIMELINE_MISSING: (
         "This Shorts project does not have a timeline yet."
     ),
@@ -247,9 +245,7 @@ class ShortsMetadata:
             isinstance(self.schema_version, bool)
             or self.schema_version != METADATA_SCHEMA_VERSION
         ):
-            raise ValueError(
-                f"schema_version must be {METADATA_SCHEMA_VERSION}"
-            )
+            raise ValueError(f"schema_version must be {METADATA_SCHEMA_VERSION}")
         for name in (
             "project_id",
             "content_item_id",
@@ -271,13 +267,12 @@ class ShortsMetadata:
             if isinstance(num, bool) or not isinstance(num, int) or num < 1:
                 raise ValueError(f"{int_name} must be an integer >= 1")
         object.__setattr__(self, "title", _validate_title(self.title))
-        object.__setattr__(
-            self, "description", _validate_description(self.description)
-        )
+        object.__setattr__(self, "description", _validate_description(self.description))
         object.__setattr__(self, "tags", _validate_tags(self.tags))
         if not has_shorts_marker(self.title, self.description, self.tags):
             raise ValueError(
-                "Shorts metadata requires #Shorts in title/description or 'Shorts' in tags"
+                "Shorts metadata requires #Shorts in title/description or 'Shorts' in "
+                "tags"
             )
         if not isinstance(self.language, str) or not LANGUAGE_TAG_PATTERN.match(
             self.language
@@ -392,9 +387,7 @@ class ShortsMetadataRecord:
     invalidation: InvalidationResult | None
 
 
-def has_shorts_marker(
-    title: str, description: str, tags: Sequence[str]
-) -> bool:
+def has_shorts_marker(title: str, description: str, tags: Sequence[str]) -> bool:
     """True when ``#Shorts`` is in title/description or ``Shorts`` is in tags."""
     if _SHORTS_HASHTAG_RE.search(title) or _SHORTS_HASHTAG_RE.search(description):
         return True
@@ -487,9 +480,7 @@ class ShortsMetadataRecorder:
                 artifacts = ArtifactRepository(connection)
                 latest = artifacts.latest(item.id, ArtifactKind.METADATA)
                 if latest is not None and latest.sha256 == checksum:
-                    return ShortsMetadataRecord(
-                        latest, metadata, project, False, None
-                    )
+                    return ShortsMetadataRecord(latest, metadata, project, False, None)
                 version = latest.version + 1 if latest else 1
                 written = self._storage.write(
                     item.id,
@@ -553,7 +544,8 @@ class ShortsMetadataRecorder:
 
         if not has_shorts_marker(clean_title, clean_description, clean_tags):
             raise ShortsMetadataError(
-                "Shorts metadata requires #Shorts in title/description or 'Shorts' in tags",
+                "Shorts metadata requires #Shorts in title/description or 'Shorts' in "
+                "tags",
                 code=ShortsMetadataErrorCode.INVALID_METADATA,
             )
 
@@ -614,9 +606,7 @@ def _load_inputs(
 ) -> tuple[ShortsProject, ContentItem, StrategyProfile, DisclosureRecord]:
     project = ShortsProjectRepository(connection).get(project_id)
     if project is None:
-        raise ShortsProjectNotFoundError(
-            f"Shorts project {project_id} does not exist"
-        )
+        raise ShortsProjectNotFoundError(f"Shorts project {project_id} does not exist")
     if expected_version is not None and project.version != expected_version:
         raise ShortsMetadataConflictError(
             f"Shorts project {project.id} is at version {project.version}, "
@@ -690,9 +680,7 @@ def _compose_description(
     text = unicodedata.normalize("NFC", raw_description)
     text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
     missing_credits = [
-        credit
-        for credit in attributions
-        if credit.casefold() not in text.casefold()
+        credit for credit in attributions if credit.casefold() not in text.casefold()
     ]
     if missing_credits:
         credits_block = "\n".join(f"Attribution: {c}" for c in missing_credits)
@@ -765,9 +753,7 @@ def _validate_tags(values: object) -> tuple[str, ...]:
     return tuple(cleaned)
 
 
-def _resolve_language(
-    raw_language: str | None, strategy: StrategyProfile
-) -> str:
+def _resolve_language(raw_language: str | None, strategy: StrategyProfile) -> str:
     if raw_language is not None:
         if not raw_language.strip():
             raise ValueError("language must not be empty")
@@ -830,4 +816,3 @@ def _event_metadata(
         "policy_rule_set_version": metadata.policy_rule_set_version,
         "policy_status": metadata.policy_status.value,
     }
-

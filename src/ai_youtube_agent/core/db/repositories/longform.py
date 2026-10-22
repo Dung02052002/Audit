@@ -29,9 +29,7 @@ class LongFormProjectRepository(Repository):
         self._insert(self.table, _row(project))
 
     def get(self, project_id: str) -> LongFormProject | None:
-        row = self._one(
-            "SELECT * FROM longform_projects WHERE id = ?", (project_id,)
-        )
+        row = self._one("SELECT * FROM longform_projects WHERE id = ?", (project_id,))
         return _project(row) if row else None
 
     def get_by_content_item(self, content_item_id: str) -> LongFormProject | None:
@@ -44,7 +42,8 @@ class LongFormProjectRepository(Repository):
     def list_by_channel(self, channel_id: str) -> list[LongFormProject]:
         rows = self._all(
             "SELECT longform_projects.* FROM longform_projects "
-            "JOIN content_items ON content_items.id = longform_projects.content_item_id "
+            "JOIN content_items ON content_items.id = "
+            "longform_projects.content_item_id "
             "WHERE content_items.channel_id = ? "
             "ORDER BY longform_projects.created_at, longform_projects.rowid",
             (channel_id,),
@@ -111,4 +110,3 @@ def _project(row: sqlite3.Row) -> LongFormProject:
         updated_by=actor_from(row, "updated_by"),
         updated_at=parse_dt(row["updated_at"]),
     )
-

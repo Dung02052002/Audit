@@ -9,14 +9,20 @@ keys, codes, counts and flags, never a token, a file or the text of a video):
 
 | action | when | result |
 |---|---|---|
-| ``publish.requested`` | a publish was asked for: actor, approval, bound video artifact | success |
+| ``publish.requested`` | a publish was asked for: actor, approval, bound video artifact
+| success |
 | ``publish.duplicate_blocked`` | the duplicate guard refused it (#152) | denied |
-| ``publish.replayed`` | a succeeded job was answered from storage, nothing uploaded | success |
-| ``publish.blocked`` | the publish gate refused it, with the blocking gates and reason codes | denied |
-| ``publish.authorization_failed`` / ``publish.token_renewed`` | token recovery (#154) | denied / success |
+| ``publish.replayed`` | a succeeded job was answered from storage, nothing uploaded |
+success |
+| ``publish.blocked`` | the publish gate refused it, with the blocking gates and reason
+codes | denied |
+| ``publish.authorization_failed`` / ``publish.token_renewed`` | token recovery (#154) |
+denied / success |
 | ``publish.upload_retry`` | one retry of the upload (#153) | failure |
-| ``<prefix>.published`` | the video is on YouTube: video id, privacy, disclosure flag | success |
-| ``<prefix>.publish_failed`` | the job failed: error code, resumable, attempts | failure |
+| ``<prefix>.published`` | the video is on YouTube: video id, privacy, disclosure flag |
+success |
+| ``<prefix>.publish_failed`` | the job failed: error code, resumable, attempts |
+failure |
 
 ``<prefix>`` is ``shorts`` or ``longform``. Item-level events use the entity
 ``content_item``; job-level events use the entity ``publish_job``. Every event carries

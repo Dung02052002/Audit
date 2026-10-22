@@ -106,14 +106,10 @@ class TestDuplicateReplyGuard:
                 repo.add_reply_draft(d)
 
         sink = InMemoryAuditSink()
-        guard = DuplicateReplyGuard(
-            database, AuditLog(sink, clock=lambda: NOW)
-        )
+        guard = DuplicateReplyGuard(database, AuditLog(sink, clock=lambda: NOW))
 
         # 1. Already POSTED draft returns REPLAY
-        replay_check = guard.ensure_can_post(
-            d_posted, comment=c_top, actor=USER
-        )
+        replay_check = guard.ensure_can_post(d_posted, comment=c_top, actor=USER)
         assert replay_check.decision is ReplyDuplicateDecision.REPLAY
 
         # 2. Second draft on the same comment is blocked with COMMENT_ALREADY_REPLIED
@@ -126,11 +122,10 @@ class TestDuplicateReplyGuard:
         assert sink.entries[-1].action == REPLY_DUPLICATE_BLOCKED
         assert sink.entries[-1].result is AuditResult.DENIED
 
-        # 3. Draft on another comment in the same thread is blocked with THREAD_ALREADY_REPLIED
+        # 3. Draft on another comment in the same thread is blocked with
+        # THREAD_ALREADY_REPLIED
         with pytest.raises(DuplicateReplyError) as exc_thread:
-            guard.ensure_can_post(
-                d_same_thread, comment=c_in_thread, actor=USER
-            )
+            guard.ensure_can_post(d_same_thread, comment=c_in_thread, actor=USER)
         assert (
             exc_thread.value.duplicate_code
             is DuplicateReplyErrorCode.THREAD_ALREADY_REPLIED
@@ -138,9 +133,7 @@ class TestDuplicateReplyGuard:
 
         # 4. Identical normalized text on another thread of the same video is blocked
         with pytest.raises(DuplicateReplyError) as exc_text:
-            guard.ensure_can_post(
-                d_identical_video, comment=c_other_thread, actor=USER
-            )
+            guard.ensure_can_post(d_identical_video, comment=c_other_thread, actor=USER)
         assert (
             exc_text.value.duplicate_code
             is DuplicateReplyErrorCode.IDENTICAL_TEXT_ON_VIDEO

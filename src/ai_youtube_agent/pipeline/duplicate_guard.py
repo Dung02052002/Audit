@@ -119,7 +119,9 @@ class PublishDuplicateGuard:
         return _decide(own, others, same_video, content_item_id, channel_id)
 
 
-def concurrent_publish(error: BaseException, content_item_id: str) -> DuplicatePublishError:
+def concurrent_publish(
+    error: BaseException, content_item_id: str
+) -> DuplicatePublishError:
     """The typed error for a lost race on the job insert or the item update."""
     if not isinstance(error, sqlite3.IntegrityError | ConcurrencyError):
         raise TypeError("only IntegrityError and ConcurrencyError mean a lost race")

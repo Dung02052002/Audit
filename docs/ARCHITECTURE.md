@@ -60,7 +60,7 @@ These come directly from the frozen requirements.
 |---|---|---|---|
 | X1 | Foundation & Governance | Audit, requirements, architecture, folders, configuration, feature flags, logging, error model, DI, health check, audit events and build baseline | #001–#012 |
 | X2 | Persistence | Migrations, schema creation, rollback strategy and repository tests for all entities | #029, #030 |
-| X3 | Command Center (presentation) | The dashboard. It reads from the domain contexts and triggers user actions such as approval and settings. It owns no domain rules | #191–#203 |
+| X3 | Command Center (presentation) | The dashboard. It reads from the domain contexts and triggers user actions such as approval and settings. It owns no domain rules. Since APP-01 the local web app (`src/ai_youtube_agent/web/`, served at `/app`) reads content items, jobs, scenes and previews and starts background script-to-video runs; it never publishes, approves or uploads | #191–#203, APP-01 |
 | X4 | Security & Recovery | Secret boundary, token storage, least privilege, log redaction, backup, restore and failure injection | #216–#223 |
 | X5 | Integration & Readiness | End-to-end tests, the pilot, LongForm unlock and the production audit | #224–#238 |
 
@@ -320,7 +320,8 @@ A-004 created these folders and kept the existing `src/` layout.
 | Content | `src/ai_youtube_agent/content/` | C1, C4, C5, C6, C7, C8, C9, C10, C11, C13, C14, C15 |
 | Providers | `src/ai_youtube_agent/providers/` | Every provider interface in 4.1 and its mocks |
 | Pipeline | `src/ai_youtube_agent/pipeline/` | C16 Orchestration, C12 Publishing flow |
-| Dashboard | `dashboard/` (repository root) | X3 Command Center. It is outside the Python package because its platform is still open (Q4) |
+| Dashboard | `dashboard/` (repository root) | X3 Command Center notes and the source design tokens (`design_system.css`) |
+| Web app | `src/ai_youtube_agent/web/` (`static/` inside the package, so it ships in the wheel) | X3 Command Center web app (APP-01, Q4): static HTML, vanilla JavaScript ES modules and CSS mounted at `/app` |
 | Tests | `tests/` (existing) | All tests |
 | Docs | `docs/` (existing) | Requirements, architecture and reports |
 
@@ -335,7 +336,7 @@ The requirements do not decide these. Each one must be answered by the user or b
 | Q1 | There is no dedicated **LLM provider interface**, although scripts are generated (#065–#067) and LLM cost is tracked (#175). **Resolved in F-065 (user decision, 2026-10-03):** a synchronous `TextGenerator` provider interface with a deterministic mock (`providers/text_generation.py`, `providers/mock_text_generation.py`), selected by `Settings.text_provider`; no real provider yet. | C5, C14 |
 | Q2 | The **render provider** is required "through provider abstraction" (#100, #111), but no prompt defines the interface itself. **Resolved for Shorts in I-100 (user decision, 2026-10-18):** a synchronous `VideoRenderer` provider interface (`providers/video_render.py`) with a deterministic mock and an ffmpeg command line renderer, selected by `Settings.render_provider`; the long-form render (#111) may reuse it. | C8, C9 |
 | Q3 | There is no **email provider interface** for approval emails (#138, #228). **Resolved in L-138 (2026-10-19):** a synchronous `ApprovalEmailProvider` Protocol (`providers/approval_email.py`) with a deterministic in-memory `MockApprovalEmailProvider` (`providers/mock_approval_email.py`), used by `ApprovalEmailService` (`content/email_approval.py`); real external email transport stays in #228. | C11 |
-| Q4 | The **Command Center platform** is "iOS-style" (#191). Is it a native iOS app or a web dashboard with an iOS-style design system? The backend is FastAPI. | X3 |
+| Q4 | The **Command Center platform** is "iOS-style" (#191). Is it a native iOS app or a web dashboard with an iOS-style design system? The backend is FastAPI. **Resolved in APP-01 (user decision, 2026-10-22):** a web app served by FastAPI: static HTML, vanilla JavaScript ES modules and CSS in `src/ai_youtube_agent/web/static/` (no Node build), mounted at `/app` with `/` redirecting there, Vietnamese labels, the `dashboard/design_system.css` tokens copied into `web/static/css/design_system.css`. It reads the HTTP API and starts background script-to-video runs (`pipeline/script_to_video_runner.py`, one in-process worker thread, in-memory run registry); no publish, approve or upload action. | X3 |
 | Q5 | The **database technology** is not specified. Only migrations and rollback are required (#029). **Resolved in B-029 (user decision, 2026-09-30):** SQLite via the standard `sqlite3`, numbered forward-only SQL migrations in `core/db/migrations/`, backup before migrating. | X2 |
 | Q6 | The **durable queue technology** is not specified (#204). | C16 |
 | Q7 | The **thumbnail** generation or selection source is not specified (#101, #112). | C8, C9 |

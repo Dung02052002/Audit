@@ -21,10 +21,6 @@ import dataclasses
 import unicodedata
 
 import pytest
-from factories import T0, USER, at, make_channel
-from test_shorts_planner import add_sectioned_script, words
-from test_shorts_project import World, entity_args, refusal
-from test_shorts_scene import Stage
 
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.script import Script, ScriptSection, SectionKind
@@ -64,6 +60,10 @@ from ai_youtube_agent.content.shorts_timeline import (
 from ai_youtube_agent.content.strategy import Resolution, ShortsFormat
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
+from factories import T0, USER, at, make_channel
+from test_shorts_planner import add_sectioned_script, words
+from test_shorts_project import World, entity_args, refusal
+from test_shorts_scene import Stage
 
 CONFIG = ShortsConfig.from_format(ShortsFormat(15, 60))
 OFF = ShortsConfig.from_format(ShortsFormat(15, 60, captions=False))
@@ -815,7 +815,7 @@ def test_every_scene_is_tiled_exactly_and_ids_run_on() -> None:
         own = [c for c in captions if c.scene_id == scene.id]
         assert own[0].start_ms == scene.start_ms
         assert own[-1].end_ms == scene.end_ms
-        assert all(a.end_ms == b.start_ms for a, b in zip(own, own[1:]))
+        assert all(a.end_ms == b.start_ms for a, b in zip(own, own[1:], strict=False))
         assert all(
             RULES.min_display_ms <= c.duration_ms <= RULES.max_display_ms for c in own
         )
@@ -893,9 +893,7 @@ def test_planning_needs_captions_on() -> None:
 def test_planning_needs_the_bound_script() -> None:
     script = make_script("Hello there")
     other = make_script("Hello there")
-    timeline = Timeline(
-        1, 3000, TimingSource.ESTIMATED, (Scene("s1", 0, 0, 3000),)
-    )
+    timeline = Timeline(1, 3000, TimingSource.ESTIMATED, (Scene("s1", 0, 0, 3000),))
 
     with pytest.raises(ValueError, match="not the script version"):
         plan_captions(make_project(script, 3000), other, timeline)
@@ -1189,9 +1187,7 @@ def test_an_unknown_font_is_refused(stage: Stage) -> None:
     stage.refuse(with_font(stage, "missing"), Code.ASSET_NOT_FOUND)
 
 
-def test_a_font_of_another_channel_is_refused(
-    stage: Stage, database: Database
-) -> None:
+def test_a_font_of_another_channel_is_refused(stage: Stage, database: Database) -> None:
     other = make_channel()
     with database.transaction() as connection:
         ChannelRepository(connection).add(other)

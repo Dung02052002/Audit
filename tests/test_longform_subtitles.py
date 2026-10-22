@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from tests.test_longform_project import USER, Clock, _seed_longform_item
 
 from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import (
@@ -17,7 +18,6 @@ from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import migrate
 from ai_youtube_agent.core.flags import FeatureFlags
-from tests.test_longform_project import USER, Clock, _seed_longform_item
 
 
 def test_longform_subtitles_record_srt_replay_and_vtt(
@@ -34,9 +34,7 @@ def test_longform_subtitles_record_srt_replay_and_vtt(
     _, item, _, _ = _seed_longform_item(database, clock)
 
     service = LongFormProjectService(database, audit, flags, clock=clock)
-    recorder = LongFormSubtitleRecorder(
-        database, storage, audit, flags, clock=clock
-    )
+    recorder = LongFormSubtitleRecorder(database, storage, audit, flags, clock=clock)
 
     project = service.create(item.id, actor=USER)
     planned = service.plan(project.id, expected_version=1, actor=USER)
@@ -44,9 +42,7 @@ def test_longform_subtitles_record_srt_replay_and_vtt(
         project.id, expected_version=planned.version, actor=USER
     )
 
-    first = recorder.record(
-        project.id, expected_version=captioned.version, actor=USER
-    )
+    first = recorder.record(project.id, expected_version=captioned.version, actor=USER)
     assert first.created is True
     assert first.artifact.version == 1
     assert first.artifact.uri.endswith("v1.srt")
@@ -55,9 +51,7 @@ def test_longform_subtitles_record_srt_replay_and_vtt(
     )
 
     # Idempotent replay returns created=False
-    second = recorder.record(
-        project.id, expected_version=captioned.version, actor=USER
-    )
+    second = recorder.record(project.id, expected_version=captioned.version, actor=USER)
     assert second.created is False
     assert second.artifact.id == first.artifact.id
 
@@ -75,7 +69,7 @@ def test_longform_subtitles_record_srt_replay_and_vtt(
         captioned.timeline, captioned.config.caption_rules
     )
 
-    events = [e for e in sink.events if e.action == RECORDED]
+    events = [e for e in sink.events() if e.action == RECORDED]
     assert len(events) == 2
     assert events[0].metadata["subtitle_format"] == "srt"
     assert events[1].metadata["subtitle_format"] == "vtt"
@@ -92,16 +86,11 @@ def test_longform_subtitles_refuses_when_captions_off(tmp_path: Path) -> None:
     _, item, _, _ = _seed_longform_item(database, clock, captions=False)
 
     service = LongFormProjectService(database, audit, flags, clock=clock)
-    recorder = LongFormSubtitleRecorder(
-        database, storage, audit, flags, clock=clock
-    )
+    recorder = LongFormSubtitleRecorder(database, storage, audit, flags, clock=clock)
 
     project = service.create(item.id, actor=USER)
     planned = service.plan(project.id, expected_version=1, actor=USER)
 
     with pytest.raises(LongFormSubtitleError) as exc_info:
-        recorder.record(
-            project.id, expected_version=planned.version, actor=USER
-        )
+        recorder.record(project.id, expected_version=planned.version, actor=USER)
     assert exc_info.value.code == LongFormSubtitleErrorCode.CAPTIONS_OFF.value
-

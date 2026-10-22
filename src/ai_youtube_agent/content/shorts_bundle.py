@@ -58,6 +58,8 @@ from ai_youtube_agent.content.shorts_metadata import (
 from ai_youtube_agent.content.shorts_project import ShortsProject, ShortsProjectStatus
 from ai_youtube_agent.content.shorts_render import (
     JOB_KIND as RENDER_JOB_KIND,
+)
+from ai_youtube_agent.content.shorts_render import (
     MP4_MEDIA_TYPE,
     RENDERED_STEP,
 )
@@ -133,30 +135,22 @@ USER_MESSAGES: Final[dict[ShortsBundleErrorCode, str]] = {
     ShortsBundleErrorCode.VIDEO_STALE: (
         "The rendered MP4 video does not match the current Shorts timeline."
     ),
-    ShortsBundleErrorCode.VIDEO_INVALID: (
-        "The rendered MP4 video file is invalid."
-    ),
-    ShortsBundleErrorCode.SUBTITLES_MISSING: (
-        "The SRT subtitles artifact is missing."
-    ),
+    ShortsBundleErrorCode.VIDEO_INVALID: ("The rendered MP4 video file is invalid."),
+    ShortsBundleErrorCode.SUBTITLES_MISSING: ("The SRT subtitles artifact is missing."),
     ShortsBundleErrorCode.SUBTITLES_STALE: (
         "The SRT subtitles artifact does not match the current Shorts captions."
     ),
     ShortsBundleErrorCode.THUMBNAIL_MISSING: (
         "The Shorts thumbnail artifact is missing."
     ),
-    ShortsBundleErrorCode.THUMBNAIL_INVALID: (
-        "The Shorts thumbnail file is invalid."
-    ),
+    ShortsBundleErrorCode.THUMBNAIL_INVALID: ("The Shorts thumbnail file is invalid."),
     ShortsBundleErrorCode.METADATA_MISSING: (
         "The Shorts metadata artifact is missing."
     ),
     ShortsBundleErrorCode.METADATA_STALE: (
         "The Shorts metadata artifact belongs to an older project version."
     ),
-    ShortsBundleErrorCode.METADATA_INVALID: (
-        "The Shorts metadata file is invalid."
-    ),
+    ShortsBundleErrorCode.METADATA_INVALID: ("The Shorts metadata file is invalid."),
     ShortsBundleErrorCode.ARTIFACT_CORRUPTED: (
         "An artifact file on disk is missing or does not match its recorded checksum."
     ),
@@ -372,8 +366,7 @@ class ShortsBundleBuilder:
             )
         if (
             rights_report.disclosure is None
-            or rights_report.disclosure.decision_id
-            != metadata.disclosure_decision_id
+            or rights_report.disclosure.decision_id != metadata.disclosure_decision_id
         ):
             raise ShortsBundleError(
                 f"disclosure decision of content item {item.id} does not match "
@@ -419,9 +412,7 @@ class ShortsBundleBuilder:
         metadata: ShortsMetadata,
         now: datetime,
     ) -> PolicyReport:
-        strategy = StrategyProfileRepository(connection).get_by_channel(
-            item.channel_id
-        )
+        strategy = StrategyProfileRepository(connection).get_by_channel(item.channel_id)
         if strategy is None:
             raise ShortsBundleError(
                 f"channel {item.channel_id} has no strategy profile",
@@ -440,9 +431,7 @@ class ShortsBundleBuilder:
             banned_phrases=banned_phrases(strategy),
         )
         result = checker.check(policy_input, rule_set=rule_set)
-        findings = tuple(
-            FindingReport.from_finding(f) for f in result.to_findings()
-        )
+        findings = tuple(FindingReport.from_finding(f) for f in result.to_findings())
         return PolicyReport(
             content_item_id=item.id,
             channel_id=item.channel_id,
@@ -450,9 +439,7 @@ class ShortsBundleBuilder:
             rule_set=result.rule_set,
             status=result.status,
             blocks=result.status is PolicyStatus.BLOCK,
-            outcomes=tuple(
-                RuleOutcomeReport.from_outcome(o) for o in result.outcomes
-            ),
+            outcomes=tuple(RuleOutcomeReport.from_outcome(o) for o in result.outcomes),
             findings=findings,
             blocking_findings=tuple(f for f in findings if f.blocking),
         )
@@ -471,9 +458,7 @@ def _load_ready_project(
 ) -> tuple[ShortsProject, ContentItem]:
     project = ShortsProjectRepository(connection).get(project_id)
     if project is None:
-        raise ShortsProjectNotFoundError(
-            f"Shorts project {project_id} does not exist"
-        )
+        raise ShortsProjectNotFoundError(f"Shorts project {project_id} does not exist")
     if expected_version is not None and project.version != expected_version:
         raise ShortsBundleConflictError(
             f"Shorts project {project.id} is at version {project.version}, "
@@ -488,8 +473,7 @@ def _load_ready_project(
         )
     if (
         project.status is not ShortsProjectStatus.READY
-        or readiness(project.config, project.timeline)
-        is not ShortsProjectStatus.READY
+        or readiness(project.config, project.timeline) is not ShortsProjectStatus.READY
     ):
         raise ShortsBundleError(
             f"Shorts project {project.id} is in status {project.status.value}, "
@@ -610,18 +594,20 @@ def _verify_subtitles(
     subtitles = artifacts.latest(project.content_item_id, ArtifactKind.SUBTITLES)
     if subtitles is None:
         raise ShortsBundleError(
-            f"Shorts project {project.id} has captions enabled but no SUBTITLES artifact",
+            f"Shorts project {project.id} has captions enabled "
+            "but no SUBTITLES artifact",
             code=ShortsBundleErrorCode.SUBTITLES_MISSING,
         )
     if subtitles.media_type != SRT_MEDIA_TYPE:
         raise ShortsBundleError(
-            f"SUBTITLES artifact {subtitles.id} has media_type {subtitles.media_type!r}",
+            f"SUBTITLES artifact {subtitles.id} has media_type "
+            f"{subtitles.media_type!r}",
             code=ShortsBundleErrorCode.SUBTITLES_STALE,
         )
     raw = _read_verified_bytes(storage, subtitles)
-    expected = render_srt(
-        project.timeline, project.config.caption_rules
-    ).encode("utf-8")
+    expected = render_srt(project.timeline, project.config.caption_rules).encode(
+        "utf-8"
+    )
     if raw != expected:
         raise ShortsBundleError(
             f"SUBTITLES artifact {subtitles.id} does not match the current captions "
@@ -736,4 +722,3 @@ def _event_metadata(bundle: ShortsArtifactBundle) -> Mapping[str, MetadataValue]
         event["subtitles_artifact_id"] = bundle.subtitles.id
         event["subtitles_version"] = bundle.subtitles.version
     return event
-

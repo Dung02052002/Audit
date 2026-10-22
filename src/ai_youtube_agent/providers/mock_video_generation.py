@@ -47,12 +47,11 @@ class UnconfiguredVideoClipGenerator:
             ),
         )
 
-    def generate_clip(
-        self, request: VideoClipGenerationRequest
-    ) -> GeneratedVideoClip:
+    def generate_clip(self, request: VideoClipGenerationRequest) -> GeneratedVideoClip:
         raise VideoClipGenerationError(
             VideoClipErrorCode.NOT_CONFIGURED,
-            f"Cannot generate AI_FILM clip for {request.shot_id}: no video clip provider is configured.",
+            f"Cannot generate AI_FILM clip for {request.shot_id}: "
+            "no video clip provider is configured.",
             provider=self.name,
         )
 
@@ -96,9 +95,7 @@ class MockVideoClipGenerator:
             reason=None if healthy else "Mock video clip generator marked unhealthy",
         )
 
-    def generate_clip(
-        self, request: VideoClipGenerationRequest
-    ) -> GeneratedVideoClip:
+    def generate_clip(self, request: VideoClipGenerationRequest) -> GeneratedVideoClip:
         with self._lock:
             self.calls.append(request)
             if not self._healthy:
@@ -134,4 +131,3 @@ class MockVideoClipGenerator:
                 "mock video clip generator is unhealthy",
                 provider=self.name,
             )
-

@@ -9,45 +9,43 @@ Key invariants:
 - Aspect ratio for LongForm thumbnail is 16:9 horizontal (width * 9 == height * 16).
 - Minimum dimensions: 640x360 (recommended 1280x720), max 2 MiB, formats PNG/JPEG/WebP.
 - `select` verifies asset attachment, channel ownership, kind == IMAGE, provenance.
-- `generate` creates a deterministic 8-bit RGB 16:9 PNG (default 1280x720 or from config).
-- Idempotent replay: if latest THUMBNAIL artifact has identical sha256, returns created=False.
-- New version invalidates stale approvals in the same transaction, cleans up file on failure,
+- `generate` creates a deterministic 8-bit RGB 16:9 PNG (default 1280x720 or from
+  config).
+- Idempotent replay: if latest THUMBNAIL artifact has identical sha256, returns
+  created=False.
+- New version invalidates stale approvals in the same transaction, cleans up file on
+  failure,
   and audits `longform.thumbnail_recorded`.
 """
 
 import hashlib
 import sqlite3
 import struct
-import unicodedata
 import zlib
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Any, Final
+from typing import Final
 
-from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.longform_project import (
     LongFormProject,
     LongFormProjectStatus,
 )
 from ai_youtube_agent.content.longform_script_generator import LongFormDisabledError
 from ai_youtube_agent.content.longform_service import (
-    LongFormProjectNotFoundError,
     longform_project_is_current,
 )
-from ai_youtube_agent.content.provenance import Provenance
 from ai_youtube_agent.content.shorts_render import (
     ArtifactVisualSource,
-    VisualFile,
     VisualSource,
 )
 from ai_youtube_agent.content.shorts_thumbnail import (
     JPEG_MEDIA_TYPE,
     MAX_THUMBNAIL_BYTES,
     PNG_MEDIA_TYPE,
-    THUMBNAIL_MEDIA_TYPES,
     WEBP_MEDIA_TYPE,
     ImageInfo,
     ThumbnailSourceKind,
@@ -65,7 +63,6 @@ from ai_youtube_agent.core.audit import (
     AuditLog,
     AuditResult,
     EntityRef,
-    MetadataValue,
 )
 from ai_youtube_agent.core.content_item import ContentItem
 from ai_youtube_agent.core.db.database import Database
@@ -201,7 +198,9 @@ class LongFormThumbnailError(DomainError):
         super().__init__(
             detail,
             code=code.value,
-            user_message=USER_MESSAGES.get(code, USER_MESSAGES[LongFormThumbnailErrorCode.THUMBNAIL]),
+            user_message=USER_MESSAGES.get(
+                code, USER_MESSAGES[LongFormThumbnailErrorCode.THUMBNAIL]
+            ),
             http_status=status,
         )
 

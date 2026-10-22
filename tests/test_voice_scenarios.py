@@ -10,8 +10,6 @@ tests follow one request through the whole chain.
 from pathlib import Path
 
 import pytest
-from test_audio_artifact import T1, TEXTS, World
-from test_audio_validation import make_wav, quiet, sine, square
 
 from ai_youtube_agent.content.audio_artifact import AudioArtifactRecord
 from ai_youtube_agent.content.audio_validation import (
@@ -38,6 +36,8 @@ from ai_youtube_agent.providers.speech_synthesis import (
     VoiceErrorCode,
 )
 from factories import at, make_voice_profile
+from test_audio_artifact import T1, TEXTS, World
+from test_audio_validation import make_wav, quiet, sine, square
 
 CHECK_NAMES = [
     "audio.integrity",

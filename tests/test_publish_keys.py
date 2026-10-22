@@ -72,7 +72,16 @@ def test_derive_publish_keys_returns_both_keys() -> None:
 
 @pytest.mark.parametrize(
     "value",
-    [None, 5, "", "pub:", "pub:xyz", "pub:" + "A" * 64, "upl:" + "a" * 64, "pub:" + "a" * 63],
+    [
+        None,
+        5,
+        "",
+        "pub:",
+        "pub:xyz",
+        "pub:" + "A" * 64,
+        "upl:" + "a" * 64,
+        "pub:" + "a" * 63,
+    ],
 )
 def test_is_publish_key_rejects_wrong_shapes(value: object) -> None:
     assert not is_publish_key(value)

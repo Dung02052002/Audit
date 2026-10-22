@@ -1,4 +1,5 @@
-"""Aggregated QC Report & Gates (Prompt Pack v8, prompt K-129), context C10 Quality (Test & QC).
+"""Aggregated QC Report & Gates (Prompt Pack v8, prompt K-129), context C10 Quality
+(Test & QC).
 
 Aggregates the 9 technical/artifact checks (#117–#125) and the 3 compliance QC
 checks (#126–#128) into a structured ``PASS`` / ``WARN`` / ``FAIL`` ``QCReport``
@@ -21,7 +22,7 @@ backed by an immutable ``QCResult`` stored in ``QCResultRepository``:
   implementing ``PipelineGate`` (#033).
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Protocol
@@ -334,7 +335,9 @@ class QCGate:
 
 
 class QCReportBuilder:
-    """Runs all 9 video/artifact checks and 3 compliance QC checks to build a ``QCReport``."""
+    """Runs all 9 video/artifact checks and 3 compliance QC checks to build a
+    ``QCReport``.
+    """
 
     def __init__(
         self,
@@ -421,9 +424,7 @@ class QCReportBuilder:
             frame_luma_samples=frame_luma_samples,
             frame_hashes=frame_hashes,
         )
-        video_checks = self._harness.run_checks(
-            context, check_names=VIDEO_CHECK_NAMES
-        )
+        video_checks = self._harness.run_checks(context, check_names=VIDEO_CHECK_NAMES)
 
         rights_eval = self._rights_checker.evaluate(item.id)
         policy_eval = self._policy_checker.evaluate(item.id)

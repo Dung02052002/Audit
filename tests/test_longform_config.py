@@ -47,4 +47,3 @@ def test_longform_config_refuses_vertical_or_invalid_bounds() -> None:
         LongFormConfig(min_seconds=60, max_seconds=300)
     with pytest.raises(ValueError, match="14400"):
         LongFormConfig(min_seconds=300, max_seconds=20000)
-

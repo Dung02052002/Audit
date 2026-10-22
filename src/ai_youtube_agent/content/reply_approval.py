@@ -1,4 +1,6 @@
-"""Human reply approval and posting workflow (Prompt Pack v8, prompt #186), context C15 Community.
+"""Human reply approval and posting workflow.
+
+(Prompt Pack v8, prompt #186), context C15 Community.
 
 ``ReplyApprovalService`` manages the human review, approval, discarding, and
 manual posting of ``ReplyDraft`` records (#026, #185):
@@ -27,17 +29,15 @@ import hashlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, Final
 
-from ai_youtube_agent.content.channel import Channel, ChannelStatus
+from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.channel_metrics import DEFAULT_SYNC_RETRY
 from ai_youtube_agent.content.comment import Comment, ReplyDraft, ReplyStatus
 from ai_youtube_agent.content.reply_draft import (
     REPLY_DRAFT_ENTITY,
-    ReplyDraftError,
     _validate_reply_text,
 )
 from ai_youtube_agent.core.audit import (
@@ -61,7 +61,11 @@ from ai_youtube_agent.providers.comments import (
     ReplyPostReceipt,
     ReplyPostRequest,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 REPLY_APPROVED: Final[str] = "comment.reply_approved"
 REPLY_DISCARDED: Final[str] = "comment.reply_discarded"
@@ -72,9 +76,7 @@ REPLY_POST_FAILED: Final[str] = "comment.reply_post_failed"
 def reply_post_idempotency_key(comment_id: str, text: str) -> str:
     """Derive a deterministic idempotency key for posting a reply to ``comment_id``."""
     normalized = " ".join(text.strip().lower().split())
-    digest = hashlib.sha256(
-        f"{comment_id}:{normalized}".encode("utf-8")
-    ).hexdigest()[:24]
+    digest = hashlib.sha256(f"{comment_id}:{normalized}".encode()).hexdigest()[:24]
     return f"rpl:{comment_id}:{digest}"
 
 
@@ -207,8 +209,7 @@ class ReplyApprovalService:
             draft, comment = _load_draft_and_comment(repo, draft_id)
             siblings = repo.list_reply_drafts(comment.id)
             if any(
-                s.id != draft.id and s.status is ReplyStatus.POSTED
-                for s in siblings
+                s.id != draft.id and s.status is ReplyStatus.POSTED for s in siblings
             ):
                 raise ReplyApprovalError(
                     ReplyApprovalErrorCode.ALREADY_REPLIED,
@@ -225,22 +226,17 @@ class ReplyApprovalService:
             ):
                 raise ReplyApprovalError(
                     ReplyApprovalErrorCode.INVALID_STATUS_TRANSITION,
-                    f"cannot approve reply draft {draft.id} from status {draft.status.value}",
+                    f"cannot approve reply draft {draft.id} from status "
+                    f"{draft.status.value}",
                 )
 
             strategy = StrategyProfileRepository(connection).get_by_channel(
                 comment.channel_id
             )
             banned_phrases = (
-                strategy.brand.banned_phrases
-                if strategy and strategy.brand
-                else ()
+                strategy.brand.banned_phrases if strategy and strategy.brand else ()
             )
-            new_text = (
-                edited_text.strip()
-                if edited_text is not None
-                else draft.text
-            )
+            new_text = edited_text.strip() if edited_text is not None else draft.text
             _validate_reply_text(new_text, banned_phrases=banned_phrases)
             edited = new_text != draft.text
             approved = dataclasses.replace(
@@ -287,9 +283,7 @@ class ReplyApprovalService:
                     ReplyApprovalErrorCode.INVALID_STATUS_TRANSITION,
                     f"posted reply draft {draft.id} cannot be discarded",
                 )
-            discarded = dataclasses.replace(
-                draft, status=ReplyStatus.DISCARDED
-            )
+            discarded = dataclasses.replace(draft, status=ReplyStatus.DISCARDED)
             repo.update_reply_draft(discarded, expected_status=draft.status)
 
         self._audit.record(
@@ -317,9 +311,7 @@ class ReplyApprovalService:
     ) -> ReplyPostOutcome:
         """Post an ``APPROVED`` reply draft to YouTube after human approval."""
         _require_user_actor(actor, action="post")
-        return self._execute_post(
-            draft_id, actor=actor, require_human_approved=True
-        )
+        return self._execute_post(draft_id, actor=actor, require_human_approved=True)
 
     def _execute_post(
         self,
@@ -358,13 +350,8 @@ class ReplyApprovalService:
             )
 
         if self._duplicate_guard is not None:
-            self._duplicate_guard.ensure_can_post(
-                draft, comment=comment, actor=actor
-            )
-        elif any(
-            s.id != draft.id and s.status is ReplyStatus.POSTED
-            for s in siblings
-        ):
+            self._duplicate_guard.ensure_can_post(draft, comment=comment, actor=actor)
+        elif any(s.id != draft.id and s.status is ReplyStatus.POSTED for s in siblings):
             raise ReplyApprovalError(
                 ReplyApprovalErrorCode.ALREADY_REPLIED,
                 f"comment {comment.id} already has a posted reply",
@@ -373,7 +360,8 @@ class ReplyApprovalService:
         if require_human_approved and draft.status is not ReplyStatus.APPROVED:
             raise ReplyApprovalError(
                 ReplyApprovalErrorCode.NOT_APPROVED,
-                f"reply draft {draft.id} has status {draft.status.value}, expected approved",
+                f"reply draft {draft.id} has status {draft.status.value}, "
+                "expected approved",
             )
         if not require_human_approved and draft.status not in (
             ReplyStatus.DRAFT,
@@ -381,7 +369,8 @@ class ReplyApprovalService:
         ):
             raise ReplyApprovalError(
                 ReplyApprovalErrorCode.INVALID_STATUS_TRANSITION,
-                f"reply draft {draft.id} cannot be posted from status {draft.status.value}",
+                f"reply draft {draft.id} cannot be posted from status "
+                f"{draft.status.value}",
             )
 
         parent_yt_id = (
@@ -399,8 +388,8 @@ class ReplyApprovalService:
             text=draft.text,
             idempotency_key=idem_key,
         )
-        token = self._oauth.get_token(
-            channel.id, required_scopes=(OAuthScope.YOUTUBE_FORCE_SSL,)
+        token = get_or_renew_token(
+            self._oauth, channel.id, required_scopes=(OAuthScope.YOUTUBE_FORCE_SSL,)
         )
 
         try:
@@ -414,12 +403,8 @@ class ReplyApprovalService:
                 repo = CommentRepository(connection)
                 current = repo.get_reply_draft(draft.id)
                 if current is not None and current.status is draft.status:
-                    failed = dataclasses.replace(
-                        current, status=ReplyStatus.FAILED
-                    )
-                    repo.update_reply_draft(
-                        failed, expected_status=current.status
-                    )
+                    failed = dataclasses.replace(current, status=ReplyStatus.FAILED)
+                    repo.update_reply_draft(failed, expected_status=current.status)
             self._audit.record(
                 REPLY_POST_FAILED,
                 actor,
@@ -475,7 +460,8 @@ def _require_user_actor(actor: Actor, *, action: str) -> None:
     if actor.kind is not ActorKind.USER:
         raise ReplyApprovalError(
             ReplyApprovalErrorCode.USER_ACTOR_REQUIRED,
-            f"actor {actor.kind.value}:{actor.id} cannot {action} a reply draft; human user required",
+            f"actor {actor.kind.value}:{actor.id} cannot {action} a reply draft; "
+            "human user required",
         )
 
 

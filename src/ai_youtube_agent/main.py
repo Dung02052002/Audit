@@ -7,9 +7,12 @@ from fastapi.responses import JSONResponse
 
 from ai_youtube_agent import __version__
 from ai_youtube_agent.bootstrap import build_container, prepare_database
+from ai_youtube_agent.content.app_api import router as content_items_router
+from ai_youtube_agent.content.app_api import system_router
 from ai_youtube_agent.content.approval_api import router as approval_router
 from ai_youtube_agent.content.channel_api import router as channel_router
 from ai_youtube_agent.content.preview_api import router as preview_router
+from ai_youtube_agent.content.providers_api import router as providers_router
 from ai_youtube_agent.content.script_to_video_api import (
     router as script_to_video_router,
 )
@@ -21,6 +24,11 @@ from ai_youtube_agent.core.http import install_error_handlers, provide
 from ai_youtube_agent.core.log import configure_logging
 from ai_youtube_agent.pipeline.publish_api import audit_router as publish_audit_router
 from ai_youtube_agent.pipeline.publish_api import router as publish_router
+from ai_youtube_agent.pipeline.script_to_video_runner import ScriptToVideoRunner
+from ai_youtube_agent.pipeline.script_to_video_runs_api import (
+    router as script_to_video_runs_router,
+)
+from ai_youtube_agent.web import install_web_app
 
 
 def health(
@@ -40,6 +48,8 @@ def create_app(container: Container | None = None) -> FastAPI:
         # Migrations run when the server starts, never on import (#029).
         prepare_database(settings)
         yield
+        # Queued background runs are cancelled; the run in flight is not awaited.
+        container.resolve(ScriptToVideoRunner).shutdown()
 
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
     app.state.container = container
@@ -52,6 +62,11 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(publish_router)
     app.include_router(publish_audit_router)
     app.include_router(script_to_video_router)
+    app.include_router(script_to_video_runs_router)
+    app.include_router(content_items_router)
+    app.include_router(system_router)
+    app.include_router(providers_router)
+    install_web_app(app)
     return app
 
 

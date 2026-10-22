@@ -1,4 +1,6 @@
-"""Analytics Screen view and service (Prompt Pack v8, prompt Q-196), context X3 Command Center.
+"""Analytics Screen view and service.
+
+(Prompt Pack v8, prompt Q-196), context X3 Command Center.
 
 Builds the Command Center Analytics Screen view model and iOS-style HTML rendering,
 presenting:
@@ -57,7 +59,11 @@ from ai_youtube_agent.content.shorts_metrics import (
     ShortsMetricsView,
     normalize_shorts_metrics,
 )
-from ai_youtube_agent.content.watch_time import TWO_PLACES, WatchTimeMeasurement, WatchTimeUnit
+from ai_youtube_agent.content.watch_time import (
+    TWO_PLACES,
+    WatchTimeMeasurement,
+    WatchTimeUnit,
+)
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
@@ -130,9 +136,7 @@ class TimeRangePeriodRow:
                 else None
             ),
             "net_subscribers": (
-                str(self.net_subscribers)
-                if self.net_subscribers is not None
-                else None
+                str(self.net_subscribers) if self.net_subscribers is not None else None
             ),
         }
 
@@ -311,9 +315,7 @@ class AnalyticsScreenView:
                 else None
             ),
             "channel_subscribers": (
-                self.channel_subscribers.as_dict()
-                if self.channel_subscribers
-                else None
+                self.channel_subscribers.as_dict() if self.channel_subscribers else None
             ),
             "channel_retention_percentage": (
                 str(self.channel_retention_percentage)
@@ -400,7 +402,10 @@ class AnalyticsScreenService:
                     period_rows=(),
                     shorts=_empty_shorts_summary(),
                     longform=_empty_longform_summary(),
-                    empty_message="No analytics data or channel configured yet. Create a channel to view analytics.",
+                    empty_message=(
+                        "No analytics data or channel configured yet. "
+                        "Create a channel to view analytics."
+                    ),
                 )
 
             snapshot_repo = MetricSnapshotRepository(connection)
@@ -563,8 +568,11 @@ class AnalyticsScreenService:
             f"{html.escape(r.period_end.date().isoformat())}</td>"
             f"<td>{html.escape(_fmt_metric(r.views))}</td>"
             f"<td>{html.escape(_fmt_metric(r.watch_time_hours, suffix=' h'))}</td>"
-            f"<td>{html.escape(_fmt_metric(r.average_view_percentage, suffix='%'))}</td>"
-            f"<td>{html.escape(_fmt_metric(r.impressions_click_through_rate, suffix='%'))}</td>"
+            f"<td>{html.escape(_fmt_metric(r.average_view_percentage, suffix='%'))}"
+            "</td>"
+            f"""<td>{
+                html.escape(_fmt_metric(r.impressions_click_through_rate, suffix="%"))
+            }</td>"""
             f"<td>{html.escape(_fmt_signed_metric(r.net_subscribers))}</td>"
             f"<td>{html.escape(r.freshness_status)}</td></tr>"
             for r in view.period_rows
@@ -577,15 +585,28 @@ class AnalyticsScreenService:
         <p class="yt-card__subtitle">Channel Time-Range Metrics</p>
         <h2 class="yt-card__title">Performance Overview</h2>
       </div>
-      <span class="yt-pill yt-pill--{view.freshness_tone.value}">{html.escape(view.freshness_status)}</span>
+      <span class="yt-pill yt-pill--{view.freshness_tone.value}">{
+            html.escape(view.freshness_status)
+        }</span>
     </div>
     <div class="yt-kpi">
-      <span class="yt-kpi__value">{html.escape(_fmt_metric(vw.views if vw else None))}</span>
-      <span class="yt-kpi__unit">views · {html.escape(_fmt_metric(vw.watch_time_hours if vw else None, suffix=' hrs'))} · Net subs: {html.escape(_fmt_signed_metric(subs.net_subscribers if subs else None))}</span>
+      <span class="yt-kpi__value">{
+            html.escape(_fmt_metric(vw.views if vw else None))
+        }</span>
+      <span class="yt-kpi__unit">views · {
+            html.escape(_fmt_metric(vw.watch_time_hours if vw else None, suffix=" hrs"))
+        } · Net subs: {
+            html.escape(_fmt_signed_metric(subs.net_subscribers if subs else None))
+        }</span>
     </div>
-    <p class="yt-card__subtitle">Retention: {html.escape(_fmt_metric(view.channel_retention_percentage, suffix='%'))} · CTR: {html.escape(_fmt_metric(view.channel_ctr_percentage, suffix='%'))} · Impressions: {html.escape(_fmt_metric(view.channel_impressions))}</p>
+    <p class="yt-card__subtitle">Retention: {
+            html.escape(_fmt_metric(view.channel_retention_percentage, suffix="%"))
+        } · CTR: {
+            html.escape(_fmt_metric(view.channel_ctr_percentage, suffix="%"))
+        } · Impressions: {html.escape(_fmt_metric(view.channel_impressions))}</p>
     <table class="yt-table" data-testid="analytics-periods-table">
-      <thead><tr><th>Period</th><th>Views</th><th>Watch Time</th><th>Retention</th><th>CTR</th><th>Net Subs</th><th>Freshness</th></tr></thead>
+      <thead><tr><th>Period</th><th>Views</th><th>Watch Time</th><th>Retention</th>\
+<th>CTR</th><th>Net Subs</th><th>Freshness</th></tr></thead>
       <tbody>{period_table_rows}</tbody>
     </table>
   </section>
@@ -600,9 +621,17 @@ class AnalyticsScreenService:
     </div>
     <div class="yt-kpi">
       <span class="yt-kpi__value">{html.escape(_fmt_metric(sh.total_views))}</span>
-      <span class="yt-kpi__unit">views · Engaged: {html.escape(_fmt_metric(sh.total_engaged_views))}</span>
+      <span class="yt-kpi__unit">views · Engaged: {
+            html.escape(_fmt_metric(sh.total_engaged_views))
+        }</span>
     </div>
-    <p class="yt-card__subtitle">Stay-to-watch: {html.escape(_fmt_metric(sh.stay_to_watch_rate, suffix='%'))} · Swiped away: {html.escape(_fmt_metric(sh.total_swiped_away))} · Watch time: {html.escape(_fmt_metric(sh.total_watch_time_minutes, suffix=' min'))}</p>
+    <p class="yt-card__subtitle">Stay-to-watch: {
+            html.escape(_fmt_metric(sh.stay_to_watch_rate, suffix="%"))
+        } · Swiped away: {
+            html.escape(_fmt_metric(sh.total_swiped_away))
+        } · Watch time: {
+            html.escape(_fmt_metric(sh.total_watch_time_minutes, suffix=" min"))
+        }</p>
   </section>
 
   <section class="yt-card yt-grid__span-6" data-testid="analytics-longform-card">
@@ -615,9 +644,17 @@ class AnalyticsScreenService:
     </div>
     <div class="yt-kpi">
       <span class="yt-kpi__value">{html.escape(_fmt_metric(lf.total_views))}</span>
-      <span class="yt-kpi__unit">views · Watch time: {html.escape(_fmt_metric(lf.total_watch_time_hours, suffix=' hrs'))}</span>
+      <span class="yt-kpi__unit">views · Watch time: {
+            html.escape(_fmt_metric(lf.total_watch_time_hours, suffix=" hrs"))
+        }</span>
     </div>
-    <p class="yt-card__subtitle">Impressions: {html.escape(_fmt_metric(lf.total_impressions))} · CTR: {html.escape(_fmt_metric(lf.impressions_click_through_rate, suffix='%'))} · Avg view %: {html.escape(_fmt_metric(lf.average_view_percentage, suffix='%'))}</p>
+    <p class="yt-card__subtitle">Impressions: {
+            html.escape(_fmt_metric(lf.total_impressions))
+        } · CTR: {
+            html.escape(_fmt_metric(lf.impressions_click_through_rate, suffix="%"))
+        } · Avg view %: {
+            html.escape(_fmt_metric(lf.average_view_percentage, suffix="%"))
+        }</p>
   </section>
 </div>"""
         return render_dashboard_shell_html(
@@ -734,12 +771,8 @@ def _build_shorts_summary(
     total_views = _sum_metric(all_selected_snapshots, "views")
     total_engaged = _sum_metric(all_selected_snapshots, "engaged_views")
     total_swiped = _sum_metric(all_selected_snapshots, "swiped_away")
-    total_feed_imp = _sum_metric(
-        all_selected_snapshots, "shorts_feed_impressions"
-    )
-    total_mins = _sum_metric(
-        all_selected_snapshots, "estimated_minutes_watched"
-    )
+    total_feed_imp = _sum_metric(all_selected_snapshots, "shorts_feed_impressions")
+    total_mins = _sum_metric(all_selected_snapshots, "estimated_minutes_watched")
     total_hours = (
         (total_mins / Decimal("60")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
         if total_mins is not None
@@ -767,9 +800,7 @@ def _build_shorts_summary(
         total_watch_time_hours=total_hours,
         average_view_percentage=avg_pct,
         stay_to_watch_rate=stay_rate,
-        subscribers_gained=_sum_metric(
-            all_selected_snapshots, "subscribers_gained"
-        ),
+        subscribers_gained=_sum_metric(all_selected_snapshots, "subscribers_gained"),
         subscribers_lost=_sum_metric(all_selected_snapshots, "subscribers_lost"),
         videos=tuple(views_list),
     )
@@ -807,12 +838,8 @@ def _build_longform_summary(
 
     total_views = _sum_metric(all_selected_snapshots, "views")
     total_impressions = _sum_metric(all_selected_snapshots, "impressions")
-    avg_ctr = _average_metric(
-        all_selected_snapshots, "impressions_click_through_rate"
-    )
-    total_mins = _sum_metric(
-        all_selected_snapshots, "estimated_minutes_watched"
-    )
+    avg_ctr = _average_metric(all_selected_snapshots, "impressions_click_through_rate")
+    total_mins = _sum_metric(all_selected_snapshots, "estimated_minutes_watched")
     total_hours = (
         (total_mins / Decimal("60")).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
         if total_mins is not None
@@ -829,25 +856,18 @@ def _build_longform_summary(
         total_watch_time_minutes=total_mins,
         total_watch_time_hours=total_hours,
         average_view_percentage=avg_pct,
-        subscribers_gained=_sum_metric(
-            all_selected_snapshots, "subscribers_gained"
-        ),
+        subscribers_gained=_sum_metric(all_selected_snapshots, "subscribers_gained"),
         subscribers_lost=_sum_metric(all_selected_snapshots, "subscribers_lost"),
         videos=tuple(views_list),
     )
 
 
-def _average_metric(
-    snapshots: Sequence[MetricSnapshot], key: str
-) -> Decimal | None:
+def _average_metric(snapshots: Sequence[MetricSnapshot], key: str) -> Decimal | None:
     vals = [
-        snap.metrics[key]
-        for snap in snapshots
-        if snap.metrics.get(key) is not None
+        snap.metrics[key] for snap in snapshots if snap.metrics.get(key) is not None
     ]
     if not vals:
         return None
     return (sum(vals, Decimal("0")) / Decimal(len(vals))).quantize(
         TWO_PLACES, rounding=ROUND_HALF_UP
     )
-

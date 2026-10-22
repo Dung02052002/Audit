@@ -53,7 +53,11 @@ from ai_youtube_agent.providers.analytics import (
     AnalyticsProvider,
     AnalyticsQuery,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 Clock = Callable[[], datetime]
 
@@ -137,7 +141,8 @@ def validate_retention_values(
     ):
         raise RetentionError(
             RetentionErrorCode.INVALID_RETENTION_VALUE,
-            f"average_view_percentage {percentage} must be in [0, {MAX_RETENTION_PERCENTAGE}]",
+            f"average_view_percentage {percentage} must be in "
+            f"[0, {MAX_RETENTION_PERCENTAGE}]",
         )
     if duration_seconds is not None and duration_seconds < 0:
         raise RetentionError(
@@ -271,8 +276,10 @@ class RetentionSync:
         rows: dict[str, dict[str, Decimal]] = {}
         pages: list[AnalyticsPage] = []
         if eligible:
-            token = self._oauth.get_token(
-                channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
+            token = get_or_renew_token(
+                self._oauth,
+                channel.id,
+                required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,),
             )
             for start in range(0, len(eligible), MAX_VIDEO_IDS):
                 chunk = eligible[start : start + MAX_VIDEO_IDS]
@@ -323,7 +330,10 @@ class RetentionSync:
         return result
 
     def for_video(self, youtube_video_id: str) -> list[RetentionView]:
-        """Retention views from stored snapshots of one video that actually have retention."""
+        """Retention views from stored snapshots of one video.
+
+        Only those that actually have retention.
+        """
         if not isinstance(youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             youtube_video_id
         ):
@@ -422,7 +432,8 @@ class RetentionSync:
             repository = MetricSnapshotRepository(connection)
             for video_id in eligible:
                 values = rows.get(video_id)
-                # Store retention ONLY when average_view_percentage is actually available.
+                # Store retention ONLY when average_view_percentage is actually
+                # available.
                 if not values or "average_view_percentage" not in values:
                     unavailable.append(video_id)
                     continue

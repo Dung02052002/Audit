@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset_usage import AssetUsage
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.qc_rights import (
     RIGHTS_QC_CHECK_NAME,
@@ -10,7 +11,7 @@ from ai_youtube_agent.content.qc_rights import (
     evaluate_rights_qc,
 )
 from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
-from ai_youtube_agent.content.rights_assessment import RULES_VERSION, RightsAssessment
+from ai_youtube_agent.content.rights_assessment import Outcome, RightsAssessment
 from ai_youtube_agent.content.rights_report import (
     AssetReport,
     BlockingRecord,
@@ -21,7 +22,10 @@ from ai_youtube_agent.content.rights_report import (
 from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.asset import AssetRepository
+from ai_youtube_agent.core.db.repositories.asset import (
+    AssetRepository,
+    AssetUsageRepository,
+)
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
@@ -158,26 +162,26 @@ def test_rights_qc_checker_end_to_end(database: Database) -> None:
         channel.id,
         AssetKind.IMAGE,
         AssetCategory.GENERATED,
-        "scene-1.png",
-        created_by=SYSTEM,
+        title="scene-1.png",
+        source="ai-gen",
         clock=lambda: NOW,
     )
     record = RightsRecord.create(
         item.id,
         asset.id,
-        risk_level=RiskLevel.LOW,
         source="ai-gen",
         license="internal",
         clock=lambda: NOW,
-    )
+    ).with_risk_level(RiskLevel.LOW, clock=lambda: NOW)
     assessment = RightsAssessment.create(
         record.id,
         item.id,
-        level=RiskLevel.LOW,
-        rule_codes=("generated.declared",),
-        rules_version=RULES_VERSION,
-        asset_id=asset.id,
-        provenance_id=None,
+        Outcome(
+            level=RiskLevel.LOW,
+            rule_codes=("generated.declared",),
+            asset_id=asset.id,
+            provenance_id=None,
+        ),
         assessed_by=SYSTEM,
         clock=lambda: NOW,
     )
@@ -187,7 +191,9 @@ def test_rights_qc_checker_end_to_end(database: Database) -> None:
         ContentItemRepository(conn).add(item)
         assets_repo = AssetRepository(conn)
         assets_repo.add(asset)
-        assets_repo.attach(item.id, asset.id, attached_by=SYSTEM, attached_at=NOW)
+        AssetUsageRepository(conn).add(
+            AssetUsage.create(asset.id, item.id, attached_by=SYSTEM, clock=lambda: NOW)
+        )
         RightsRecordRepository(conn).add(record)
         RightsAssessmentRepository(conn).add(assessment)
 

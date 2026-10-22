@@ -1,4 +1,7 @@
-"""Deterministic in-memory mock YouTube Channel read provider (Prompt Pack v8, prompt #146), context C12 Publishing."""
+"""Deterministic in-memory mock YouTube Channel read provider.
+
+(Prompt Pack v8, prompt #146), context C12 Publishing.
+"""
 
 import threading
 from collections.abc import Callable
@@ -69,10 +72,9 @@ class MockYouTubeChannelProvider:
         *,
         token: OAuthToken | None = None,
     ) -> RemoteChannelInfo:
-        if (
-            not isinstance(youtube_channel_id, str)
-            or not YOUTUBE_CHANNEL_ID_PATTERN.match(youtube_channel_id)
-        ):
+        if not isinstance(
+            youtube_channel_id, str
+        ) or not YOUTUBE_CHANNEL_ID_PATTERN.match(youtube_channel_id):
             raise YouTubeChannelProviderError(
                 ChannelProviderErrorCode.INVALID_REQUEST,
                 "invalid YouTube channel ID format",
@@ -130,7 +132,8 @@ class MockYouTubeChannelProvider:
             except YouTubeOAuthError as exc:
                 raise YouTubeChannelProviderError(
                     ChannelProviderErrorCode.UNAUTHORIZED,
-                    f"could not obtain OAuth token for channel {channel_id}: {exc.code}",
+                    f"could not obtain OAuth token for channel {channel_id}: "
+                    f"{exc.code}",
                     provider=self._name,
                     cause=exc,
                 ) from exc

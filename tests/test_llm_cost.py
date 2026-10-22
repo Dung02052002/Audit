@@ -8,7 +8,7 @@ import pytest
 from ai_youtube_agent.content.channel import ChannelStatus
 from ai_youtube_agent.content.cost import CostCategory
 from ai_youtube_agent.content.cost_ledger import (
-     COST_RECORDED,
+    COST_RECORDED,
     CostLedger,
     CostLedgerError,
     CostLedgerErrorCode,
@@ -107,9 +107,7 @@ class TestLLMCostRecorder:
             ChannelRepository(connection).add(channel)
             StrategyProfileRepository(connection).add(profile)
 
-        ledger = CostLedger(
-            database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW
-        )
+        ledger = CostLedger(database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW)
         catalog = LLMPricingCatalog(rates={}, default_rate=None)
         recorder = LLMCostRecorder(ledger, catalog=catalog)
 
@@ -123,10 +121,7 @@ class TestLLMCostRecorder:
         )
         with pytest.raises(LLMCostError) as exc_missing:
             recorder.record_generated(channel.id, no_tokens, ref="missing:1")
-        assert (
-            exc_missing.value.llm_cost_code
-            is LLMCostErrorCode.MISSING_TOKEN_USAGE
-        )
+        assert exc_missing.value.llm_cost_code is LLMCostErrorCode.MISSING_TOKEN_USAGE
 
         with pytest.raises(LLMCostError) as exc_unknown:
             recorder.record_usage(
@@ -136,23 +131,16 @@ class TestLLMCostRecorder:
                 input_tokens=100,
                 output_tokens=100,
             )
-        assert (
-            exc_unknown.value.llm_cost_code
-            is LLMCostErrorCode.UNKNOWN_MODEL_RATE
-        )
+        assert exc_unknown.value.llm_cost_code is LLMCostErrorCode.UNKNOWN_MODEL_RATE
 
-    def test_currency_mismatch_is_refused_by_ledger(
-        self, database: Database
-    ) -> None:
+    def test_currency_mismatch_is_refused_by_ledger(self, database: Database) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         profile = make_strategy_profile(channel)
         with database.transaction() as connection:
             ChannelRepository(connection).add(channel)
             StrategyProfileRepository(connection).add(profile)
 
-        ledger = CostLedger(
-            database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW
-        )
+        ledger = CostLedger(database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW)
         catalog = LLMPricingCatalog(
             default_rate=LLMModelRate(
                 input_price_per_1k=Decimal("0.01"),

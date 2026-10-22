@@ -89,7 +89,7 @@ def test_revenue_query_row_and_page_validation() -> None:
         )
 
 
-def test_mock_keeps_estimated_and_final_strictly_separate_and_never_invents_revenue() -> None:
+def test_mock_keeps_estimated_final_separate_and_invents_nothing() -> None:
     provider = MockRevenueProvider(clock=_clock)
     assert isinstance(provider, RevenueProvider)
     assert provider.name == "mock_revenue"

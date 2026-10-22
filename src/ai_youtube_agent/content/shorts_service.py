@@ -70,6 +70,8 @@ from datetime import datetime
 from enum import StrEnum
 from http import HTTPStatus
 
+from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.script import Script
 from ai_youtube_agent.content.shorts_captions import (
     IssueKind,
     check_captions,
@@ -77,10 +79,8 @@ from ai_youtube_agent.content.shorts_captions import (
     plan_captions,
 )
 from ai_youtube_agent.content.shorts_config import ShortsConfig
-from ai_youtube_agent.content.script import Script
 from ai_youtube_agent.content.shorts_planner import plan_timeline
 from ai_youtube_agent.content.shorts_project import ShortsProject, ShortsProjectStatus
-from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.shorts_timeline import (
     ROLE_KINDS,
     AssetPlacement,
@@ -157,8 +157,7 @@ USER_MESSAGES = {
     ShortsProjectErrorCode.AUDIO_MISSING: "This content item has no audio yet.",
     ShortsProjectErrorCode.STALE_INPUT: "The audio was made from an older script. "
     "Voice the latest script first.",
-    ShortsProjectErrorCode.AUDIO_TOO_LONG: "The audio is longer than a Short may "
-    "be.",
+    ShortsProjectErrorCode.AUDIO_TOO_LONG: "The audio is longer than a Short may be.",
     ShortsProjectErrorCode.EXISTS: "This content item already has a Shorts project.",
     ShortsProjectErrorCode.NOT_FOUND: "This Shorts project does not exist.",
     ShortsProjectErrorCode.CONFLICT: "The Shorts project changed in the meantime. "
@@ -456,9 +455,7 @@ class ShortsProjectService:
 
 def project_is_current(connection: sqlite3.Connection, project: ShortsProject) -> bool:
     """True when the bound script and audio are still the item's latest."""
-    scripts = ScriptRepository(connection).list_by_content_item(
-        project.content_item_id
-    )
+    scripts = ScriptRepository(connection).list_by_content_item(project.content_item_id)
     audio = ArtifactRepository(connection).latest(
         project.content_item_id, ArtifactKind.AUDIO
     )
@@ -605,9 +602,7 @@ def _bound_script(connection: sqlite3.Connection, project: ShortsProject) -> Scr
     return script
 
 
-def _check_sections(
-    project: ShortsProject, timeline: Timeline, script: Script
-) -> None:
+def _check_sections(project: ShortsProject, timeline: Timeline, script: Script) -> None:
     """Every section of the bound script appears in the scenes, none is extra."""
     if not timeline.scenes:
         return

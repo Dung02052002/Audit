@@ -121,7 +121,10 @@ class LongFormPublisher:
         duration_ms = media.video_duration_ms
 
         def check_long_uploads(remote: RemoteChannelInfo) -> None:
-            if duration_ms > LONG_UPLOAD_THRESHOLD_MS and not remote.allows_long_uploads:
+            if (
+                duration_ms > LONG_UPLOAD_THRESHOLD_MS
+                and not remote.allows_long_uploads
+            ):
                 raise PublishError(
                     PublishErrorCode.LONG_UPLOADS_DISALLOWED,
                     f"channel {remote.youtube_channel_id} has long_uploads_status "

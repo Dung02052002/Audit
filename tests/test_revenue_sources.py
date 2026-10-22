@@ -77,15 +77,13 @@ class TestRevenueStreamRegistry:
         with pytest.raises(RevenueSourceError) as exc_info:
             registry.register(custom)
         assert (
-            exc_info.value.source_code
-            is RevenueSourceErrorCode.DUPLICATE_REVENUE_TYPE
+            exc_info.value.source_code is RevenueSourceErrorCode.DUPLICATE_REVENUE_TYPE
         )
 
         with pytest.raises(RevenueSourceError) as exc_unknown:
             registry.get("unregistered_stream")
         assert (
-            exc_unknown.value.source_code
-            is RevenueSourceErrorCode.UNKNOWN_REVENUE_TYPE
+            exc_unknown.value.source_code is RevenueSourceErrorCode.UNKNOWN_REVENUE_TYPE
         )
 
 
@@ -96,9 +94,7 @@ class TestRevenueSourceService:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         monetization = Monetization(
             goals=(
-                RevenueGoal(
-                    source=RevenueSource.ADS, monthly_target=Decimal("200.00")
-                ),
+                RevenueGoal(source=RevenueSource.ADS, monthly_target=Decimal("200.00")),
                 RevenueGoal(
                     source=RevenueSource.SPONSORSHIPS,
                     monthly_target=Decimal("500.00"),
@@ -303,10 +299,7 @@ class TestRevenueSourceService:
                 period_end=END,
                 actor=USER,
             )
-        assert (
-            exc_stage.value.source_code
-            is RevenueSourceErrorCode.STAGE_NOT_SUPPORTED
-        )
+        assert exc_stage.value.source_code is RevenueSourceErrorCode.STAGE_NOT_SUPPORTED
 
         with pytest.raises(RevenueSourceError) as exc_scope:
             service.record(
@@ -320,7 +313,4 @@ class TestRevenueSourceService:
                 actor=USER,
                 youtube_video_id=vid,
             )
-        assert (
-            exc_scope.value.source_code
-            is RevenueSourceErrorCode.SCOPE_NOT_SUPPORTED
-        )
+        assert exc_scope.value.source_code is RevenueSourceErrorCode.SCOPE_NOT_SUPPORTED

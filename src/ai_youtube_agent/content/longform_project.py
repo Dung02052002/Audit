@@ -75,9 +75,7 @@ class LongFormProject:
         if not isinstance(self.audio_sha256, str) or not SHA256_PATTERN.fullmatch(
             self.audio_sha256
         ):
-            raise ValueError(
-                "audio_sha256 must be 64 lowercase hexadecimal characters"
-            )
+            raise ValueError("audio_sha256 must be 64 lowercase hexadecimal characters")
         if not isinstance(self.config, LongFormConfig):
             raise TypeError("config must be a LongFormConfig")
         if not isinstance(self.timeline, LongFormTimeline):
@@ -97,12 +95,8 @@ class LongFormProject:
             )
         if self.timeline.duration_ms != self.audio_duration_ms:
             raise ValueError("the timeline must be as long as the audio")
-        if (self.status is LongFormProjectStatus.DRAFT) != (
-            not self.timeline.scenes
-        ):
-            raise ValueError(
-                "a project is a draft exactly when its timeline is empty"
-            )
+        if (self.status is LongFormProjectStatus.DRAFT) != (not self.timeline.scenes):
+            raise ValueError("a project is a draft exactly when its timeline is empty")
 
     @classmethod
     def create(
@@ -256,4 +250,3 @@ def _require_utc(name: str, value: object) -> None:
 
 def _now(clock: Clock | None) -> datetime:
     return clock() if clock else datetime.now(UTC)
-

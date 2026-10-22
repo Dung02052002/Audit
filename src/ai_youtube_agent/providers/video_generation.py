@@ -1,4 +1,5 @@
-"""Scene & Shot Video Clip Generation Provider Contract (Script-to-Film Refactor, Phase 5).
+"""Scene & Shot Video Clip Generation Provider Contract (Script-to-Film Refactor, Phase
+5).
 
 Defines the ``VideoClipGenerator`` protocol, ``VideoClipGenerationRequest``,
 ``GeneratedVideoClip``, and ``VideoClipGeneratorCapabilities`` for
@@ -170,4 +171,3 @@ class VideoClipGenerator(Protocol):
     ) -> GeneratedVideoClip: ...
 
     def check(self) -> None: ...
-

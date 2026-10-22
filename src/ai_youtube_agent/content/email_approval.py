@@ -53,6 +53,16 @@ from ai_youtube_agent.providers.approval_email import (
 DEFAULT_ACTOR = Actor(ActorKind.SYSTEM, "email_approval")
 
 
+def _escape_url(url: str) -> str:
+    """Escape ``url`` for HTML but keep ``&``: the provider needs the exact URL."""
+    return (
+        url.replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#x27;")
+    )
+
+
 class ApprovalEmailService:
     def __init__(
         self,
@@ -146,7 +156,8 @@ class ApprovalEmailService:
         )
 
         artifact_lines = [
-            f"- {b.kind.value}: id={b.artifact_id} version={b.version} sha256={b.sha256}"
+            f"- {b.kind.value}: id={b.artifact_id} version={b.version} "
+            f"sha256={b.sha256}"
             for b in request.artifacts
         ]
         text_body = "\n".join(
@@ -174,15 +185,20 @@ class ApprovalEmailService:
             for b in request.artifacts
         )
         html_body = (
-            "<div class=\"approval-email\">"
+            '<div class="approval-email">'
             f"<h2>Approval Required: {html.escape(item.title)}</h2>"
-            f"<p><strong>Content Item ID:</strong> <code>{html.escape(request.content_item_id)}</code></p>"
-            f"<p><strong>Approval Request ID:</strong> <code>{html.escape(request.id)}</code></p>"
-            f"<p><strong>Video Artifact ID:</strong> <code>{html.escape(video_binding.artifact_id)}</code> "
+            f"<p><strong>Content Item ID:</strong> "
+            f"<code>{html.escape(request.content_item_id)}</code></p>"
+            f"<p><strong>Approval Request ID:</strong> "
+            f"<code>{html.escape(request.id)}</code></p>"
+            f"<p><strong>Video Artifact ID:</strong> "
+            f"<code>{html.escape(video_binding.artifact_id)}</code> "
             f"(v{video_binding.version})</p>"
-            f"<p><strong>Video Artifact SHA-256:</strong> <code>{html.escape(video_binding.sha256)}</code></p>"
+            f"<p><strong>Video Artifact SHA-256:</strong> "
+            f"<code>{html.escape(video_binding.sha256)}</code></p>"
             f"<p><strong>QC Status:</strong> <code>{html.escape(qc_status)}</code></p>"
-            f"<p><a href=\"{html.escape(preview_url, quote=True)}\">Open Safe Preview ({html.escape(preview_url)})</a></p>"
+            f'<p><a href="{_escape_url(preview_url)}">Open Safe Preview '
+            f"({_escape_url(preview_url)})</a></p>"
             f"<ul>{html_rows}</ul>"
             "</div>"
         )

@@ -1,4 +1,5 @@
-"""YouTube Channel read provider interface (Prompt Pack v8, prompt #146), context C12 Publishing.
+"""YouTube Channel read provider interface (Prompt Pack v8, prompt #146), context C12
+Publishing.
 
 Defines the channel read provider abstraction for inspecting remote YouTube
 channel metadata, linkage status, and upload eligibility:
@@ -26,9 +27,7 @@ from ai_youtube_agent.providers.youtube_oauth import OAuthToken
 YOUTUBE_CHANNEL_ID_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^UC[A-Za-z0-9_-]{22}$"
 )
-YOUTUBE_HANDLE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^@[A-Za-z0-9._-]{3,30}$"
-)
+YOUTUBE_HANDLE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^@[A-Za-z0-9._-]{3,30}$")
 VALID_LONG_UPLOADS_STATUSES: Final[frozenset[str]] = frozenset(
     {"allowed", "eligible", "disallowed"}
 )
@@ -113,21 +112,21 @@ class RemoteChannelInfo:
     long_uploads_status: str = "allowed"
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.youtube_channel_id, str)
-            or not YOUTUBE_CHANNEL_ID_PATTERN.match(self.youtube_channel_id)
-        ):
+        if not isinstance(
+            self.youtube_channel_id, str
+        ) or not YOUTUBE_CHANNEL_ID_PATTERN.match(self.youtube_channel_id):
             raise ValueError(
-                "youtube_channel_id must be 'UC' followed by 22 letters, digits, '_' or '-'"
+                "youtube_channel_id must be 'UC' followed by 22 letters, digits, '_' "
+                "or '-'"
             )
         if not isinstance(self.title, str) or not self.title.strip():
             raise ValueError("title must not be empty")
         object.__setattr__(self, "title", self.title.strip())
-        if self.handle is not None:
-            if not isinstance(self.handle, str) or not YOUTUBE_HANDLE_PATTERN.match(
-                self.handle
-            ):
-                raise ValueError("handle must match @handle pattern")
+        if self.handle is not None and (
+            not isinstance(self.handle, str)
+            or not YOUTUBE_HANDLE_PATTERN.match(self.handle)
+        ):
+            raise ValueError("handle must match @handle pattern")
         if self.privacy_status not in VALID_PRIVACY_STATUSES:
             raise ValueError(
                 f"privacy_status must be one of {sorted(VALID_PRIVACY_STATUSES)}"
@@ -136,12 +135,12 @@ class RemoteChannelInfo:
             raise TypeError("is_linked must be a bool")
         if self.long_uploads_status not in VALID_LONG_UPLOADS_STATUSES:
             raise ValueError(
-                f"long_uploads_status must be one of {sorted(VALID_LONG_UPLOADS_STATUSES)}"
+                f"long_uploads_status must be one of "
+                f"{sorted(VALID_LONG_UPLOADS_STATUSES)}"
             )
-        if (
-            not isinstance(self.fetched_at, datetime)
-            or self.fetched_at.utcoffset() != timedelta(0)
-        ):
+        if not isinstance(
+            self.fetched_at, datetime
+        ) or self.fetched_at.utcoffset() != timedelta(0):
             raise ValueError("fetched_at must be timezone-aware UTC")
 
     @property

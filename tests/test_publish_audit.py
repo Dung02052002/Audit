@@ -150,7 +150,6 @@ def test_the_trail_joins_the_approval_the_request_and_the_result(seed: Seed) -> 
     assert trail.as_dict()["total_events"] == 3
 
 
-
 def test_an_unknown_item_has_no_trail(seed: Seed) -> None:
     sink = InMemoryAuditSink()
     service = PublishAuditService(

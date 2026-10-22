@@ -53,9 +53,7 @@ NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
 
 def _registry(*, healthy: bool = True) -> HealthRegistry:
     reg = HealthRegistry()
-    reg.register(
-        HealthCheck("settings", CheckKind.APPLICATION, lambda: None)
-    )
+    reg.register(HealthCheck("settings", CheckKind.APPLICATION, lambda: None))
     if not healthy:
         reg.register(
             HealthCheck(
@@ -95,7 +93,7 @@ def test_home_screen_shows_channel_health_ai_status_production_approvals_and_ale
     )
     video = make_artifact(item_pending, ArtifactKind.VIDEO)
     approval = make_approval_request(item_pending, [video])
-    session = Session.start(USER, clock=lambda: NOW)
+    session = Session.start(actor=USER, clock=lambda: NOW)
     running_job = AIJob.create(
         "video.render",
         "gen:home-1",
@@ -103,7 +101,7 @@ def test_home_screen_shows_channel_health_ai_status_production_approvals_and_ale
         session_id=session.id,
         clock=lambda: NOW,
     ).start(clock=lambda: NOW)
-    prod_start = ProductionStart.create(item_pending, clock=lambda: NOW)
+    prod_start = ProductionStart.of(item_pending, NOW)
     cost = CostRecord.create(
         channel.id,
         CostCategory.TTS,
@@ -192,4 +190,3 @@ def test_home_screen_empty_state_when_no_channels(database: Database) -> None:
     assert view.production is None
     assert len(view.alerts) == 1
     assert view.alerts[0].category == "health"
-

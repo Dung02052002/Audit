@@ -1,4 +1,5 @@
-"""YouTube Comment provider interface (Prompt Pack v8, prompt #182), context C15 Community.
+"""YouTube Comment provider interface (Prompt Pack v8, prompt #182), context C15
+Community.
 
 Defines how the agent reads video comments (top-level threads and replies) and
 posts approved replies to YouTube without ever exposing private viewer data or
@@ -141,9 +142,7 @@ class CommentQuery:
         if not isinstance(self.youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             self.youtube_video_id
         ):
-            raise ValueError(
-                "youtube_video_id must be 11 letters, digits, '_' or '-'"
-            )
+            raise ValueError("youtube_video_id must be 11 letters, digits, '_' or '-'")
         if not isinstance(self.include_replies, bool):
             raise TypeError("include_replies must be a bool")
         if (
@@ -175,25 +174,24 @@ class RemoteComment:
     def __post_init__(self, parent_id: str | None = None) -> None:
         if self.parent_comment_id is None and parent_id is not None:
             object.__setattr__(self, "parent_comment_id", parent_id)
-        if not isinstance(
-            self.youtube_comment_id, str
-        ) or not COMMENT_ID_PATTERN.match(self.youtube_comment_id):
+        if not isinstance(self.youtube_comment_id, str) or not COMMENT_ID_PATTERN.match(
+            self.youtube_comment_id
+        ):
             raise ValueError(
                 "youtube_comment_id must be a non-empty YouTube comment identifier"
             )
         if not isinstance(self.youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             self.youtube_video_id
         ):
-            raise ValueError(
-                "youtube_video_id must be 11 letters, digits, '_' or '-'"
-            )
+            raise ValueError("youtube_video_id must be 11 letters, digits, '_' or '-'")
         if (
             not isinstance(self.author_display_name, str)
             or not self.author_display_name.strip()
             or len(self.author_display_name) > MAX_AUTHOR_NAME_LENGTH
         ):
             raise ValueError(
-                f"author_display_name must be 1..{MAX_AUTHOR_NAME_LENGTH} non-blank characters"
+                f"author_display_name must be 1..{MAX_AUTHOR_NAME_LENGTH} non-blank "
+                "characters"
             )
         if (
             not isinstance(self.text, str)
@@ -215,10 +213,6 @@ class RemoteComment:
         _require_utc(self.published_at, "published_at")
 
     @property
-    def parent_id(self) -> str | None:
-        return self.parent_comment_id
-
-    @property
     def is_reply(self) -> bool:
         return self.parent_comment_id is not None
 
@@ -231,6 +225,15 @@ class RemoteComment:
             "text": self.text,
             "published_at": self.published_at.isoformat(),
         }
+
+
+def _remote_comment_parent_id(self: RemoteComment) -> str | None:
+    return self.parent_comment_id
+
+
+# Attached after the dataclass is built: a ``parent_id`` property in the class
+# body would replace the InitVar default with the property object itself.
+RemoteComment.parent_id = property(_remote_comment_parent_id)  # type: ignore[attr-defined,misc]
 
 
 @dataclass(frozen=True)
@@ -249,9 +252,7 @@ class CommentPage:
         if not isinstance(self.youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             self.youtube_video_id
         ):
-            raise ValueError(
-                "youtube_video_id must be 11 letters, digits, '_' or '-'"
-            )
+            raise ValueError("youtube_video_id must be 11 letters, digits, '_' or '-'")
         if any(c.youtube_video_id != self.youtube_video_id for c in self.comments):
             raise ValueError(
                 "every comment in a CommentPage must belong to page.youtube_video_id"
@@ -306,9 +307,7 @@ class ReplyPostRequest:
         if not isinstance(self.youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             self.youtube_video_id
         ):
-            raise ValueError(
-                "youtube_video_id must be 11 letters, digits, '_' or '-'"
-            )
+            raise ValueError("youtube_video_id must be 11 letters, digits, '_' or '-'")
         if not isinstance(
             self.parent_youtube_comment_id, str
         ) or not COMMENT_ID_PATTERN.match(self.parent_youtube_comment_id):
@@ -359,9 +358,7 @@ class ReplyPostReceipt:
         if not isinstance(self.youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             self.youtube_video_id
         ):
-            raise ValueError(
-                "youtube_video_id must be 11 letters, digits, '_' or '-'"
-            )
+            raise ValueError("youtube_video_id must be 11 letters, digits, '_' or '-'")
         for str_name in ("channel_id", "reply_draft_id", "idempotency_key", "provider"):
             val = getattr(self, str_name)
             if not isinstance(val, str) or not val.strip():

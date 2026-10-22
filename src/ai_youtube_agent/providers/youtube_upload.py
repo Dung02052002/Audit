@@ -1,4 +1,6 @@
-"""YouTube Upload provider interface (Prompt Pack v8, prompt #147), context C12 Publishing.
+"""YouTube Upload provider interface.
+
+(Prompt Pack v8, prompt #147), context C12 Publishing.
 
 Defines the provider abstraction for uploading rendered MP4 video artifacts,
 thumbnails, and caption tracks to YouTube:
@@ -66,9 +68,7 @@ USER_MESSAGES: Final[dict[UploadErrorCode, str]] = {
     UploadErrorCode.RATE_LIMITED: (
         "YouTube upload requests are currently rate-limited."
     ),
-    UploadErrorCode.QUOTA_EXCEEDED: (
-        "The YouTube API upload quota has been exceeded."
-    ),
+    UploadErrorCode.QUOTA_EXCEEDED: ("The YouTube API upload quota has been exceeded."),
     UploadErrorCode.UNAUTHORIZED: (
         "The YouTube upload could not be authorized for this channel."
     ),
@@ -138,9 +138,8 @@ class YouTubeVideoSnippet:
             total_tag_chars += len(tag)
         if total_tag_chars > 500:
             raise ValueError("total tag characters must be at most 500")
-        if (
-            not isinstance(self.category_id, str)
-            or not CATEGORY_ID_PATTERN.match(self.category_id)
+        if not isinstance(self.category_id, str) or not CATEGORY_ID_PATTERN.match(
+            self.category_id
         ):
             raise ValueError("category_id must be 1..4 digits")
         for lang_field in ("default_language", "default_audio_language"):
@@ -180,10 +179,9 @@ class YouTubeVideoStatus:
             if not isinstance(getattr(self, bool_name), bool):
                 raise TypeError(f"{bool_name} must be a bool")
         if self.publish_at is not None:
-            if (
-                not isinstance(self.publish_at, datetime)
-                or self.publish_at.utcoffset() != timedelta(0)
-            ):
+            if not isinstance(
+                self.publish_at, datetime
+            ) or self.publish_at.utcoffset() != timedelta(0):
                 raise ValueError("publish_at must be timezone-aware UTC")
             if self.privacy_status is not YouTubePrivacyStatus.PRIVATE:
                 raise ValueError(
@@ -253,7 +251,9 @@ class YouTubeUploadPayload:
                 raise ValueError(f"{ver_name} must be an integer >= 1")
         for sha_name in ("video_sha256", "metadata_sha256"):
             if not SHA256_PATTERN.match(getattr(self, sha_name)):
-                raise ValueError(f"{sha_name} must be a 64-character lowercase hex sha256")
+                raise ValueError(
+                    f"{sha_name} must be a 64-character lowercase hex sha256"
+                )
         if (
             isinstance(self.video_size_bytes, bool)
             or not isinstance(self.video_size_bytes, int)
@@ -268,7 +268,8 @@ class YouTubeUploadPayload:
             raise TypeError("status must be a YouTubeVideoStatus")
         if (self.thumbnail_artifact_id is None) != (self.thumbnail_sha256 is None):
             raise ValueError(
-                "thumbnail_artifact_id and thumbnail_sha256 must both be set or both None"
+                "thumbnail_artifact_id and thumbnail_sha256 must both be set or "
+                "both None"
             )
         if self.thumbnail_sha256 is not None and not SHA256_PATTERN.match(
             self.thumbnail_sha256
@@ -276,7 +277,8 @@ class YouTubeUploadPayload:
             raise ValueError("thumbnail_sha256 must be a valid sha256")
         if (self.subtitles_artifact_id is None) != (self.subtitles_sha256 is None):
             raise ValueError(
-                "subtitles_artifact_id and subtitles_sha256 must both be set or both None"
+                "subtitles_artifact_id and subtitles_sha256 must both be set or "
+                "both None"
             )
         if self.subtitles_sha256 is not None and not SHA256_PATTERN.match(
             self.subtitles_sha256
@@ -348,10 +350,9 @@ class YouTubeUploadReceipt:
         ):
             if not isinstance(getattr(self, bname), bool):
                 raise TypeError(f"{bname} must be a bool")
-        if (
-            not isinstance(self.uploaded_at, datetime)
-            or self.uploaded_at.utcoffset() != timedelta(0)
-        ):
+        if not isinstance(
+            self.uploaded_at, datetime
+        ) or self.uploaded_at.utcoffset() != timedelta(0):
             raise ValueError("uploaded_at must be timezone-aware UTC")
         if not isinstance(self.provider, str) or not self.provider.strip():
             raise ValueError("provider must not be empty")

@@ -8,8 +8,8 @@ import pytest
 
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.security_audit import (
-    SecurityAuditor,
     SecurityAuditError,
+    SecurityAuditor,
 )
 
 

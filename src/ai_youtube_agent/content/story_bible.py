@@ -39,14 +39,19 @@ from ai_youtube_agent.core.content_item import ContentType
 from ai_youtube_agent.core.errors import DomainError
 
 _SCENE_HEADING_RE: Final[re.Pattern[str]] = re.compile(
-    r"^(?:#+\s*)?(?:(?:SCENE|CẢNH|CANH|CHAPTER|CHƯƠNG|CHUONG|ACT|HỒI|PART|PHẦN)\s*\d*[:.\-\s]*|(?:INT\.|EXT\.|INT/EXT\.|NỘI\.|NGOẠI\.)\s*)(.+)$",
+    r"^(?:#+\s*)?"
+    r"(?:(?:SCENE|CẢNH|CANH|CHAPTER|CHƯƠNG|CHUONG|ACT|HỒI|PART|PHẦN)\s*\d*[:.\-\s]*"
+    r"|(?:INT\.|EXT\.|INT/EXT\.|NỘI\.|NGOẠI\.)\s*)(.+)$",
     re.IGNORECASE,
 )
 _BRACKET_SPEAKER_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\[(?P<speaker>[^\[\]\n]{1,40})\](?:\s*\((?P<emotion>[^()\n]{1,40})\))?\s*[:\-]\s*(?P<text>.+)$"
+    r"^\[(?P<speaker>[^\[\]\n]{1,40})\]"
+    r"(?:\s*\((?P<emotion>[^()\n]{1,40})\))?\s*[:\-]\s*(?P<text>.+)$"
 )
 _COLON_SPEAKER_RE: Final[re.Pattern[str]] = re.compile(
-    r"^(?P<speaker>[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ][A-Za-zÀ-ỹ0-9_ ]{0,28})(?:\s*\((?P<emotion>[^()\n]{1,40})\))?\s*:\s*(?P<text>.+)$"
+    r"^(?P<speaker>[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ"
+    r"ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ][A-Za-zÀ-ỹ0-9_ ]{0,28})"
+    r"(?:\s*\((?P<emotion>[^()\n]{1,40})\))?\s*:\s*(?P<text>.+)$"
 )
 _NARRATOR_ALIASES: Final[frozenset[str]] = frozenset(
     {
@@ -102,7 +107,10 @@ _TIME_KEYWORDS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     ("night", ("night", "midnight", "đêm", "khuya", "tối", "trăng", "moonlight")),
     ("dawn", ("dawn", "sunrise", "bình minh", "sáng sớm", "rạng đông")),
     ("dusk", ("dusk", "sunset", "twilight", "hoàng hôn", "chiều tà", "chiều muộn")),
-    ("day", ("day", "morning", "noon", "afternoon", "ban ngày", "buổi sáng", "buổi trưa")),
+    (
+        "day",
+        ("day", "morning", "noon", "afternoon", "ban ngày", "buổi sáng", "buổi trưa"),
+    ),
 )
 
 _PALETTES_BY_TIME: Final[
@@ -391,7 +399,10 @@ def load_raw_script(
     script_text: str | None = None,
     script_path: str | Path | None = None,
 ) -> str:
-    """Load and normalize raw script text from either ``script_text`` or ``script_path``."""
+    """Load and normalize raw script text.
+
+    From either ``script_text`` or ``script_path``.
+    """
     if script_text is not None and script_text.strip():
         raw = script_text
     elif script_path is not None:
@@ -414,7 +425,12 @@ def load_raw_script(
             code=ScriptAnalysisErrorCode.EMPTY_SCRIPT,
         )
 
-    normalized = unicodedata.normalize("NFC", raw).replace("\r\n", "\n").replace("\r", "\n").strip()
+    normalized = (
+        unicodedata.normalize("NFC", raw)
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .strip()
+    )
     normalized = normalized.replace("<", "(").replace(">", ")")
     if not normalized:
         raise ScriptAnalysisError(
@@ -442,7 +458,12 @@ def _detect_time_of_day(text: str) -> str:
     for time_key, keywords in _TIME_KEYWORDS:
         if any(kw in lowered for kw in keywords):
             return time_key
-    if "int." in lowered or "nội." in lowered or "trong phòng" in lowered or "in the room" in lowered:
+    if (
+        "int." in lowered
+        or "nội." in lowered
+        or "trong phòng" in lowered
+        or "in the room" in lowered
+    ):
         return "interior"
     return "day"
 
@@ -463,7 +484,8 @@ def _normalize_section_narration(
     max_chars: int | None = None,
 ) -> str:
     """Ensure section text has caption-safe word lengths, punctuation, and duration."""
-    # 1. Split any single token longer than 24 characters so caption wrapping never fails.
+    # 1. Split any single token longer than 24 characters so caption wrapping never
+    # fails.
     safe_words: list[str] = []
     for raw_word in text.split():
         w = raw_word.strip()
@@ -497,7 +519,8 @@ def _normalize_section_narration(
 
     cleaned = " ".join(punctuated_words)
 
-    # 3. Expand narration deterministically from the scene's own context if below min_chars.
+    # 3. Expand narration deterministically from the scene's own context if below
+    # min_chars.
     clean_heading = (heading or "the scene").strip(" .,:;-") or "the scene"
     clean_action = (action_summary or cleaned).strip(" .,:;-") or "the moment unfolds"
     if len(clean_action) > 70:
@@ -535,7 +558,10 @@ def _normalize_section_narration(
 
 
 class ScriptAnalyzer:
-    """Deterministic script-to-film analyzer producing a StoryBible and domain Script."""
+    """Deterministic script-to-film analyzer.
+
+    Producing a StoryBible and domain Script.
+    """
 
     def analyze(
         self,
@@ -592,16 +618,22 @@ class ScriptAnalyzer:
 
         for block_idx, (heading, lines) in enumerate(raw_blocks, start=1):
             time_of_day = _detect_time_of_day(heading + " " + " ".join(lines))
-            location_name = self._extract_location_name(heading, lines, block_idx, assumptions)
+            location_name = self._extract_location_name(
+                heading, lines, block_idx, assumptions
+            )
             loc_key = location_name.lower()
             if loc_key not in locations_by_key:
                 loc_index = len(locations_by_key) + 1
                 palette = _PALETTES_BY_TIME.get(time_of_day, _PALETTES_BY_TIME["day"])
                 lighting = {
-                    "night": "Cool moonlight with warm practical key light and deep shadows",
+                    "night": (
+                        "Cool moonlight with warm practical key light and deep shadows"
+                    ),
                     "dawn": "Soft golden-rose horizon light with gentle morning mist",
                     "dusk": "Warm amber sunset rim light with rich purple-blue shadows",
-                    "interior": "Controlled warm interior key light with soft ambient fill",
+                    "interior": (
+                        "Controlled warm interior key light with soft ambient fill"
+                    ),
                     "day": "Natural balanced daylight with crisp atmospheric depth",
                 }.get(time_of_day, "Balanced cinematic key and fill lighting")
                 locations_by_key[loc_key] = LocationSpec(
@@ -646,7 +678,8 @@ class ScriptAnalyzer:
                         assigned_voice = _VOICE_POOL[char_index % len(_VOICE_POOL)]
                         role = "protagonist" if char_index == 1 else "supporting"
                         appearance = (
-                            f"Consistent {role} character '{speaker_name}', expressive face, "
+                            f"Consistent {role} character '{speaker_name}', "
+                            "expressive face, "
                             f"distinct silhouette in {clean_style} style"
                         )
                         wardrobe = (
@@ -654,7 +687,8 @@ class ScriptAnalyzer:
                             f"consistent across all scenes"
                         )
                         assumptions.append(
-                            f"Inferred consistent visual sheet and wardrobe for character '{speaker_name}' from script context."
+                            "Inferred consistent visual sheet and wardrobe for "
+                            f"character '{speaker_name}' from script context."
                         )
                         characters_by_key[char_key] = CharacterSpec(
                             character_id=_slug_id("char", speaker_name, char_index),
@@ -662,7 +696,9 @@ class ScriptAnalyzer:
                             role=role,
                             appearance=appearance,
                             wardrobe=wardrobe,
-                            voice_traits=f"Distinct {role} delivery ({emotion or 'natural'})",
+                            voice_traits=(
+                                f"Distinct {role} delivery ({emotion or 'natural'})"
+                            ),
                             default_voice_id=assigned_voice,
                         )
                     char_spec = characters_by_key[char_key]
@@ -685,10 +721,14 @@ class ScriptAnalyzer:
             if not beat_segments:
                 continue
 
-            # If no explicit dialogue speaker appeared, detect named characters mentioned in narration
+            # If no explicit dialogue speaker appeared, detect named characters
+            # mentioned in narration
             if not beat_char_ids:
                 for key, spec in characters_by_key.items():
-                    if key != "narrator" and spec.name.lower() in " ".join(lines).lower():
+                    if (
+                        key != "narrator"
+                        and spec.name.lower() in " ".join(lines).lower()
+                    ):
                         beat_char_ids.append(spec.character_id)
 
             spoken_lines: list[str] = []
@@ -709,7 +749,9 @@ class ScriptAnalyzer:
                     time_of_day=time_of_day,
                     action_summary=action_parts[0][:160] if action_parts else heading,
                     segments=tuple(beat_segments),
-                    character_ids=tuple(beat_char_ids) if beat_char_ids else (narrator_spec.character_id,),
+                    character_ids=tuple(beat_char_ids)
+                    if beat_char_ids
+                    else (narrator_spec.character_id,),
                     spoken_text=spoken_joined,
                     estimated_seconds=est_seconds,
                 )
@@ -727,20 +769,28 @@ class ScriptAnalyzer:
                 character_id="char_protagonist_1",
                 name="Main Subject",
                 role="protagonist",
-                appearance=f"Central narrative figure rendered in consistent {clean_style} visual style",
+                appearance=(
+                    "Central narrative figure rendered in consistent "
+                    f"{clean_style} visual style"
+                ),
                 wardrobe=f"Consistent {clean_style} attire matching the story setting",
                 voice_traits="Narrated by primary storyteller voice",
                 default_voice_id=narrator_voice,
             )
             characters_by_key["main_subject"] = protagonist
             assumptions.append(
-                "Script uses third-person/voiceover narration without explicit speaker tags; "
-                "created a consistent 'Main Subject' visual anchor for scene continuity."
+                "Script uses third-person/voiceover narration without explicit "
+                "speaker tags; "
+                "created a consistent 'Main Subject' visual anchor for scene "
+                "continuity."
             )
             parsed_beats = [
                 replace(
                     beat,
-                    character_ids=(protagonist.character_id, narrator_spec.character_id),
+                    character_ids=(
+                        protagonist.character_id,
+                        narrator_spec.character_id,
+                    ),
                 )
                 for beat in parsed_beats
             ]
@@ -792,27 +842,28 @@ class ScriptAnalyzer:
         analysis: ScriptAnalysisOutput,
         *,
         content_item_id: str,
-        channel_id: str,
         strategy_version: int,
-        version: int = 1,
+        previous: Script | None = None,
         clock: Any | None = None,
     ) -> Script:
-        """Create a domain ``Script`` entity from ``ScriptAnalysisOutput``."""
+        """Create a domain ``Script`` from ``ScriptAnalysisOutput``: version 1,
+        or the next version of ``previous`` (the item's latest script)."""
+        if previous is not None:
+            return previous.next_version(
+                sections=analysis.sections,
+                duration_target=analysis.duration_target,
+                strategy_version=strategy_version,
+                clock=clock,
+            )
         return Script.create(
-            content_item_id=content_item_id,
-            channel_id=channel_id,
-            content_type=analysis.story_bible.content_type,
-            strategy_version=strategy_version,
-            version=version,
-            title=analysis.story_bible.title,
+            content_item_id,
             sections=analysis.sections,
             duration_target=analysis.duration_target,
+            strategy_version=strategy_version,
             clock=clock,
         )
 
-    def _split_into_raw_blocks(
-        self, raw: str
-    ) -> list[tuple[str, list[str]]]:
+    def _split_into_raw_blocks(self, raw: str) -> list[tuple[str, list[str]]]:
         lines = [line.strip() for line in raw.split("\n")]
         blocks: list[tuple[str, list[str]]] = []
         current_heading = ""
@@ -839,13 +890,12 @@ class ScriptAnalyzer:
         if current_lines:
             blocks.append((current_heading, current_lines))
 
-        # If the user supplied a single block of text, split sentences into 3..5 narrative beats
+        # If the user supplied a single block of text, split sentences into 3..5
+        # narrative beats
         if len(blocks) == 1 and len(blocks[0][1]) <= 2:
             joined = " ".join(blocks[0][1])
             sentences = [
-                s.strip()
-                for s in re.split(r"(?<=[.!?…])\s+", joined)
-                if s.strip()
+                s.strip() for s in re.split(r"(?<=[.!?…])\s+", joined) if s.strip()
             ]
             if len(sentences) >= 3:
                 return [
@@ -858,7 +908,8 @@ class ScriptAnalyzer:
                     ("Scene 2", [sentences[1]]),
                     ("Scene 3", [sentences[1]]),
                 ]
-            # Single sentence: split clauses or create 3 progressive beats preserving text
+            # Single sentence: split clauses or create 3 progressive beats preserving
+            # text
             words = joined.split()
             if len(words) >= 9:
                 third = max(3, len(words) // 3)
@@ -888,7 +939,8 @@ class ScriptAnalyzer:
                 return match.group(1).strip()[:60]
         if heading:
             cleaned = re.sub(
-                r"\b(?:DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|BAN NGÀY|BAN ĐÊM|BUỔI TỐI|BUỔI SÁNG)\b",
+                r"\b(?:DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|"
+                r"BAN NGÀY|BAN ĐÊM|BUỔI TỐI|BUỔI SÁNG)\b",
                 "",
                 heading,
                 flags=re.IGNORECASE,
@@ -897,19 +949,21 @@ class ScriptAnalyzer:
                 return cleaned[:60]
         if block_idx == 1:
             assumptions.append(
-                "No explicit scene heading location in script; inferred primary Story Stage setting from narrative context."
+                "No explicit scene heading location in script; inferred primary "
+                "Story Stage setting from narrative context."
             )
         return "Primary Story Stage"
 
-    def _parse_line_speaker(
-        self, line: str
-    ) -> tuple[str | None, str | None, str]:
+    def _parse_line_speaker(self, line: str) -> tuple[str | None, str | None, str]:
         bracket = _BRACKET_SPEAKER_RE.match(line)
         if bracket:
             speaker = bracket.group("speaker").strip()
             emotion = bracket.group("emotion")
             text = bracket.group("text").strip()
-            if speaker.lower() in _NARRATOR_ALIASES or speaker.lower() in _NON_CHARACTER_LABELS:
+            if (
+                speaker.lower() in _NARRATOR_ALIASES
+                or speaker.lower() in _NON_CHARACTER_LABELS
+            ):
                 return None, (emotion.strip() if emotion else None), text
             return speaker, (emotion.strip() if emotion else None), text
 
@@ -996,7 +1050,8 @@ class ScriptAnalyzer:
                     subject_id=loc.location_id,
                     rule=(
                         f"Keep setting '{loc.name}' at {loc.time_of_day} with "
-                        f"lighting '{loc.lighting_mood}' and RGB palette {list(loc.palette_rgb)}."
+                        f"lighting '{loc.lighting_mood}' and RGB palette "
+                        f"{list(loc.palette_rgb)}."
                     ),
                 )
             )
@@ -1009,8 +1064,9 @@ class ScriptAnalyzer:
         content_type: ContentType,
         target_duration_seconds: int | None,
     ) -> tuple[tuple[ScriptSection, ...], DurationTarget, tuple[RawSceneBeat, ...]]:
-        # Ensure at least 3 beats for Shorts (HOOK, BODY, CTA) and at least 5 beats for LongForm
-        # (INTRO, CHAPTER 1, CHAPTER 2, CONCLUSION, OUTRO) without inventing contradictory plot.
+        # Ensure at least 3 beats for Shorts (HOOK, BODY, CTA) and at least 5 beats
+        # for LongForm
+        # (HOOK, INTRO, CHAPTER x3, OUTRO, CTA) without inventing contradictory plot.
         working = list(beats)
         if content_type is ContentType.SHORTS:
             while len(working) < 3:
@@ -1073,14 +1129,18 @@ class ScriptAnalyzer:
                 total_sec = sum(s.seconds or 5 for s in sections)
             min_sec = min(15, total_sec)
             max_sec = min(180, max(60, total_sec + 15))
-            if target_duration_seconds is not None and 5 <= target_duration_seconds <= 180:
+            if (
+                target_duration_seconds is not None
+                and 5 <= target_duration_seconds <= 180
+            ):
                 min_sec = min(min_sec, target_duration_seconds)
                 max_sec = max(max_sec, target_duration_seconds)
             return tuple(sections), DurationTarget(min_sec, max_sec), tuple(aligned)
 
-        # ContentType.LONGFORM: requires INTRO, >=2 CHAPTERs (with non-empty titles), CONCLUSION, OUTRO
-        # and total duration >= 181s so LongForm timeline and QC duration check pass.
-        while len(working) < 5:
+        # ContentType.LONGFORM: the #071 section order HOOK, INTRO, CHAPTER x3+
+        # (with non-empty titles), OUTRO, CTA and a total duration >= 181s so the
+        # LongForm timeline and QC duration check pass.
+        while len(working) < 7:
             source_beat = working[min(len(working) - 1, len(working) // 2)]
             working.append(
                 replace(
@@ -1093,7 +1153,9 @@ class ScriptAnalyzer:
         raw_total = sum(max(10, b.estimated_seconds) for b in working)
         desired_total = max(
             200,
-            target_duration_seconds if (target_duration_seconds and target_duration_seconds >= 185) else raw_total,
+            target_duration_seconds
+            if (target_duration_seconds and target_duration_seconds >= 185)
+            else raw_total,
         )
         scale_factor = max(1.0, desired_total / max(1, raw_total))
 
@@ -1104,13 +1166,16 @@ class ScriptAnalyzer:
         min_lf_chars_per_sec = max(220, (3150 // n) + 15)
         for idx, beat in enumerate(working):
             if idx == 0:
+                kind = SectionKind.HOOK
+                sec_title: str | None = "Hook"
+            elif idx == 1:
                 kind = SectionKind.INTRO
-                sec_title: str | None = "Introduction"
+                sec_title = "Introduction"
             elif idx == n - 2:
-                kind = SectionKind.CONCLUSION
+                kind = SectionKind.OUTRO
                 sec_title = "Conclusion"
             elif idx == n - 1:
-                kind = SectionKind.OUTRO
+                kind = SectionKind.CTA
                 sec_title = "Outro"
             else:
                 kind = SectionKind.CHAPTER
@@ -1129,7 +1194,14 @@ class ScriptAnalyzer:
             )
             sec_seconds = max(
                 20,
-                int(round(max(len(norm_lf_text) * 60 / 1000, beat.estimated_seconds * scale_factor))),
+                int(
+                    round(
+                        max(
+                            len(norm_lf_text) * 60 / 1000,
+                            beat.estimated_seconds * scale_factor,
+                        )
+                    )
+                ),
             )
 
             lf_sections.append(

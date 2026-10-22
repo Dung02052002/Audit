@@ -1,4 +1,6 @@
-"""Shorts Pilot Runner & Technical Report Service (Prompt Pack v8, prompt T-236), context C16/C12.
+"""Shorts Pilot Runner & Technical Report Service.
+
+(Prompt Pack v8, prompt T-236), context C16/C12.
 
 Executes or verifies a controlled Shorts pilot run with mandatory explicit human
 approval (``ActorKind.USER``, R-08) and produces a structured ``ShortsPilotReport``
@@ -8,11 +10,11 @@ Never performs unapproved or external live network uploads.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
-import uuid
 
 from ai_youtube_agent.content.approval import (
     ApprovalNotAllowedError,
@@ -29,7 +31,7 @@ from ai_youtube_agent.core.audit import (
     AuditResult,
     EntityRef,
 )
-from ai_youtube_agent.core.content_item import ContentItem, ContentStatus, ContentType
+from ai_youtube_agent.core.content_item import ContentStatus, ContentType
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
@@ -182,7 +184,8 @@ class ShortsPilotRunner:
         reviewer: Actor,
         privacy_status: YouTubePrivacyStatus = YouTubePrivacyStatus.PRIVATE,
     ) -> ShortsPilotReport:
-        """Executes controlled publishing for an approved Shorts pilot item and builds its report.
+        """Executes controlled publishing for an approved Shorts pilot item and builds
+        its report.
 
         Requires ``reviewer`` to be an explicit human user (``ActorKind.USER``, R-08).
         """
@@ -197,7 +200,8 @@ class ShortsPilotRunner:
                 raise PilotRunnerError(f"Content item {content_item_id} was not found")
             if item.content_type is not ContentType.SHORTS:
                 raise PilotRunnerError(
-                    f"Shorts pilot requires ContentType.SHORTS, got {item.content_type.value}"
+                    f"Shorts pilot requires ContentType.SHORTS, got "
+                    f"{item.content_type.value}"
                 )
 
         if item.status is ContentStatus.APPROVED and self._publisher is not None:
@@ -207,10 +211,27 @@ class ShortsPilotRunner:
                 privacy_status=privacy_status,
             )
 
-        return self.evaluate_pilot(content_item_id)
+        return self.evaluate_pilot(
+            content_item_id, reviewer=reviewer, privacy_status=privacy_status
+        )
 
-    def evaluate_pilot(self, content_item_id: str) -> ShortsPilotReport:
-        """Inspects persisted state for ``content_item_id`` and generates a ``ShortsPilotReport``."""
+    def evaluate_pilot(
+        self,
+        content_item_id: str,
+        *,
+        reviewer: Actor | None = None,
+        privacy_status: YouTubePrivacyStatus | None = None,
+    ) -> ShortsPilotReport:
+        """Inspects persisted state for ``content_item_id`` and generates a
+        ``ShortsPilotReport``.
+
+        An ``ApprovalRequest`` does not store who decided it (``approve`` only
+        accepts a human ``ActorKind.USER``, so ``APPROVED`` already means a human
+        approved). ``reviewer`` is the human who authorised the pilot run; it is
+        reported as the approving user when the request is approved. A
+        ``PublishResult`` does not store the privacy status, so the caller that
+        published passes it as ``privacy_status``.
+        """
         now = self._now()
         pilot_id = f"pilot-{uuid.uuid5(uuid.NAMESPACE_OID, content_item_id).hex[:12]}"
 
@@ -276,7 +297,10 @@ class ShortsPilotRunner:
             PilotStageCheck(
                 "artifacts_stored",
                 artifacts_ok,
-                f"Video v{latest_video.version} and Metadata v{latest_meta.version} stored"
+                (
+                    f"Video v{latest_video.version} and "
+                    f"Metadata v{latest_meta.version} stored"
+                )
                 if latest_video and latest_meta
                 else "Missing VIDEO or METADATA artifact",
             )
@@ -296,7 +320,10 @@ class ShortsPilotRunner:
             PilotStageCheck(
                 "qc_verified",
                 qc_ok,
-                f"QC {latest_qc.id} status={latest_qc.status.value} covers video {latest_video.id}"
+                (
+                    f"QC {latest_qc.id} status={latest_qc.status.value} "
+                    f"covers video {latest_video.id}"
+                )
                 if qc_ok and latest_qc and latest_video
                 else "Missing or failing QC result for latest video artifact",
             )
@@ -309,20 +336,27 @@ class ShortsPilotRunner:
         approval_ok = (
             latest_approval is not None
             and latest_approval.status is ApprovalStatus.APPROVED
-            and latest_approval.decided_by is not None
-            and latest_approval.decided_by.kind is ActorKind.USER
             and latest_video is not None
             and latest_approval.binding_for(ArtifactKind.VIDEO) is not None
             and latest_approval.binding_for(ArtifactKind.VIDEO).artifact_id  # type: ignore[union-attr]
             == latest_video.id
         )
+        approver_id = (
+            reviewer.id
+            if approval_ok and reviewer is not None and reviewer.kind is ActorKind.USER
+            else None
+        )
         checks.append(
             PilotStageCheck(
                 "human_approval",
                 approval_ok,
-                f"Approved by user '{latest_approval.decided_by.id}' on request {latest_approval.id}"
-                if approval_ok and latest_approval and latest_approval.decided_by
-                else "No valid human (ActorKind.USER) approval bound to latest video artifact",
+                f"Human-approved request {latest_approval.id}"
+                + (f" (pilot reviewer '{approver_id}')" if approver_id else "")
+                if approval_ok and latest_approval
+                else (
+                    "No valid human (ActorKind.USER) approval bound to latest "
+                    "video artifact"
+                ),
             )
         )
         if not approval_ok:
@@ -345,7 +379,10 @@ class ShortsPilotRunner:
             PilotStageCheck(
                 "controlled_publish",
                 publish_ok,
-                f"Published via job {latest_job.id} -> YouTube ID {latest_job.result.youtube_video_id}"
+                (
+                    f"Published via job {latest_job.id} -> YouTube ID "
+                    f"{latest_job.result.youtube_video_id}"
+                )
                 if publish_ok and latest_job and latest_job.result
                 else "Item is not PUBLISHED or lacks a succeeded PublishJob receipt",
             )
@@ -361,11 +398,7 @@ class ShortsPilotRunner:
             content_type=item.content_type,
             passed=passed,
             approval_request_id=latest_approval.id if latest_approval else None,
-            approved_by_user_id=(
-                latest_approval.decided_by.id
-                if latest_approval and latest_approval.decided_by
-                else None
-            ),
+            approved_by_user_id=approver_id,
             video_artifact_id=latest_video.id if latest_video else None,
             video_sha256=latest_video.sha256 if latest_video else None,
             qc_result_id=latest_qc.id if latest_qc else None,
@@ -377,8 +410,8 @@ class ShortsPilotRunner:
                 else None
             ),
             privacy_status=(
-                latest_job.result.privacy_status
-                if latest_job and latest_job.result
+                privacy_status.value
+                if privacy_status is not None and latest_job and latest_job.result
                 else None
             ),
             stage_checks=tuple(checks),

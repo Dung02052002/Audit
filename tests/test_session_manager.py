@@ -1,7 +1,7 @@
 """Tests for SessionManager (Prompt Pack v8, task R-209)."""
 
-from datetime import UTC, datetime, timedelta
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -20,7 +20,10 @@ from ai_youtube_agent.core.db.repositories.channel import (
     StrategyProfileRepository,
 )
 from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
-from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository, SessionRepository
+from ai_youtube_agent.core.db.repositories.jobs import (
+    AIJobRepository,
+    SessionRepository,
+)
 from ai_youtube_agent.pipeline.job import (
     AIJob,
     SessionNotAllowedError,
@@ -29,7 +32,6 @@ from ai_youtube_agent.pipeline.job import (
 from ai_youtube_agent.pipeline.session_manager import (
     SessionConflictError,
     SessionManager,
-    SessionNotFoundError,
 )
 
 T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -46,7 +48,9 @@ def audit_log():
     return AuditLog(InMemoryAuditSink())
 
 
-def test_start_session_by_user_succeeds(database: Database, audit_log: AuditLog) -> None:
+def test_start_session_by_user_succeeds(
+    database: Database, audit_log: AuditLog
+) -> None:
     manager = SessionManager(database, audit_log, clock=_fixed_clock(T0))
     session = manager.start_session(USER)
 
@@ -60,13 +64,17 @@ def test_start_session_by_user_succeeds(database: Database, audit_log: AuditLog)
         assert persisted.status is SessionStatus.ACTIVE
 
 
-def test_start_session_by_non_user_fails(database: Database, audit_log: AuditLog) -> None:
+def test_start_session_by_non_user_fails(
+    database: Database, audit_log: AuditLog
+) -> None:
     manager = SessionManager(database, audit_log, clock=_fixed_clock(T0))
     with pytest.raises(SessionNotAllowedError, match="Only a user"):
         manager.start_session(SYSTEM)
 
 
-def test_start_session_conflict_detection(database: Database, audit_log: AuditLog) -> None:
+def test_start_session_conflict_detection(
+    database: Database, audit_log: AuditLog
+) -> None:
     manager = SessionManager(database, audit_log, clock=_fixed_clock(T0))
     session1 = manager.start_session(USER)
 

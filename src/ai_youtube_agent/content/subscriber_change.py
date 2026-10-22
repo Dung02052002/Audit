@@ -41,7 +41,11 @@ from ai_youtube_agent.providers.analytics import (
     AnalyticsProvider,
     AnalyticsQuery,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 Clock = Callable[[], datetime]
 
@@ -122,10 +126,7 @@ class SubscriberChangeView:
 
     @property
     def complete_pair(self) -> bool:
-        return (
-            self.subscribers_gained is not None
-            and self.subscribers_lost is not None
-        )
+        return self.subscribers_gained is not None and self.subscribers_lost is not None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -147,9 +148,7 @@ class SubscriberChangeView:
                 else None
             ),
             "net_subscribers": (
-                str(self.net_subscribers)
-                if self.net_subscribers is not None
-                else None
+                str(self.net_subscribers) if self.net_subscribers is not None else None
             ),
             "complete_pair": self.complete_pair,
         }
@@ -163,11 +162,7 @@ def extract_subscriber_change(snapshot: MetricSnapshot) -> SubscriberChangeView:
     lost = snapshot.metrics.get("subscribers_lost")
     validate_subscriber_count(gained, "subscribers_gained")
     validate_subscriber_count(lost, "subscribers_lost")
-    net = (
-        gained - lost
-        if gained is not None and lost is not None
-        else None
-    )
+    net = gained - lost if gained is not None and lost is not None else None
     return SubscriberChangeView(
         snapshot_id=snapshot.id,
         scope=snapshot.scope,
@@ -214,9 +209,7 @@ class AggregatedSubscriberChange:
                 else None
             ),
             "net_subscribers": (
-                str(self.net_subscribers)
-                if self.net_subscribers is not None
-                else None
+                str(self.net_subscribers) if self.net_subscribers is not None else None
             ),
             "included_periods": self.included_periods,
             "incomplete_period_count": self.incomplete_period_count,
@@ -265,8 +258,7 @@ def aggregate_subscriber_changes(
             by_window[window] = snap
 
     ordered = [
-        extract_subscriber_change(by_window[window])
-        for window in sorted(by_window)
+        extract_subscriber_change(by_window[window]) for window in sorted(by_window)
     ]
     for index in range(1, len(ordered)):
         prev = ordered[index - 1]
@@ -274,8 +266,10 @@ def aggregate_subscriber_changes(
         if prev.period_start < curr.period_end and curr.period_start < prev.period_end:
             raise SubscriberChangeError(
                 SubscriberChangeErrorCode.OVERLAPPING_PERIODS,
-                f"period {prev.period_start.isoformat()}..{prev.period_end.isoformat()} "
-                f"overlaps {curr.period_start.isoformat()}..{curr.period_end.isoformat()}",
+                f"period "
+                f"{prev.period_start.isoformat()}..{prev.period_end.isoformat()} "
+                f"overlaps "
+                f"{curr.period_start.isoformat()}..{curr.period_end.isoformat()}",
             )
 
     total_gained = Decimal("0")
@@ -283,10 +277,7 @@ def aggregate_subscriber_changes(
     included = 0
     incomplete = 0
     for item in ordered:
-        if (
-            item.subscribers_gained is not None
-            and item.subscribers_lost is not None
-        ):
+        if item.subscribers_gained is not None and item.subscribers_lost is not None:
             total_gained += item.subscribers_gained
             total_lost += item.subscribers_lost
             included += 1
@@ -371,8 +362,8 @@ class SubscriberChangeService:
             period_end=period_end,
             metrics=SUBSCRIBER_METRICS,
         )
-        token = self._oauth.get_token(
-            channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
+        token = get_or_renew_token(
+            self._oauth, channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
         )
         page = call_with_retry(
             lambda: self._provider.query(query, token=token),

@@ -60,9 +60,7 @@ class ApprovalStateError(DomainError):
 
 class ApprovalExpiredError(ApprovalStateError):
     default_code = "domain.approval_expired"
-    default_user_message = (
-        "This approval request has expired and must be revalidated."
-    )
+    default_user_message = "This approval request has expired and must be revalidated."
 
 
 class ApprovalNotAllowedError(DomainError):
@@ -74,7 +72,8 @@ class ApprovalNotAllowedError(DomainError):
 class ApprovalReasonRequiredError(DomainError, ValueError):
     default_code = "domain.approval_reason_required"
     default_user_message = (
-        "A non-empty reason is required to reject or request changes on an approval request."
+        "A non-empty reason is required to reject or request changes on an approval "
+        "request."
     )
 
 
@@ -86,7 +85,9 @@ class ApprovalNotFoundError(DomainError):
 
 class ApprovalConflictError(DomainError):
     default_code = "domain.approval_conflict"
-    default_user_message = "The artifact version or ID does not match the expected value."
+    default_user_message = (
+        "The artifact version or ID does not match the expected value."
+    )
     default_http_status = HTTPStatus.CONFLICT
 
 
@@ -213,7 +214,8 @@ class ApprovalRequest:
         *,
         clock: Clock | None = None,
     ) -> "ApprovalRequest":
-        """Return this request marked rejected by a human reviewer with a reason (#140)."""
+        """Return this request marked rejected by a human reviewer with a reason
+        (#140)."""
         if not isinstance(actor, Actor):
             raise TypeError("actor must be an Actor")
         if actor.kind is not ActorKind.USER:
@@ -245,9 +247,7 @@ class ApprovalRequest:
                 "explicit human (user) decision is required"
             )
         if not isinstance(reason, str) or not reason.strip():
-            raise ApprovalReasonRequiredError(
-                "change request reason must not be empty"
-            )
+            raise ApprovalReasonRequiredError("change request reason must not be empty")
         if self.status is not ApprovalStatus.PENDING:
             raise ApprovalStateError(
                 f"approval {self.id} is {self.status.value} and cannot request changes"
@@ -260,9 +260,7 @@ class ApprovalRequest:
             raise ValueError("ttl must be a positive timedelta")
         return self.created_at + ttl
 
-    def is_expired(
-        self, now: datetime, ttl: timedelta = DEFAULT_APPROVAL_TTL
-    ) -> bool:
+    def is_expired(self, now: datetime, ttl: timedelta = DEFAULT_APPROVAL_TTL) -> bool:
         """Return True if this request is expired or past its TTL at ``now`` (#142)."""
         if not isinstance(now, datetime) or now.utcoffset() != timedelta(0):
             raise ValueError("now must be timezone-aware UTC")

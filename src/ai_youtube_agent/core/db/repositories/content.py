@@ -114,11 +114,22 @@ class ArtifactRepository(Repository):
         row = self._one("SELECT * FROM artifacts WHERE id = ?", (artifact_id,))
         return _artifact(row) if row else None
 
-    def list_by_content_item(self, content_item_id: str) -> list[Artifact]:
-        rows = self._all(
-            "SELECT * FROM artifacts WHERE content_item_id = ? ORDER BY kind, version",
-            (content_item_id,),
-        )
+    def list_by_content_item(
+        self, content_item_id: str, *, kind: ArtifactKind | None = None
+    ) -> list[Artifact]:
+        """The item's artifacts by kind and version; only ``kind`` when given."""
+        if kind is None:
+            rows = self._all(
+                "SELECT * FROM artifacts WHERE content_item_id = ? "
+                "ORDER BY kind, version",
+                (content_item_id,),
+            )
+        else:
+            rows = self._all(
+                "SELECT * FROM artifacts WHERE content_item_id = ? AND kind = ? "
+                "ORDER BY version",
+                (content_item_id, kind.value),
+            )
         return [_artifact(row) for row in rows]
 
     def latest(self, content_item_id: str, kind: ArtifactKind) -> Artifact | None:

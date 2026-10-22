@@ -320,8 +320,8 @@ needs its tests run in the later test phase; those tests are listed per task in
   `check` only runs `ffmpeg -version`, so a build without `libx264`, `aac` or
   the `drawtext` filter (freetype) passes the health check and fails at
   render time (`render.failed`).
-- `-filter_complex_script` is deprecated in ffmpeg 7 and later (replaced by
-  `-/filter_complex`); it still works but may be removed.
+- The renderer reads the graph with `-/filter_complex graph.txt`, so it needs
+  ffmpeg 7.0 or later (ffmpeg 8 removed `-filter_complex_script`).
 - A video clip shorter than its layer window keeps its last frame
   (`eof_action=repeat`) and the audio of a video clip is dropped (only the mix
   is mapped). Adjacent `between(t,S,E)` windows share the frame at exactly
@@ -684,3 +684,11 @@ Task numbering note: earlier handoff text named M-152..M-156 as Duplicate Upload
   - `VideoClipGenerator` defaults to `UnconfiguredVideoClipGenerator` (`available=False`) in `bootstrap.py`, so `ProductionMode.AI_FILM` honestly fails closed with `ScriptToVideoErrorCode.MODE_UNAVAILABLE` unless an available video clip generator (`MockVideoClipGenerator` or an external AI video provider) is configured.
   - `ImageGenerator` defaults to `DeterministicSceneImageGenerator`, synthesizing valid 8-bit RGB PNG frames with consistent location color palettes and character/shot composition.
   - No database migration was added (`LATEST` remains `28`) so existing migration tests are unaffected; `VideoProjectManifest` is persisted as a JSON file in `{artifact_dir}/manifests/{content_item_id}_manifest.json` alongside `AIJob` checkpoints in SQLite.
+
+### APP-01 Local web app
+
+- **Deferred from the APP-01 review (2026-10-22):**
+  - `GET /content-items/{id}/video/download` and the artifact stream read the whole MP4 into memory to verify its size and sha256 before sending it. Fine for Shorts and the mock MP4; for long videos send a `FileResponse` after the verification instead.
+  - Queued runs are never evicted from the in-memory registry (only finished ones are), so a long queue can keep the registry above `history` until the runs finish.
+  - The frontend hard-codes the editable statuses (`EDITABLE_STATUSES`, D6), the status labels and the visual style list; expose them through the API later so the server stays the single source.
+  - `ScriptToVideoRunner` runs in one daemon thread with an in-memory FIFO queue and bypasses the durable `SqliteJobQueue` (R-204): runs are lost on restart and the app must run as one process. Move background runs onto `SqliteJobQueue` before any multi-process deployment.

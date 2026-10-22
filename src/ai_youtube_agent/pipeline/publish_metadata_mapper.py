@@ -52,10 +52,12 @@ USER_MESSAGES: Final[dict[PublishMetadataErrorCode, str]] = {
         "The publish metadata does not satisfy the required AI disclosure decision."
     ),
     PublishMetadataErrorCode.SHORTS_MARKER_MISSING: (
-        "Shorts publish metadata must include #Shorts in the title, description or tags."
+        "Shorts publish metadata must include #Shorts in the title, description "
+        "or tags."
     ),
     PublishMetadataErrorCode.CHAPTERS_MISSING: (
-        "LongForm publish metadata with chapters must include 00:00 chapter timestamps in the description."
+        "LongForm publish metadata with chapters must include 00:00 chapter "
+        "timestamps in the description."
     ),
     PublishMetadataErrorCode.INVALID_JSON: (
         "The stored metadata artifact is not valid publish metadata JSON."
@@ -204,7 +206,10 @@ def _extract_metadata_fields(
 
 
 class PublishMetadataMapper:
-    """Maps internal Shorts or LongForm metadata and approved artifacts to ``YouTubeUploadPayload`` (#148)."""
+    """Maps internal Shorts or LongForm metadata and approved artifacts.
+
+    Mapped to ``YouTubeUploadPayload`` (#148).
+    """
 
     def map_to_payload(
         self,
@@ -244,10 +249,7 @@ class PublishMetadataMapper:
                 PublishMetadataErrorCode.BINDING_MISMATCH,
                 "metadata content_item_id does not match approval.content_item_id",
             )
-        if (
-            fields["channel_id"] is not None
-            and fields["channel_id"] != channel.id
-        ):
+        if fields["channel_id"] is not None and fields["channel_id"] != channel.id:
             raise PublishMetadataMappingError(
                 PublishMetadataErrorCode.BINDING_MISMATCH,
                 "metadata channel_id does not match channel.id",
@@ -266,14 +268,19 @@ class PublishMetadataMapper:
             if not has_shorts_marker(title, description, tags):
                 raise PublishMetadataMappingError(
                     PublishMetadataErrorCode.SHORTS_MARKER_MISSING,
-                    "Shorts publish metadata must contain #Shorts in title/description or 'Shorts' in tags",
+                    "Shorts publish metadata must contain #Shorts in "
+                    "title/description or 'Shorts' in tags",
                 )
-        elif content_type is ContentType.LONGFORM:
-            if chapters and "00:00" not in description:
-                raise PublishMetadataMappingError(
-                    PublishMetadataErrorCode.CHAPTERS_MISSING,
-                    "LongForm publish metadata with chapters must embed 00:00 timestamps in description",
-                )
+        elif (
+            content_type is ContentType.LONGFORM
+            and chapters
+            and "00:00" not in description
+        ):
+            raise PublishMetadataMappingError(
+                PublishMetadataErrorCode.CHAPTERS_MISSING,
+                "LongForm publish metadata with chapters must embed 00:00 "
+                "timestamps in description",
+            )
 
         if disclosure_record is not None:
             if (
@@ -282,7 +289,8 @@ class PublishMetadataMapper:
             ):
                 raise PublishMetadataMappingError(
                     PublishMetadataErrorCode.DISCLOSURE_MISMATCH,
-                    f"metadata disclosure_decision_id {disclosure_decision_id} does not match "
+                    f"metadata disclosure_decision_id {disclosure_decision_id} "
+                    "does not match "
                     f"latest disclosure decision {disclosure_record.id}",
                 )
             if (
@@ -291,7 +299,8 @@ class PublishMetadataMapper:
             ):
                 raise PublishMetadataMappingError(
                     PublishMetadataErrorCode.DISCLOSURE_MISMATCH,
-                    "AI disclosure decision is REQUIRED but contains_synthetic_media is False",
+                    "AI disclosure decision is REQUIRED but "
+                    "contains_synthetic_media is False",
                 )
             disclosure_decision_id = disclosure_record.id
 
@@ -310,9 +319,7 @@ class PublishMetadataMapper:
                 contains_synthetic_media=contains_synthetic_media,
                 publish_at=publish_at,
             )
-            key = idempotency_key or publish_key(
-                approval.content_item_id, approval.id
-            )
+            key = idempotency_key or publish_key(approval.content_item_id, approval.id)
             return YouTubeUploadPayload(
                 channel_id=channel.id,
                 youtube_channel_id=channel.youtube.channel_id,

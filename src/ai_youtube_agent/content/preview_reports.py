@@ -212,7 +212,8 @@ class PreviewReportService:
             )
         elif not qc_summary.is_current_for_artifacts:
             reasons.append(
-                "qc.stale: Latest QC report does not cover the current artifact versions."
+                "qc.stale: Latest QC report does not cover the current artifact "
+                "versions."
             )
         elif qc_summary.status is QCStatus.FAIL:
             failed_names = ", ".join(c.name for c in qc_summary.blocking_checks)

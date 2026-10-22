@@ -12,7 +12,9 @@ from ai_youtube_agent.pipeline.production_audit import (
 from factories import USER, at
 
 
-def test_production_readiness_auditor_defaults_to_not_ready_without_verification() -> None:
+def test_production_readiness_auditor_defaults_to_not_ready_without_verification() -> (
+    None
+):
     """Verifies that ProductionReadinessAuditor honestly reports NOT_READY when
     verification_passed=False (Build-First Mode) and READY only when all safety,
     security, kill-switch, and verification checks pass."""
@@ -36,7 +38,9 @@ def test_production_readiness_auditor_defaults_to_not_ready_without_verification
         b.code == "readiness.automated_verification_pending"
         for b in unverified_report.blockers
     )
-    assert "# T-238 Production Readiness Audit Report" in unverified_report.to_markdown()
+    assert (
+        "# T-238 Production Readiness Audit Report" in unverified_report.to_markdown()
+    )
 
     # 2. When verification_passed=True and all safety/security gates pass -> READY
     ready_report = auditor.evaluate(verification_passed=True)
@@ -60,6 +64,5 @@ def test_production_readiness_auditor_defaults_to_not_ready_without_verification
     unsafe_report = unsafe_auditor.evaluate(verification_passed=True)
     assert unsafe_report.verdict is ReadinessVerdict.NOT_READY
     assert any(
-        b.code == "readiness.safety_flags_disabled"
-        for b in unsafe_report.blockers
+        b.code == "readiness.safety_flags_disabled" for b in unsafe_report.blockers
     )

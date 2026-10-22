@@ -8,6 +8,7 @@ disk or exposing secrets in logs or audit events.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -21,7 +22,13 @@ from typing import Any, Final, Protocol, runtime_checkable
 
 from pydantic import SecretStr
 
-from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, AuditResult, EntityRef
+from ai_youtube_agent.core.audit import (
+    Actor,
+    ActorKind,
+    AuditLog,
+    AuditResult,
+    EntityRef,
+)
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.providers.youtube_oauth import (
     OAuthScope,
@@ -51,11 +58,16 @@ class TokenStorageError(DomainError):
 class TokenTamperedError(TokenStorageError):
     """Raised when ciphertext integrity / MAC verification fails."""
 
-    def __init__(self, detail: str = "Encrypted token payload failed integrity check.") -> None:
+    def __init__(
+        self, detail: str = "Encrypted token payload failed integrity check."
+    ) -> None:
         super().__init__(
             detail,
             code="domain.token_storage_tampered",
-            user_message="Stored authorization credentials could not be verified and were rejected.",
+            user_message=(
+                "Stored authorization credentials could not be verified and were "
+                "rejected."
+            ),
         )
 
 
@@ -97,7 +109,8 @@ def _keystream_xor(data: bytes, enc_key: bytes, nonce: bytes) -> bytes:
 
 
 def encrypt_payload(plaintext: bytes, master_secret: SecretStr) -> dict[str, Any]:
-    """Encrypt ``plaintext`` with authenticated encryption (PBKDF2-SHA256 + CTR-HMAC-SHA256)."""
+    """Encrypt ``plaintext`` with authenticated encryption (PBKDF2-SHA256 +
+    CTR-HMAC-SHA256)."""
     raw_secret = master_secret.get_secret_value().encode("utf-8")
     if len(raw_secret) < 16:
         raise TokenStorageError("Master encryption key must be at least 16 characters.")
@@ -257,7 +270,9 @@ class EncryptedFileTokenVault:
         try:
             envelope = json.loads(self._path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise TokenTamperedError("Vault file is unreadable or corrupt JSON.") from exc
+            raise TokenTamperedError(
+                "Vault file is unreadable or corrupt JSON."
+            ) from exc
         plaintext = decrypt_payload(envelope, self._secret)
         try:
             loaded = json.loads(plaintext.decode("utf-8"))
@@ -273,10 +288,8 @@ class EncryptedFileTokenVault:
         envelope = encrypt_payload(plaintext, self._secret)
         tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
         tmp_path.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(tmp_path, 0o600)
-        except OSError:
-            pass
         tmp_path.replace(self._path)
 
 

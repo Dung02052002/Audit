@@ -1,4 +1,6 @@
-"""End-to-end Phase P Community & Comments scenario tests (Prompt Pack v8, prompt #190)."""
+"""End-to-end Phase P Community & Comments scenario tests (Prompt Pack v8, prompt
+#190).
+"""
 
 from datetime import UTC, datetime, timedelta
 
@@ -6,7 +8,6 @@ import pytest
 
 from ai_youtube_agent.content.auto_reply import (
     AUTO_REPLY_BLOCKED,
-    AUTO_REPLY_POSTED,
     AutoReplyDisabledError,
     AutoReplyService,
 )
@@ -195,7 +196,9 @@ def test_end_to_end_classification_moderation_draft_approval_duplicate_and_audit
     approver.approve(
         fb_draft.id,
         actor=OPERATOR,
-        edited_text="  we set pragma journal_mode=wal and busy_timeout=5000ms at init.! ",
+        edited_text=(
+            "  we set pragma journal_mode=wal and busy_timeout=5000ms at init.! "
+        ),
     )
     with pytest.raises(DuplicateReplyError) as dup_text:
         approver.post_approved(fb_draft.id, actor=OPERATOR)

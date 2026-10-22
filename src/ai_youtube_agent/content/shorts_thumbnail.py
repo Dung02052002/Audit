@@ -143,9 +143,7 @@ class ShortsThumbnailErrorCode(StrEnum):
 
 
 USER_MESSAGES: Final[dict[ShortsThumbnailErrorCode, str]] = {
-    ShortsThumbnailErrorCode.THUMBNAIL: (
-        "The Shorts thumbnail could not be recorded."
-    ),
+    ShortsThumbnailErrorCode.THUMBNAIL: ("The Shorts thumbnail could not be recorded."),
     ShortsThumbnailErrorCode.TIMELINE_MISSING: (
         "This Shorts project does not have a timeline yet."
     ),
@@ -464,9 +462,7 @@ class ShortsThumbnailRecorder:
         self._storage = storage
         self._audit = audit
         self._visuals = (
-            visuals
-            if visuals is not None
-            else ArtifactVisualSource(database, storage)
+            visuals if visuals is not None else ArtifactVisualSource(database, storage)
         )
         self._clock = clock
 
@@ -597,17 +593,13 @@ class ShortsThumbnailRecorder:
         written: StoredFile | None = None
         try:
             with self._database.transaction() as connection:
-                project, item = _load_project(
-                    connection, project_id, expected_version
-                )
+                project, item = _load_project(connection, project_id, expected_version)
                 data, metadata = resolver(connection, project, item)
                 item_id = project.content_item_id
                 artifacts = ArtifactRepository(connection)
                 latest = artifacts.latest(item_id, ArtifactKind.THUMBNAIL)
                 if latest is not None and latest.sha256 == metadata.sha256:
-                    return ShortsThumbnailRecord(
-                        latest, metadata, project, False, None
-                    )
+                    return ShortsThumbnailRecord(latest, metadata, project, False, None)
                 version = latest.version + 1 if latest else 1
                 written = self._storage.write(
                     item_id,
@@ -637,20 +629,14 @@ class ShortsThumbnailRecorder:
         )
         return ShortsThumbnailRecord(artifact, metadata, project, True, invalidation)
 
-    def _read_asset_bytes(
-        self, connection: sqlite3.Connection, asset: Asset
-    ) -> bytes:
+    def _read_asset_bytes(self, connection: sqlite3.Connection, asset: Asset) -> bytes:
         try:
             if isinstance(self._visuals, ArtifactVisualSource):
                 if asset.artifact_id is None:
                     raise ValueError(f"asset {asset.id} has no stored file")
-                stored_artifact = ArtifactRepository(connection).get(
-                    asset.artifact_id
-                )
+                stored_artifact = ArtifactRepository(connection).get(asset.artifact_id)
                 if stored_artifact is None:
-                    raise ValueError(
-                        f"artifact {asset.artifact_id} does not exist"
-                    )
+                    raise ValueError(f"artifact {asset.artifact_id} does not exist")
                 raw = self._storage.read(stored_artifact.uri)
                 if (
                     len(raw) != stored_artifact.size_bytes
@@ -706,9 +692,7 @@ def _load_project(
 ) -> tuple[ShortsProject, ContentItem]:
     project = ShortsProjectRepository(connection).get(project_id)
     if project is None:
-        raise ShortsProjectNotFoundError(
-            f"Shorts project {project_id} does not exist"
-        )
+        raise ShortsProjectNotFoundError(f"Shorts project {project_id} does not exist")
     if expected_version is not None and project.version != expected_version:
         raise ShortsThumbnailConflictError(
             f"Shorts project {project.id} is at version {project.version}, "
@@ -795,9 +779,7 @@ def _normalize_title(value: str | None) -> str:
     if not collapsed:
         raise ValueError("title_text must not be empty")
     if len(collapsed) > MAX_THUMBNAIL_TITLE:
-        raise ValueError(
-            f"title_text must be at most {MAX_THUMBNAIL_TITLE} characters"
-        )
+        raise ValueError(f"title_text must be at most {MAX_THUMBNAIL_TITLE} characters")
     return collapsed
 
 
@@ -862,12 +844,13 @@ def _probe_jpeg(data: bytes) -> tuple[int, int]:
 
 
 def _probe_webp(data: bytes) -> tuple[int, int]:
-    if len(data) < 30:
+    chunk = data[12:16]
+    # VP8L keeps its size in bytes 21..25; VP8 and VP8X need 30 bytes.
+    if len(data) < (25 if chunk == b"VP8L" else 30):
         raise ShortsThumbnailError(
             "WebP header is truncated",
             code=ShortsThumbnailErrorCode.INVALID_IMAGE,
         )
-    chunk = data[12:16]
     if chunk == b"VP8X":
         width = 1 + int.from_bytes(data[24:27], "little")
         height = 1 + int.from_bytes(data[27:30], "little")

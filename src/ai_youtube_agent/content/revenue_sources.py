@@ -1,4 +1,5 @@
-"""Revenue sources registry and extensible revenue stream recording (Prompt Pack v8, prompt #173), context C14 Economics.
+"""Revenue sources registry and extensible revenue stream recording (Prompt Pack v8,
+prompt #173), context C14 Economics.
 
 Formalises the built-in ``RevenueSource`` catalogue (#052) and supports extensible
 revenue stream registration and recording across ads, memberships, fan funding,
@@ -14,9 +15,9 @@ affiliate, sponsorships, merchandise, and custom streams:
 - ``RevenueSourceService`` records and queries estimated or finalized revenue rows
   for any registered stream (channel or published video scope), keeping
   ``RevenueStage.ESTIMATED`` and ``RevenueStage.FINAL`` strictly separate (#171,
-  #172) and optionally comparing recorded figures against ``StrategyProfile.monetization``
-  targets (always marked ``is_guaranteed=False``; targets are never treated as
-  earned revenue).
+  #172) and optionally comparing recorded figures against
+  ``StrategyProfile.monetization`` targets (always marked ``is_guaranteed=False``;
+  targets are never treated as earned revenue).
 """
 
 from collections.abc import Callable
@@ -91,7 +92,8 @@ USER_MESSAGES: Final[dict[RevenueSourceErrorCode, str]] = {
         "This revenue stream does not support the requested revenue stage."
     ),
     RevenueSourceErrorCode.CURRENCY_MISMATCH: (
-        "Revenue records across multiple currencies cannot be summed without conversion."
+        "Revenue records across multiple currencies cannot be summed without "
+        "conversion."
     ),
 }
 
@@ -132,7 +134,8 @@ class RevenueStreamSpec:
             self.revenue_type
         ):
             raise ValueError(
-                f"revenue_type {self.revenue_type!r} must be a lowercase name such as 'ads'"
+                f"revenue_type {self.revenue_type!r} must be a lowercase name such as "
+                f"'ads'"
             )
         if not isinstance(self.category, RevenueStreamCategory):
             raise TypeError("category must be a RevenueStreamCategory")
@@ -140,7 +143,8 @@ class RevenueStreamSpec:
             self.default_source
         ):
             raise ValueError(
-                f"default_source {self.default_source!r} must be a lowercase source name"
+                f"default_source {self.default_source!r} must be a lowercase source "
+                f"name"
             )
         for flag_name in (
             "supports_estimated",
@@ -351,7 +355,8 @@ class RevenueSourceBreakdown:
 
 
 class RevenueSourceService:
-    """Records and summarises multi-source revenue across ads, memberships, affiliate, sponsorships, and custom streams."""
+    """Records and summarises multi-source revenue across ads, memberships, affiliate,
+    sponsorships, and custom streams."""
 
     def __init__(
         self,
@@ -386,7 +391,8 @@ class RevenueSourceService:
         source: str | None = None,
         youtube_video_id: str | None = None,
     ) -> RecordedRevenueSourceOutcome:
-        """Record an estimated or final revenue figure for a channel or published video."""
+        """Record an estimated or final revenue figure for a channel or published
+        video."""
         if not isinstance(stage, RevenueStage):
             raise TypeError("stage must be a RevenueStage")
         spec = self._registry.get(revenue_type)
@@ -395,7 +401,9 @@ class RevenueSourceService:
                 RevenueSourceErrorCode.STAGE_NOT_SUPPORTED,
                 f"revenue stream {revenue_type!r} does not support stage {stage.value}",
             )
-        scope = MetricScope.VIDEO if youtube_video_id is not None else MetricScope.CHANNEL
+        scope = (
+            MetricScope.VIDEO if youtube_video_id is not None else MetricScope.CHANNEL
+        )
         if not spec.supports_scope(scope):
             raise RevenueSourceError(
                 RevenueSourceErrorCode.SCOPE_NOT_SUPPORTED,
@@ -417,7 +425,8 @@ class RevenueSourceService:
             if youtube_video_id not in published:
                 raise MetricsSyncError(
                     MetricsSyncErrorCode.VIDEO_NOT_PUBLISHED,
-                    f"video {youtube_video_id} was not published by channel {channel.id}",
+                    f"video {youtube_video_id} was not published by channel "
+                    f"{channel.id}",
                 )
             subject_id = youtube_video_id
 
@@ -481,14 +490,18 @@ class RevenueSourceService:
         period_start: datetime,
         period_end: datetime,
     ) -> RevenueSourceBreakdown:
-        """Compute a single-stage revenue breakdown by stream and category for ``[period_start, period_end)``."""
+        """Compute a single-stage revenue breakdown by stream and category for
+        ``[period_start, period_end)``."""
         if not isinstance(scope, MetricScope):
             raise TypeError("scope must be a MetricScope")
         if not isinstance(stage, RevenueStage):
             raise TypeError("stage must be a RevenueStage")
         connection = self._database.connect()
         try:
-            if scope is MetricScope.CHANNEL and ChannelRepository(connection).get(subject_id) is None:
+            if (
+                scope is MetricScope.CHANNEL
+                and ChannelRepository(connection).get(subject_id) is None
+            ):
                 raise MetricsSyncError(
                     MetricsSyncErrorCode.CHANNEL_NOT_FOUND,
                     f"channel {subject_id} was not found",
@@ -504,7 +517,8 @@ class RevenueSourceService:
         finally:
             connection.close()
 
-        # Select the latest record per (revenue_type, source) matching stage and exact period
+        # Select the latest record per (revenue_type, source) matching stage and exact
+        # period
         latest_by_stream: dict[tuple[str, str], RevenueRecord] = {}
         for record in all_records:
             if (
@@ -522,7 +536,12 @@ class RevenueSourceService:
                 f"multiple currencies in breakdown: {sorted(currencies)}",
             )
         currency = next(iter(currencies), None)
-        if currency is None and profile is not None and profile.monetization and profile.monetization.currency:
+        if (
+            currency is None
+            and profile is not None
+            and profile.monetization
+            and profile.monetization.currency
+        ):
             currency = profile.monetization.currency
             if not CURRENCY_PATTERN.match(currency):
                 currency = None
@@ -543,7 +562,9 @@ class RevenueSourceService:
         goal_progress = _build_goal_progress(
             profile.monetization.goals if profile and profile.monetization else (),
             monetization_currency=(
-                profile.monetization.currency if profile and profile.monetization else None
+                profile.monetization.currency
+                if profile and profile.monetization
+                else None
             ),
             by_type=by_type,
             active_currency=currency,
@@ -594,7 +615,8 @@ def _build_goal_progress(
     ):
         raise RevenueSourceError(
             RevenueSourceErrorCode.CURRENCY_MISMATCH,
-            f"monetization goal currency {monetization_currency} != recorded revenue currency {active_currency}",
+            f"monetization goal currency {monetization_currency} != recorded revenue "
+            f"currency {active_currency}",
         )
     progress: list[RevenueGoalProgress] = []
     for goal in goals:

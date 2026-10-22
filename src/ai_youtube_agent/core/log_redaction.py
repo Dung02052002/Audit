@@ -102,7 +102,9 @@ def is_sensitive_key(key: str) -> bool:
 
 
 def redact_string(text: str) -> str:
-    """Redact inline credentials, OAuth tokens, API keys, and email PII from ``text``."""
+    """Redact inline credentials, OAuth tokens, API keys, and email PII from
+    ``text``.
+    """
     if not text:
         return text
     result = text

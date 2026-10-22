@@ -95,9 +95,7 @@ class JsonFormatter(logging.Formatter):
                 redact_mapping(fields) if isinstance(fields, dict) else fields
             )
         if record.exc_info:
-            payload["exception"] = redact_string(
-                self.formatException(record.exc_info)
-            )
+            payload["exception"] = redact_string(self.formatException(record.exc_info))
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 

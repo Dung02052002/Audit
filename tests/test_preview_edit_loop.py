@@ -1,9 +1,11 @@
-"""Tests for L-136 Preview Edit Loop (`PreviewEditLoopService` and `POST /previews/{id}/edit-loop`)."""
+"""Tests for L-136 Preview Edit Loop (`PreviewEditLoopService` and `POST
+/previews/{id}/edit-loop`)."""
 
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from tests.test_preview_api import _seed_shorts_preview_item
 
 from ai_youtube_agent.bootstrap import build_container, prepare_database
 from ai_youtube_agent.content.approval import ApprovalRequest, ApprovalStatus
@@ -19,7 +21,6 @@ from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.content import ArtifactRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
-from tests.test_preview_api import _seed_shorts_preview_item
 
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 REVIEWER = Actor(ActorKind.USER, "owner-1")

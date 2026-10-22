@@ -1,4 +1,5 @@
-"""Budget guard and threshold alert service (Prompt Pack v8, prompt #180), contexts C3 and C14.
+"""Budget guard and threshold alert service (Prompt Pack v8, prompt #180), contexts
+C3 and C14.
 
 ``BudgetGuard`` enforces daily and monthly channel spend limits and evaluates
 configured ``Budget.alert_thresholds`` (#051), extending ``BudgetGate`` (#037)
@@ -196,7 +197,9 @@ class BudgetGuardStatus:
 
 
 class BudgetGuardBlockedError(BudgetGuardError):
-    """Raised by ``BudgetGuard.enforce`` when daily or monthly budget limits are exceeded."""
+    """Raised by ``BudgetGuard.enforce`` when daily or monthly budget limits are
+    exceeded.
+    """
 
     def __init__(self, status: BudgetGuardStatus) -> None:
         self.status = status
@@ -247,9 +250,7 @@ class BudgetGuard:
                     BudgetGuardErrorCode.CHANNEL_NOT_FOUND,
                     f"channel {channel_id} does not exist",
                 )
-            strategy = StrategyProfileRepository(connection).get_by_channel(
-                channel_id
-            )
+            strategy = StrategyProfileRepository(connection).get_by_channel(channel_id)
             if strategy is None:
                 raise BudgetGuardError(
                     BudgetGuardErrorCode.NO_STRATEGY,
@@ -276,7 +277,8 @@ class BudgetGuard:
         if others:
             raise BudgetGuardError(
                 BudgetGuardErrorCode.CURRENCY_MISMATCH,
-                f"costs in {', '.join(others)} cannot be counted against {budget.currency} budget",
+                f"costs in {', '.join(others)} cannot be counted against "
+                f"{budget.currency} budget",
             )
 
         daily_spend = sum(
@@ -284,11 +286,7 @@ class BudgetGuard:
             Decimal("0"),
         )
         monthly_spend = sum(
-            (
-                r.amount
-                for r in records
-                if month_start <= r.incurred_at < month_end
-            ),
+            (r.amount for r in records if month_start <= r.incurred_at < month_end),
             Decimal("0"),
         )
         projected_daily = daily_spend + additional
@@ -310,9 +308,7 @@ class BudgetGuard:
             projected_monthly=projected_monthly,
         )
         daily_remaining = max(Decimal("0"), budget.daily_limit - projected_daily)
-        monthly_remaining = max(
-            Decimal("0"), budget.monthly_limit - projected_monthly
-        )
+        monthly_remaining = max(Decimal("0"), budget.monthly_limit - projected_monthly)
         status = BudgetGuardStatus(
             channel_id=channel_id,
             evaluated_at=now,
@@ -379,7 +375,9 @@ class BudgetGuard:
         at: datetime | None = None,
         actor: Actor = BUDGET_GUARD_ACTOR,
     ) -> BudgetGuardStatus:
-        """Evaluate budget and raise ``BudgetGuardBlockedError`` when any limit is exceeded."""
+        """Evaluate budget and raise ``BudgetGuardBlockedError`` when any limit is
+        exceeded.
+        """
         status = self.evaluate(
             channel_id,
             estimated_additional_cost=estimated_additional_cost,
@@ -396,14 +394,10 @@ class BudgetGuard:
                 metadata={
                     "channel_id": channel_id,
                     "currency": status.currency,
-                    "reasons": ",".join(
-                        r.code for r in status.blocking_reasons
-                    ),
+                    "reasons": ",".join(r.code for r in status.blocking_reasons),
                     "daily_spend": str(status.daily_spend),
                     "monthly_spend": str(status.monthly_spend),
-                    "estimated_additional_cost": str(
-                        status.estimated_additional_cost
-                    ),
+                    "estimated_additional_cost": str(status.estimated_additional_cost),
                 },
             )
             raise BudgetGuardBlockedError(status)
@@ -436,7 +430,8 @@ def _evaluate_blocking_reasons(
             GateReason(
                 "budget.projected_daily_exceeded",
                 f"Projected daily spend ({projected_daily} {budget.currency}) "
-                f"would exceed the daily budget of {budget.daily_limit} {budget.currency}.",
+                "would exceed the daily budget of "
+                f"{budget.daily_limit} {budget.currency}.",
             )
         )
 
@@ -453,7 +448,8 @@ def _evaluate_blocking_reasons(
             GateReason(
                 "budget.projected_monthly_exceeded",
                 f"Projected monthly spend ({projected_monthly} {budget.currency}) "
-                f"would exceed the monthly budget of {budget.monthly_limit} {budget.currency}.",
+                "would exceed the monthly budget of "
+                f"{budget.monthly_limit} {budget.currency}.",
             )
         )
     return tuple(reasons)
@@ -497,8 +493,10 @@ def _evaluate_alerts(
                         projected_spend=projected,
                         currency=budget.currency,
                         message=(
-                            f"{window.value.capitalize()} spend ({projected} {budget.currency}) "
-                            f"has reached {pct}% of the {limit} {budget.currency} {window.value} budget."
+                            f"{window.value.capitalize()} spend "
+                            f"({projected} {budget.currency}) "
+                            f"has reached {pct}% of the {limit} {budget.currency} "
+                            f"{window.value} budget."
                         ),
                     )
                 )

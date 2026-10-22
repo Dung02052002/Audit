@@ -22,6 +22,7 @@ from ai_youtube_agent.content.story_bible import (
 )
 from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.core.content_item import ContentStatus, ContentType
+from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.main import create_app
 from ai_youtube_agent.pipeline.script_to_video import (
     ScriptToVideoError,
@@ -40,7 +41,8 @@ Minh (trầm ngâm): Mỗi tách trà nóng đều giữ lại hương vị củ
 Narrator: Ánh đèn vàng phản chiếu trên mặt bàn gỗ tĩnh lặng giữa đêm mưa.
 
 SCENE 2: HIÊN NHÀ MƯA - BAN ĐÊM
-Lan (dịu dàng): Khi cơn mưa đầu mùa ghé qua phố nhỏ, câu chuyện năm ấy lại trở về rõ ràng.
+Lan (dịu dàng): Khi cơn mưa đầu mùa ghé qua phố nhỏ, câu chuyện năm ấy lại trở về rõ \
+ràng.
 Minh (ấm áp): Những ký ức chân thành nhất luôn ở lại cùng thời gian.
 
 SCENE 3: PHÒNG TRÀ CỔ - BÌNH MINH
@@ -50,37 +52,50 @@ Lan (mỉm cười): Hãy trân trọng từng khoảnh khắc bình yên ngay t
 
 SAMPLE_LONGFORM_SCRIPT = """
 SCENE 1: THƯ VIỆN CỔ - BUỔI SÁNG
-Narrator: Giữa lòng thành phố cổ kính, thư viện trăm năm tuổi lưu giữ hàng ngàn bản thảo viết tay.
-An (tò mò): Cuốn sổ bìa da này ghi lại hành trình của những người thợ đồng hồ thế kỷ trước.
+Narrator: Giữa lòng thành phố cổ kính, thư viện trăm năm tuổi lưu giữ hàng ngàn bản \
+thảo viết tay.
+An (tò mò): Cuốn sổ bìa da này ghi lại hành trình của những người thợ đồng hồ thế kỷ \
+trước.
 
 SCENE 2: XƯỞNG ĐỒNG HỒ CŨ - BAN NGÀY
-Ông Bảo (điềm tĩnh): Mỗi bánh răng nhỏ đều có nhịp đập riêng, đòi hỏi sự kiên nhẫn tuyệt đối.
-An (chăm chú): Khi lắng nghe tiếng tích tắc đều đặn, cháu hiểu vì sao thời gian lại quý giá đến vậy.
+Ông Bảo (điềm tĩnh): Mỗi bánh răng nhỏ đều có nhịp đập riêng, đòi hỏi sự kiên nhẫn \
+tuyệt đối.
+An (chăm chú): Khi lắng nghe tiếng tích tắc đều đặn, cháu hiểu vì sao thời gian lại \
+quý giá đến vậy.
 
 SCENE 3: THÁP CHUÔNG THÀNH PHỐ - HOÀNG HÔN
-Narrator: Ánh hoàng hôn nhuộm vàng những mái ngói cổ khi hai thầy trò bước lên tháp chuông cao nhất.
-Ông Bảo (xúc động): Chiếc đồng hồ lớn này đã điểm nhịp cho biết bao thế hệ cư dân nơi đây.
+Narrator: Ánh hoàng hôn nhuộm vàng những mái ngói cổ khi hai thầy trò bước lên tháp \
+chuông cao nhất.
+Ông Bảo (xúc động): Chiếc đồng hồ lớn này đã điểm nhịp cho biết bao thế hệ cư dân nơi \
+đây.
 
 SCENE 4: XƯỞNG ĐỒNG HỒ CŨ - BAN ĐÊM
-An (quyết tâm): Cháu sẽ khôi phục lại cơ cấu dây cót chính để tiếng chuông vang lên đúng vào sáng mai.
-Narrator: Dưới ánh đèn dầu ấm áp, từng chi tiết đồng thau được lau chùi và lắp ghép chuẩn xác.
+An (quyết tâm): Cháu sẽ khôi phục lại cơ cấu dây cót chính để tiếng chuông vang lên \
+đúng vào sáng mai.
+Narrator: Dưới ánh đèn dầu ấm áp, từng chi tiết đồng thau được lau chùi và lắp ghép \
+chuẩn xác.
 
 SCENE 5: QUẢNG TRƯỜNG TRUNG TÂM - BÌNH MINH
-Narrator: Khi tia nắng đầu tiên chạm vào mặt đồng hồ, tiếng chuông ngân vang trong trẻo khắp quảng trường.
-Ông Bảo (mỉm cười): Truyền thống không nằm ở quá khứ, mà sống tiếp trong đôi tay của người trẻ hôm nay.
+Narrator: Khi tia nắng đầu tiên chạm vào mặt đồng hồ, tiếng chuông ngân vang trong \
+trẻo khắp quảng trường.
+Ông Bảo (mỉm cười): Truyền thống không nằm ở quá khứ, mà sống tiếp trong đôi tay của \
+người trẻ hôm nay.
 """
 
 
-def _make_settings(tmp_path: Path) -> Settings:
+def _make_settings(tmp_path: Path, *, longform: bool = False) -> Settings:
     return Settings(
         environment=Environment.TEST,
         database_path=tmp_path / "script_to_video.sqlite3",
         artifact_dir=tmp_path / "artifacts",
+        flags=FeatureFlags(longform_enabled=longform),
     )
 
 
 def test_script_analysis_and_story_bible_extraction() -> None:
-    """1. Script parsing + Story Bible extraction (characters, locations, arc, continuity)."""
+    """1. Script parsing + Story Bible extraction (characters, locations, arc,
+    continuity).
+    """
     analyzer = ScriptAnalyzer()
     output = analyzer.analyze(
         script_text=SAMPLE_SHORTS_SCRIPT,
@@ -120,7 +135,9 @@ def test_scene_breakdown_and_shot_planning() -> None:
         content_type=ContentType.SHORTS,
         production_mode=ProductionMode.STORY_VIDEO,
     )
-    breakdown = planner.plan(analysis, scene_durations_ms=[6000, 7500, 6500])
+    breakdown = planner.plan(
+        analysis, scene_windows_ms=[(0, 6000), (6000, 13500), (13500, 20000)]
+    )
 
     assert breakdown.total_duration_ms == 20_000
     assert breakdown.canvas_size == (1080, 1920)
@@ -136,7 +153,9 @@ def test_scene_breakdown_and_shot_planning() -> None:
 
 
 def test_shorts_story_video_end_to_end(tmp_path: Path) -> None:
-    """3. End-to-end Shorts STORY_VIDEO pipeline producing a real playable MP4 + QC + Preview."""
+    """3. End-to-end Shorts STORY_VIDEO pipeline producing a real playable MP4 + QC +
+    Preview.
+    """
     settings = _make_settings(tmp_path)
     prepare_database(settings)
     container = build_container(settings)
@@ -159,7 +178,7 @@ def test_shorts_story_video_end_to_end(tmp_path: Path) -> None:
     assert manifest.production_mode is ProductionMode.STORY_VIDEO
     assert manifest.status is ContentStatus.AWAITING_APPROVAL
     assert manifest.approval_id is not None
-    assert manifest.qc_report.overall_status in (QCStatus.PASS, QCStatus.WARN)
+    assert manifest.qc_report.status in (QCStatus.PASS, QCStatus.WARN)
 
     video_path = Path(manifest.video_file_path)
     assert video_path.exists()
@@ -180,8 +199,10 @@ def test_shorts_story_video_end_to_end(tmp_path: Path) -> None:
 
 
 def test_longform_story_video_end_to_end(tmp_path: Path) -> None:
-    """4. End-to-end LongForm STORY_VIDEO pipeline producing a 16:9 MP4 (>= 181s) + chapters + QC."""
-    settings = _make_settings(tmp_path)
+    """4. End-to-end LongForm STORY_VIDEO pipeline producing a 16:9 MP4 (>= 181s) +
+    chapters + QC.
+    """
+    settings = _make_settings(tmp_path, longform=True)
     prepare_database(settings)
     container = build_container(settings)
     service = container.resolve(ScriptToVideoService)
@@ -203,7 +224,7 @@ def test_longform_story_video_end_to_end(tmp_path: Path) -> None:
     assert manifest.status is ContentStatus.PREVIEW_READY
     assert manifest.approval_id is None
     assert manifest.audio_duration_ms >= 181_000
-    assert manifest.qc_report.overall_status in (QCStatus.PASS, QCStatus.WARN)
+    assert manifest.qc_report.status in (QCStatus.PASS, QCStatus.WARN)
 
     video_path = Path(manifest.video_file_path)
     assert video_path.exists()
@@ -230,7 +251,9 @@ def test_empty_script_and_missing_file_rejected(tmp_path: Path) -> None:
 
 
 def test_ai_film_mode_capability_guard_and_mock_clip_provider(tmp_path: Path) -> None:
-    """6. AI_FILM mode is honestly refused when unconfigured, and works when a VideoClipGenerator is registered."""
+    """6. AI_FILM mode is honestly refused when unconfigured, and works when a
+    VideoClipGenerator is registered.
+    """
     settings = _make_settings(tmp_path)
     prepare_database(settings)
     container = build_container(settings)
@@ -252,26 +275,31 @@ def test_ai_film_mode_capability_guard_and_mock_clip_provider(tmp_path: Path) ->
     assert exc_info.value.code == ScriptToVideoErrorCode.MODE_UNAVAILABLE.value
 
     # Now register MockVideoClipGenerator and verify AI_FILM mode succeeds end-to-end
-    container.register(VideoClipGenerator, lambda _c: MockVideoClipGenerator())
-    film_service = container.resolve(ScriptToVideoService)
-    film_caps = film_service.check_capabilities()
-    assert ProductionMode.AI_FILM in film_caps.supported_modes
+    film_container = build_container(settings)
+    with film_container.override(
+        VideoClipGenerator, lambda _c: MockVideoClipGenerator()
+    ):
+        film_service = film_container.resolve(ScriptToVideoService)
+        film_caps = film_service.check_capabilities()
+        assert ProductionMode.AI_FILM in film_caps.supported_modes
 
-    manifest = film_service.run(
-        ScriptToVideoRequest(
-            script_text=SAMPLE_SHORTS_SCRIPT,
-            title="AI Film Mode Short",
-            content_type=ContentType.SHORTS,
-            production_mode=ProductionMode.AI_FILM,
+        manifest = film_service.run(
+            ScriptToVideoRequest(
+                script_text=SAMPLE_SHORTS_SCRIPT,
+                title="AI Film Mode Short",
+                content_type=ContentType.SHORTS,
+                production_mode=ProductionMode.AI_FILM,
+            )
         )
-    )
     assert manifest.production_mode is ProductionMode.AI_FILM
     assert all(sa.media_type == "video/mp4" for sa in manifest.scene_assets)
     assert Path(manifest.video_file_path).exists()
 
 
 def test_resume_reuses_scene_assets_and_api_routes(tmp_path: Path) -> None:
-    """7. Re-running for the same content_item_id reuses generated scene assets, and HTTP API works."""
+    """7. Re-running for the same content_item_id reuses generated scene assets, and
+    HTTP API works.
+    """
     settings = _make_settings(tmp_path)
     prepare_database(settings)
     container = build_container(settings)
@@ -317,3 +345,23 @@ def test_resume_reuses_scene_assets_and_api_routes(tmp_path: Path) -> None:
     assert analyze_resp.status_code == 200
     assert analyze_resp.json()["story_bible"]["title"] == "API Analyze Test"
 
+
+def test_rerun_after_restart_reuses_recorded_audio(tmp_path: Path) -> None:
+    """8. A rerun in a new process (empty TTS chunk store) reuses the recorded
+    audio instead of failing with domain.tts_result_unavailable."""
+    settings = _make_settings(tmp_path)
+    prepare_database(settings)
+    request = ScriptToVideoRequest(
+        script_text=SAMPLE_SHORTS_SCRIPT,
+        title="Restart Story Run",
+        content_item_id="item_restart_test_01",
+    )
+    first = build_container(settings).resolve(ScriptToVideoService).run(request)
+
+    # A fresh container stands for a restarted server: nothing is in memory.
+    second = build_container(settings).resolve(ScriptToVideoService).run(request)
+
+    assert second.content_item_id == first.content_item_id
+    assert second.audio_artifact_id == first.audio_artifact_id
+    assert second.video_sha256 == first.video_sha256
+    assert Path(second.video_file_path).exists()

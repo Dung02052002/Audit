@@ -75,7 +75,10 @@ def publish_video(
     approval = make_approval_request(item, [video]).approve(USER)
     job = (
         PublishJob.create(
-            approval, ContentType.SHORTS, f"pub:{youtube_video_id}", clock=lambda: published_at
+            approval,
+            ContentType.SHORTS,
+            f"pub:{youtube_video_id}",
+            clock=lambda: published_at,
         )
         .start(clock=lambda: published_at)
         .succeed(youtube_video_id, clock=lambda: published_at)
@@ -124,7 +127,11 @@ class Fixture:
     def publish(self, *numbers: int, published_at: datetime = PUBLISHED_BEFORE) -> None:
         for number in numbers:
             publish_video(
-                self.database, self.channel, self.profile, video_id(number), published_at
+                self.database,
+                self.channel,
+                self.profile,
+                video_id(number),
+                published_at,
             )
 
     def seed(self, number: int, **metrics: int) -> None:
@@ -162,11 +169,17 @@ def test_every_published_video_gets_a_snapshot_with_only_its_returned_metrics(
 
     result = fx.run()
 
-    assert sorted(o.youtube_video_id for o in result.outcomes) == [video_id(1), video_id(2)]
+    assert sorted(o.youtube_video_id for o in result.outcomes) == [
+        video_id(1),
+        video_id(2),
+    ]
     assert result.no_data_video_ids == (video_id(3),)
     assert result.created_count == 2 and result.unchanged_count == 0
     first = next(o for o in result.outcomes if o.youtube_video_id == video_id(1))
-    assert dict(first.snapshot.metrics) == {"views": Decimal("100"), "likes": Decimal("7")}
+    assert dict(first.snapshot.metrics) == {
+        "views": Decimal("100"),
+        "likes": Decimal("7"),
+    }
     assert first.snapshot.scope is MetricScope.VIDEO
     assert first.snapshot.subject_id == video_id(1)
     assert first.snapshot.source == "mock_analytics"
@@ -252,7 +265,10 @@ def test_a_repeated_sync_stores_nothing_new_and_changed_numbers_add_a_snapshot(
     assert first.created_count == 1
     assert again.created_count == 0 and again.unchanged_count == 1
     assert changed.created_count == 1
-    assert [dict(s.metrics)["views"] for s in fx.stored(1)] == [Decimal("10"), Decimal("11")]
+    assert [dict(s.metrics)["views"] for s in fx.stored(1)] == [
+        Decimal("10"),
+        Decimal("11"),
+    ]
 
 
 def test_retryable_errors_are_retried_and_others_stop_the_sync(fx: Fixture) -> None:

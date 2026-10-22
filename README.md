@@ -28,8 +28,13 @@ Settings are typed and validated in `src/ai_youtube_agent/core/config.py`. Every
 ## Run
 
 ```sh
-uv run uvicorn ai_youtube_agent.main:app --reload
+uv run python -m uvicorn ai_youtube_agent.main:app --host 127.0.0.1 --reload
 ```
+
+Open http://127.0.0.1:8000/app/ (`/` redirects there) for the local web app (APP-01): paste or load a `.txt` script, look at the plan, start a background run, follow its stages live, browse the content items with their jobs, checkpoints, scenes and preview, and download the MP4. The app never publishes, approves or uploads. There is no login yet, so keep `--host 127.0.0.1` (do not expose the server on the network).
+
+- The default render provider is `mock`: its MP4 has no video or audio track, so browsers cannot play it (the app says so). For a playable local demo, install ffmpeg and put `AI_YOUTUBE_AGENT_RENDER_PROVIDER=ffmpeg` in a git-ignored `.env` (see `.env.example`); `GET /system/settings` shows whether ffmpeg is found. On Windows also set `AI_YOUTUBE_AGENT_RENDER_FONT_FILE` (for example `C:/Windows/Fonts/arial.ttf`): without a fontconfig config, ffmpeg's caption filter crashes and the render fails with `render.failed`.
+- Background runs (`POST /script-to-video/background-runs`) run one at a time in one worker thread; the others wait as `queued`. Runs live in memory: after a restart the run pages are gone, the content items stay, and a job left running reads as `interrupted`. Because the runs are kept in the memory of one process, run the app as a single uvicorn process (never `--workers N`): another worker would not see the runs of the first one. Running the same script again resumes it (it takes the job over). The synchronous `POST /script-to-video/runs` also takes over a running job of the same script, so do not start the same script through both at once.
 
 Health check: `GET /health` returns `status` (`ok`, `degraded` or `down`), `version` and one entry per check in `checks`. It answers 503 only when an application check fails. A failing provider check gives `degraded` with 200.
 
@@ -57,7 +62,8 @@ src/ai_youtube_agent/   application package
   content/              domain contexts of the production pipeline
   providers/            external-system interfaces and mocks
   pipeline/             orchestration and publishing flow
-dashboard/              Command Center (platform not decided yet)
+  web/                  local web app (static files served at /app)
+dashboard/              Command Center notes and design tokens
 tests/                  pytest tests
 docs/                   requirements, architecture and audit reports
 ```

@@ -120,9 +120,7 @@ def pack(values, width: int) -> bytes:
     return struct.pack(f"<{len(ints)}i", *ints)
 
 
-def make_wav(
-    values, *, rate: int = RATE, width: int = 2, channels: int = 1
-) -> Clip:
+def make_wav(values, *, rate: int = RATE, width: int = 2, channels: int = 1) -> Clip:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as writer:
         writer.setnchannels(channels)
@@ -224,7 +222,9 @@ def test_a_low_sample_rate_warns_on_the_format_only() -> None:
     assert found["audio.format"].status is QCStatus.WARN
     assert "8000" in (found["audio.format"].detail or "")
     assert all(
-        check.status is QCStatus.PASS for name, check in found.items() if name != "audio.format"
+        check.status is QCStatus.PASS
+        for name, check in found.items()
+        if name != "audio.format"
     )
     assert stats is not None and stats.sample_rate == 8000
 

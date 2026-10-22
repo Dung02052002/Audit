@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from tests.test_longform_project import USER, Clock, _seed_longform_item
 
 from ai_youtube_agent.content.longform_chapters import (
     format_youtube_chapters,
@@ -15,7 +16,6 @@ from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import migrate
 from ai_youtube_agent.core.flags import FeatureFlags
-from tests.test_longform_project import USER, Clock, _seed_longform_item
 
 
 def test_generate_chapters_and_format_youtube_chapters(
@@ -68,7 +68,7 @@ def test_service_generate_chapters_saves_and_audits(tmp_path: Path) -> None:
     )
 
     assert len(updated.timeline.chapters) == 4
-    events = [e for e in sink.events if e.action == CHAPTERS_GENERATED]
+    events = [e for e in sink.events() if e.action == CHAPTERS_GENERATED]
     assert len(events) == 1
     assert events[0].metadata["chapter_count"] == 4
 
@@ -77,8 +77,7 @@ def test_format_youtube_chapters_refuses_fewer_than_three_markers() -> None:
     with pytest.raises(ValueError, match="at least 3"):
         format_youtube_chapters(
             (
-                ChapterMarker(index=0, section_index=0, start_ms=0, title="Intro"),
-                ChapterMarker(index=1, section_index=1, start_ms=20_000, title="End"),
+                ChapterMarker("ch1", "Intro", "s1", "s1", 0, 20_000),
+                ChapterMarker("ch2", "End", "s2", "s2", 20_000, 40_000),
             )
         )
-

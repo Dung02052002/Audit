@@ -1,6 +1,7 @@
 """Contribution margin calculator (Prompt Pack v8, prompt #179), context C14 Economics.
 
-Calculates **contribution margin** (``revenue_total - tracked_contribution_costs_total``)
+Calculates **contribution margin** (``revenue_total -
+tracked_contribution_costs_total``)
 for a channel or a content item over a reporting period:
 
 - Strictly labeled ``contribution_margin`` with ``is_net_profit = False`` and
@@ -52,7 +53,8 @@ from ai_youtube_agent.pipeline.publish_result import (
 METRIC_LABEL: Final[str] = "contribution_margin"
 NOT_NET_PROFIT_DISCLAIMER: Final[str] = (
     "Contribution margin equals recorded revenue minus tracked contribution costs "
-    "only; it excludes untracked overhead, fixed costs, and taxes and is never net profit."
+    "only; it excludes untracked overhead, fixed costs, and taxes and is never net "
+    "profit."
 )
 HUNDRED: Final[Decimal] = Decimal("100")
 RATIO_STEP: Final[Decimal] = Decimal("0.01")
@@ -160,17 +162,14 @@ class ContributionMarginReport:
                 if self.contribution_margin_ratio is not None
                 else None
             ),
-            "revenue_by_type": {
-                k: str(v) for k, v in self.revenue_by_type.items()
-            },
-            "costs_by_category": {
-                k: str(v) for k, v in self.costs_by_category.items()
-            },
+            "revenue_by_type": {k: str(v) for k, v in self.revenue_by_type.items()},
+            "costs_by_category": {k: str(v) for k, v in self.costs_by_category.items()},
         }
 
 
 class ContributionMarginCalculator:
-    """Computes channel and per-item contribution margin without ever labeling as net profit."""
+    """Computes channel and per-item contribution margin without ever labeling as net
+    profit."""
 
     def __init__(
         self,
@@ -221,9 +220,7 @@ class ContributionMarginCalculator:
             revenue_currency=(
                 rev_breakdown.currency if rev_breakdown.records else None
             ),
-            cost_currency=(
-                cost_summary.currency if cost_summary.records else None
-            ),
+            cost_currency=(cost_summary.currency if cost_summary.records else None),
             fallback=default_currency,
         )
         return _build_report(
@@ -249,7 +246,8 @@ class ContributionMarginCalculator:
         window_item_costs: bool = False,
         default_currency: str = "USD",
     ) -> ContributionMarginReport:
-        """Calculate per-item contribution margin over ``[period_start, period_end)``."""
+        """Calculate per-item contribution margin over ``[period_start,
+        period_end)``."""
         if not isinstance(stage, RevenueStage):
             raise TypeError("stage must be a RevenueStage")
         if period_start >= period_end:
@@ -309,9 +307,7 @@ class ContributionMarginCalculator:
             revenue_currency=(
                 rev_breakdown.currency if rev_breakdown.records else None
             ),
-            cost_currency=(
-                cost_summary.currency if cost_summary.records else None
-            ),
+            cost_currency=(cost_summary.currency if cost_summary.records else None),
             fallback=default_currency,
         )
         return _build_report(
@@ -408,9 +404,7 @@ class ContributionMarginCalculator:
             return cost_currency
         connection = self._database.connect()
         try:
-            strategy = StrategyProfileRepository(connection).get_by_channel(
-                channel_id
-            )
+            strategy = StrategyProfileRepository(connection).get_by_channel(channel_id)
         finally:
             connection.close()
         if strategy:
@@ -439,9 +433,7 @@ def _build_report(
     margin = revenue_total - costs_total
     ratio: Decimal | None = None
     if revenue_total > Decimal("0"):
-        ratio = (margin / revenue_total * HUNDRED).quantize(
-            RATIO_STEP, ROUND_HALF_UP
-        )
+        ratio = (margin / revenue_total * HUNDRED).quantize(RATIO_STEP, ROUND_HALF_UP)
     return ContributionMarginReport(
         scope=scope,
         channel_id=channel_id,

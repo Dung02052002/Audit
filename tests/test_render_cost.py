@@ -65,9 +65,7 @@ class TestRenderCostRecorder:
             provider="ffmpeg",
             generated_at=NOW,
         )
-        entry = recorder.record_rendered_artifact(
-            channel.id, video_art, rendered_hd
-        )
+        entry = recorder.record_rendered_artifact(channel.id, video_art, rendered_hd)
         assert entry.created is True
         assert entry.cost.category is CostCategory.RENDER
         assert entry.cost.amount == Decimal("0.060000")
@@ -76,9 +74,7 @@ class TestRenderCostRecorder:
         assert sink.entries[-1].metadata["duration_ms"] == 30_000
 
         # Idempotent replay on same video artifact
-        replay = recorder.record_rendered_artifact(
-            channel.id, video_art, rendered_hd
-        )
+        replay = recorder.record_rendered_artifact(channel.id, video_art, rendered_hd)
         assert replay.created is False
         assert replay.cost.id == entry.cost.id
 
@@ -107,9 +103,7 @@ class TestRenderCostRecorder:
             StrategyProfileRepository(connection).add(profile)
             ContentItemRepository(connection).add(item)
 
-        ledger = CostLedger(
-            database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW
-        )
+        ledger = CostLedger(database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW)
         recorder = RenderCostRecorder(ledger)
 
         audio_art = make_artifact(item, ArtifactKind.AUDIO)
@@ -125,10 +119,7 @@ class TestRenderCostRecorder:
         )
         with pytest.raises(RenderCostError) as exc_kind:
             recorder.record_rendered_artifact(channel.id, audio_art, rendered)
-        assert (
-            exc_kind.value.render_cost_code
-            is RenderCostErrorCode.NOT_VIDEO_ARTIFACT
-        )
+        assert exc_kind.value.render_cost_code is RenderCostErrorCode.NOT_VIDEO_ARTIFACT
 
         with pytest.raises(RenderCostError) as exc_tel:
             recorder.record_usage(
@@ -136,7 +127,4 @@ class TestRenderCostRecorder:
                 provider="mock_render",
                 duration_ms=0,
             )
-        assert (
-            exc_tel.value.render_cost_code
-            is RenderCostErrorCode.INVALID_TELEMETRY
-        )
+        assert exc_tel.value.render_cost_code is RenderCostErrorCode.INVALID_TELEMETRY

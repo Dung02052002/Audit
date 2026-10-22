@@ -39,9 +39,7 @@ def test_exceeding_daily_cadence_limit_stops_new_production(
     audit = AuditLog(sink)
     queue = SqliteJobQueue(database, clock=at(1))
     flags = FeatureFlags(shorts_enabled=True, longform_enabled=True)
-    scheduler = JobScheduler(
-        database, queue, audit, flags=flags, clock=at(1)
-    )
+    scheduler = JobScheduler(database, queue, audit, flags=flags, clock=at(1))
     daily_stop = DailyStopService(database, audit, clock=at(1))
 
     channel = make_channel(status=ChannelStatus.ACTIVE)
@@ -95,4 +93,7 @@ def test_exceeding_daily_cadence_limit_stops_new_production(
             GateContext(item2, ContentStatus.GENERATING, SYSTEM, T0),
         )
     assert bool(report.blocked) is True
-    assert any(r.code in ("daily_limit.production_reached", "daily_limit.production_exceeded") for r in report.reasons)
+    assert any(
+        r.code in ("daily_limit.production_reached", "daily_limit.production_exceeded")
+        for r in report.reasons
+    )

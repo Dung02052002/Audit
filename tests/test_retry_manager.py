@@ -1,7 +1,7 @@
 """Tests for RetryManager and JobRetryPolicy (Prompt Pack v8, task R-208)."""
 
-from datetime import UTC, datetime, timedelta
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -26,7 +26,6 @@ from ai_youtube_agent.pipeline.job_queue import InMemoryJobQueue
 from ai_youtube_agent.pipeline.retry_manager import (
     JobRetryPolicy,
     RetryManager,
-    RetryManagerError,
 )
 
 T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -114,7 +113,9 @@ def test_retry_policy_validation() -> None:
 
 def test_retry_policy_error_classification() -> None:
     policy = JobRetryPolicy()
-    assert policy.is_retryable_error("Connection timeout connecting to provider") is True
+    assert (
+        policy.is_retryable_error("Connection timeout connecting to provider") is True
+    )
     assert policy.is_retryable_error("HTTP 503 Service Unavailable") is True
     assert policy.is_retryable_error("Policy_Violation: prohibited term") is False
     assert policy.is_retryable_error("Copyright_Infringement detected") is False
@@ -125,7 +126,9 @@ def test_evaluate_retry_success(
     database: Database, audit_log: AuditLog, sample_job: AIJob
 ) -> None:
     manager = RetryManager(database, audit_log, clock=_fixed_clock(T0))
-    eval_res = manager.evaluate_retry(sample_job.id, "Network glitch", jitter_factor=0.5)
+    eval_res = manager.evaluate_retry(
+        sample_job.id, "Network glitch", jitter_factor=0.5
+    )
 
     assert eval_res.should_retry is True
     assert eval_res.attempt == 1

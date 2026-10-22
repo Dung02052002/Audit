@@ -16,12 +16,12 @@ Phase J LongForm production pipeline (J-105..J-114):
 - Feature flag enforcement (refuses operations when ``LONGFORM_ENABLED`` is off).
 """
 
-from datetime import UTC, datetime, timedelta
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
-from factories import USER, at, make_approval_request
 
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
@@ -39,11 +39,9 @@ from ai_youtube_agent.content.longform_bundle import (
     LongFormBundleErrorCode,
 )
 from ai_youtube_agent.content.longform_metadata import (
-    LongFormMetadata,
     LongFormMetadataRecorder,
 )
 from ai_youtube_agent.content.longform_project import (
-    LongFormProject,
     LongFormProjectStatus,
 )
 from ai_youtube_agent.content.longform_render import (
@@ -58,23 +56,16 @@ from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.longform_thumbnail import (
     LongFormThumbnailRecorder,
     generate_longform_thumbnail_png,
-    probe_longform_image,
 )
 from ai_youtube_agent.content.policy_report import PolicyReporter
 from ai_youtube_agent.content.rights_report import RightsReporter
 from ai_youtube_agent.content.script import Script, ScriptSection, SectionKind
 from ai_youtube_agent.content.shorts_render import (
     ArtifactVisualSource,
-    VisualFile,
 )
-from ai_youtube_agent.content.shorts_timeline import (
-    AssetPlacement,
-    AssetRole,
-    Box,
-    SceneAsset,
-)
+from ai_youtube_agent.content.voice import AudioMetadata
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
-from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
+from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
@@ -86,6 +77,7 @@ from ai_youtube_agent.core.db.repositories.asset import (
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
+    VoiceProfileRepository,
 )
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
@@ -93,29 +85,34 @@ from ai_youtube_agent.core.db.repositories.content import (
     ContentItemRepository,
     ScriptRepository,
 )
-from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
-from ai_youtube_agent.core.db.repositories.longform import LongFormProjectRepository
 from ai_youtube_agent.core.db.repositories.provenance import ProvenanceRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
 from ai_youtube_agent.core.flags import FeatureFlags
-from ai_youtube_agent.pipeline.job import AIJobStatus
-from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer
+from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer, stub_mp4
 from ai_youtube_agent.providers.video_render import (
     RenderErrorCode,
-    RenderedVideo,
-    VideoRenderError,
-    probe_mp4,
 )
+from factories import USER, at, make_approval_request
 
 T0 = datetime(2026, 10, 19, 10, 0, tzinfo=UTC)
 
 
 def make_longform_pcm_wav(duration_ms: int) -> bytes:
     """Generate minimal valid 16-bit 44.1kHz mono WAV bytes for duration_ms."""
+    import math
     import struct
+
     sample_rate = 44100
     samples_count = int(sample_rate * (duration_ms / 1000.0))
-    pcm_data = b"\x00\x00" * samples_count
+    # A one-second 220 Hz tone repeated: silent audio fails the mix self-check.
+    tone = struct.pack(
+        f"<{sample_rate}h",
+        *(
+            int(10_000 * math.sin(2.0 * math.pi * 220.0 * i / sample_rate))
+            for i in range(sample_rate)
+        ),
+    )
+    pcm_data = (tone * (samples_count // sample_rate + 1))[: samples_count * 2]
     data_size = len(pcm_data)
     chunk_size = 36 + data_size
     header = struct.pack(
@@ -156,9 +153,7 @@ class EndToEndLongFormFixture:
         self.subtitles = LongFormSubtitleRecorder(
             database, self.storage, self.audit, self.flags, clock=at(T0)
         )
-        self.mixer = LongFormAudioMixer(
-            database, self.storage, self.audit, self.flags, clock=at(T0)
-        )
+        self.mixer = LongFormAudioMixer(database, self.storage, self.audit, self.flags)
         self.render_service = LongFormRenderService(
             database,
             self.storage,
@@ -181,12 +176,8 @@ class EndToEndLongFormFixture:
             database, self.storage, self.audit, flags=self.flags, clock=at(T0)
         )
         self.decider = DisclosureDecider(database, self.audit, clock=at(T0))
-        self.rights_reporter = RightsReporter(
-            database, self.audit, self.settings, clock=at(T0)
-        )
-        self.policy_reporter = PolicyReporter(
-            database, self.audit, self.settings, clock=at(T0)
-        )
+        self.rights_reporter = RightsReporter(database, self.settings, clock=at(T0))
+        self.policy_reporter = PolicyReporter(database, clock=at(T0))
         self.bundles = LongFormBundleBuilder(
             database,
             self.storage,
@@ -202,13 +193,14 @@ class EndToEndLongFormFixture:
 
     def _setup_entities(self) -> None:
         import hashlib
-        from factories import make_channel, make_strategy_profile
+
+        from factories import make_channel, make_strategy_profile, make_voice_profile
 
         with self.database.transaction() as conn:
             self.channel = make_channel()
             ChannelRepository(conn).add(self.channel)
 
-            self.strategy = make_strategy_profile(self.channel.id)
+            self.strategy = make_strategy_profile(self.channel)
             StrategyProfileRepository(conn).add(self.strategy)
 
             self.item = ContentItem.create(
@@ -221,22 +213,57 @@ class EndToEndLongFormFixture:
             )
             ContentItemRepository(conn).add(self.item)
 
-            # LongForm script: HOOK, INTRO, 2 chapters (>= 10s each), OUTRO, CTA (total duration ~240s)
+            # LongForm script: HOOK, INTRO, 2 chapters (>= 10s each), OUTRO, CTA
+            # (total duration ~240s)
             sections = (
-                ScriptSection(SectionKind.HOOK, "Hook", "Are we truly ready for what is coming with intelligent systems?", 20),
-                ScriptSection(SectionKind.INTRO, "Intro", "Welcome to this deep dive into the evolution of advanced computing.", 30),
-                ScriptSection(SectionKind.CHAPTER, "The Rise of Foundation Models", "In the early twenties, transformer models reshaped everything we knew about computers.", 70),
-                ScriptSection(SectionKind.CHAPTER, "Autonomous Agent Architectures", "Modern agents can plan, reflect, and coordinate across distributed systems.", 80),
-                ScriptSection(SectionKind.OUTRO, "Outro", "The boundary between human reasoning and automated workflows continues to narrow.", 25),
-                ScriptSection(SectionKind.CTA, "Call to action", "Subscribe to stay ahead of the technology curve and comment your perspective below.", 15),
+                ScriptSection(
+                    SectionKind.HOOK,
+                    "Are we truly ready for what is coming with intelligent systems?",
+                    seconds=20,
+                ),
+                ScriptSection(
+                    SectionKind.INTRO,
+                    "Welcome to this deep dive into the evolution of advanced "
+                    "computing.",
+                    seconds=30,
+                ),
+                ScriptSection(
+                    SectionKind.CHAPTER,
+                    "In the early twenties, transformer models reshaped everything "
+                    "we knew about computers.",
+                    title="The Rise of Foundation Models",
+                    seconds=70,
+                ),
+                ScriptSection(
+                    SectionKind.CHAPTER,
+                    "Modern agents can plan, reflect, and coordinate across "
+                    "distributed systems.",
+                    title="Autonomous Agent Architectures",
+                    seconds=80,
+                ),
+                ScriptSection(
+                    SectionKind.OUTRO,
+                    "The boundary between human reasoning and automated workflows "
+                    "continues to narrow.",
+                    seconds=25,
+                ),
+                ScriptSection(
+                    SectionKind.CTA,
+                    "Subscribe to stay ahead of the technology curve and comment "
+                    "your perspective below.",
+                    seconds=15,
+                ),
             )
             self.script = Script.create(
                 self.item.id,
-                sections,
-                actor=USER,
+                sections=sections,
+                created_by=USER,
                 clock=at(T0),
             )
             ScriptRepository(conn).add(self.script)
+
+            self.voice_profile = make_voice_profile(self.channel)
+            VoiceProfileRepository(conn).add(self.voice_profile)
 
             # 240,000 ms audio
             self.duration_ms = 240_000
@@ -244,36 +271,48 @@ class EndToEndLongFormFixture:
             wav_sha256 = hashlib.sha256(wav_data).hexdigest()
 
         audio_file = self.storage.write(
-            wav_data, self.item.id, ArtifactKind.AUDIO, 1, "audio/wav"
+            self.item.id, ArtifactKind.AUDIO, 1, wav_data, media_type="audio/wav"
         )
 
         with self.database.transaction() as conn:
             self.audio_artifact = Artifact.create(
                 self.item.id,
                 ArtifactKind.AUDIO,
-                1,
-                audio_file.uri,
-                wav_sha256,
-                len(wav_data),
-                "audio/wav",
+                uri=audio_file.uri,
+                sha256=wav_sha256,
+                size_bytes=len(wav_data),
+                media_type="audio/wav",
                 clock=at(T0),
             )
             ArtifactRepository(conn).add(self.audio_artifact)
+            AudioMetadataRepository(conn).add(
+                AudioMetadata.create(
+                    self.audio_artifact,
+                    self.script,
+                    self.voice_profile,
+                    duration_ms=self.duration_ms,
+                    clock=at(T0),
+                )
+            )
 
         # Create project and plan timeline
         self.project = self.projects.create(self.item.id, actor=USER)
-        self.project = self.projects.plan(self.project.id, expected_version=1, actor=USER)
+        self.project = self.projects.plan(
+            self.project.id, expected_version=1, actor=USER
+        )
+        self.project = self.projects.generate_chapters(
+            self.project.id, expected_version=self.project.version, actor=USER
+        )
 
         # Setup background image assets for each scene and attach them
         self.bg_assets = []
-        for i, scene in enumerate(self.project.timeline.scenes):
+        for i, _scene in enumerate(self.project.timeline.scenes):
             asset = self.create_image_asset(f"Background {i}", width=1920, height=1080)
             self.bg_assets.append(asset)
 
         # Auto-assign backgrounds via broll manager
         self.project = self.broll.auto_assign_backgrounds(
             self.project.id,
-            [a.id for a in self.bg_assets],
             expected_version=self.project.version,
             actor=USER,
         )
@@ -288,15 +327,19 @@ class EndToEndLongFormFixture:
         title: str,
         width: int = 1920,
         height: int = 1080,
-        category: AssetCategory = AssetCategory.LICENSED,
+        category: AssetCategory = AssetCategory.GENERATED,
         license_ref: str | None = "CC0-1.0",
         attribution: str | None = "Public Domain Art",
     ) -> Any:
         import hashlib
+
         from ai_youtube_agent.content.asset import Asset
         from ai_youtube_agent.content.asset_usage import AssetUsage
         from ai_youtube_agent.content.provenance import Provenance
-        from ai_youtube_agent.content.rights import RightsRecord, RiskLevel, RiskResolution
+        from ai_youtube_agent.content.rights import (
+            RightsRecord,
+            RiskLevel,
+        )
 
         png_bytes = generate_longform_thumbnail_png(
             width=width,
@@ -312,17 +355,17 @@ class EndToEndLongFormFixture:
             cur_art = art_repo.latest(self.item.id, ArtifactKind.THUMBNAIL)
             v = 1 if cur_art is None else cur_art.version + 1
         stored = self.storage.write(
-            png_bytes, self.item.id, ArtifactKind.THUMBNAIL, v, "image/png"
+            self.item.id, ArtifactKind.THUMBNAIL, v, png_bytes, media_type="image/png"
         )
         with self.database.transaction() as conn:
             art = Artifact.create(
                 self.item.id,
                 ArtifactKind.THUMBNAIL,
-                v,
-                stored.uri,
-                png_sha,
-                len(png_bytes),
-                "image/png",
+                version=v,
+                uri=stored.uri,
+                sha256=png_sha,
+                size_bytes=len(png_bytes),
+                media_type="image/png",
                 clock=at(T0),
             )
             ArtifactRepository(conn).add(art)
@@ -342,7 +385,11 @@ class EndToEndLongFormFixture:
             AssetRepository(conn).add(asset)
 
             usage = AssetUsage.create(
-                asset.id, self.item.id, purpose="background", attached_by=USER, clock=at(T0)
+                asset.id,
+                self.item.id,
+                purpose="background",
+                attached_by=USER,
+                clock=at(T0),
             )
             AssetUsageRepository(conn).add(usage)
 
@@ -365,11 +412,15 @@ class EndToEndLongFormFixture:
                 asset.id,
                 source="https://images.example.com/" + png_sha[:10],
                 license=license_ref,
-                risk_level=RiskLevel.LOW,
                 clock=at(T0),
             )
-            rights = rights.resolve(USER, clock=at(T0))
-            from ai_youtube_agent.core.db.repositories.review import RightsRecordRepository
+            rights = rights.with_risk_level(RiskLevel.LOW, clock=at(T0)).resolve(
+                actor=USER, clock=at(T0)
+            )
+            from ai_youtube_agent.core.db.repositories.review import (
+                RightsRecordRepository,
+            )
+
             RightsRecordRepository(conn).add(rights)
 
         return asset
@@ -403,12 +454,12 @@ def test_full_end_to_end_longform_pipeline(database: Database, tmp_path: Path) -
 
     # 4. Record AI disclosure decision (#081)
     facts = DisclosureFacts(
-        realistic_content=True,
-        has_generated_voice=True,
-        has_synthetic_visuals=True,
-        has_synthetic_audio=True,
+        realistic_person=False,
+        realistic_event=False,
+        synthetic_voice_of_real_person=False,
+        realistic_visual=True,
     )
-    fx.decider.decide(fx.item.id, facts, actor=USER)
+    fx.decider.decide(fx.item.id, facts, rule_set=DISCLOSURE_RULES, actor=USER)
 
     # 5. Record LongForm metadata with embedded YouTube chapters
     meta_res = fx.metadata.record(
@@ -447,11 +498,41 @@ def test_full_end_to_end_longform_pipeline(database: Database, tmp_path: Path) -
     assert bundle.manifest["video_info"]["duration_ms"] == fx.duration_ms
 
 
-def test_stale_timeline_rejects_render_and_bundle(database: Database, tmp_path: Path) -> None:
+def test_stale_timeline_rejects_render_and_bundle(
+    database: Database, tmp_path: Path
+) -> None:
     """Timeline mutation after rendering causes bundle to refuse with VIDEO_STALE."""
     fx = EndToEndLongFormFixture(database, tmp_path)
 
-    # Render video first
+    # Record every other constituent so only the video can be stale.
+    fx.subtitles.record(fx.project.id, expected_version=fx.project.version, actor=USER)
+    fx.thumbnails.generate(
+        fx.project.id,
+        expected_version=fx.project.version,
+        actor=USER,
+        title_text="The Future of AI",
+    )
+    fx.decider.decide(
+        fx.item.id,
+        DisclosureFacts(
+            realistic_person=False,
+            realistic_event=False,
+            synthetic_voice_of_real_person=False,
+            realistic_visual=True,
+        ),
+        rule_set=DISCLOSURE_RULES,
+        actor=USER,
+    )
+    fx.metadata.record(
+        fx.project.id,
+        expected_version=fx.project.version,
+        actor=USER,
+        title="The Future of Artificial Intelligence",
+        description="A comprehensive documentary on autonomous AI systems.",
+        tags=("ai", "technology", "documentary"),
+    )
+
+    # Render video
     render_res = fx.render_service.render(
         fx.project.id,
         expected_version=fx.project.version,
@@ -459,16 +540,18 @@ def test_stale_timeline_rejects_render_and_bundle(database: Database, tmp_path: 
     )
     assert render_res.created is True
 
-    # Mutate timeline scenes (simulates change after render)
-    new_timeline = fx.project.timeline
-    with fx.database.transaction() as conn:
-        LongFormProjectRepository(conn).save_timeline(
-            fx.project.id,
-            new_timeline,
-            status=LongFormProjectStatus.READY,
-            expected_version=fx.project.version,
-            actor=USER,
-        )
+    # Mutate the timeline after the render (a scene title changes its checksum)
+    old_sha = fx.project.timeline.sha256
+    scenes = fx.project.timeline.scenes
+    retitled = replace(scenes[0], title="Changed after render")
+    new_timeline = replace(fx.project.timeline, scenes=(retitled, *scenes[1:]))
+    fx.project = fx.projects.save_timeline(
+        fx.project.id,
+        new_timeline,
+        expected_version=fx.project.version,
+        actor=USER,
+    )
+    assert fx.project.timeline.sha256 != old_sha
 
     # Attempting to build bundle should fail with VIDEO_STALE or STALE_INPUT
     with pytest.raises(LongFormBundleError) as exc_info:
@@ -477,13 +560,12 @@ def test_stale_timeline_rejects_render_and_bundle(database: Database, tmp_path: 
             expected_version=fx.project.version,
             actor=USER,
         )
-    assert exc_info.value.code in (
-        LongFormBundleErrorCode.STALE_INPUT,
-        LongFormBundleErrorCode.VIDEO_STALE,
-    )
+    assert exc_info.value.code == LongFormBundleErrorCode.VIDEO_STALE.value
 
 
-def test_re_recording_artifact_invalidates_approvals(database: Database, tmp_path: Path) -> None:
+def test_re_recording_artifact_invalidates_approvals(
+    database: Database, tmp_path: Path
+) -> None:
     """Re-recording a thumbnail or video invalidates pending approvals."""
     fx = EndToEndLongFormFixture(database, tmp_path)
 
@@ -497,11 +579,7 @@ def test_re_recording_artifact_invalidates_approvals(database: Database, tmp_pat
 
     # Create approval binding this thumbnail
     with fx.database.transaction() as conn:
-        req = make_approval_request(
-            fx.item.id,
-            artifacts=[thumb1.artifact],
-            status=ApprovalStatus.PENDING,
-        )
+        req = make_approval_request(fx.item, [thumb1.artifact])
         ApprovalRequestRepository(conn).add(req)
 
     # Re-recording with a different title creates a new version and invalidates approval
@@ -519,7 +597,9 @@ def test_re_recording_artifact_invalidates_approvals(database: Database, tmp_pat
         assert updated_req.status == ApprovalStatus.INVALIDATED
 
 
-def test_renderer_failure_and_duration_mismatch(database: Database, tmp_path: Path) -> None:
+def test_renderer_failure_and_duration_mismatch(
+    database: Database, tmp_path: Path
+) -> None:
     """Renderer failures and invalid output durations are caught and audited."""
     fx = EndToEndLongFormFixture(database, tmp_path)
 
@@ -535,23 +615,12 @@ def test_renderer_failure_and_duration_mismatch(database: Database, tmp_path: Pa
 
     # Check failure was audited
     failures = [
-        event for event in fx.audit_sink.events if event.action == RENDER_FAILED
+        event for event in fx.audit_sink.events() if event.action == RENDER_FAILED
     ]
     assert len(failures) == 1
 
     # 2. Output duration mismatch
-    fx.renderer.queue(
-        RenderedVideo(
-            data=fx.renderer.mock_mp4(
-                fx.project.config.width, fx.project.config.height, 10_000, fx.project.config.fps
-            ),
-            duration_ms=10_000,  # Far below 240,000 ms
-            size_bytes=1000,
-            fps=30,
-            renderer_name="mock",
-            generated_at=T0,
-        )
-    )
+    fx.renderer.queue(stub_mp4(10_000, b"short"), duration_ms=10_000)  # vs 240,000
     with pytest.raises(LongFormRenderError) as exc_info:
         fx.render_service.render(
             fx.project.id,
@@ -561,7 +630,9 @@ def test_renderer_failure_and_duration_mismatch(database: Database, tmp_path: Pa
     assert exc_info.value.code == LongFormRenderErrorCode.RENDER_INVALID
 
 
-def test_feature_flag_disables_longform_pipeline(database: Database, tmp_path: Path) -> None:
+def test_feature_flag_disables_longform_pipeline(
+    database: Database, tmp_path: Path
+) -> None:
     """When LONGFORM_ENABLED is False, all operations raise LongFormDisabledError."""
     fx = EndToEndLongFormFixture(database, tmp_path)
     disabled_flags = FeatureFlags(longform_enabled=False)
@@ -597,7 +668,12 @@ def test_feature_flag_disables_longform_pipeline(database: Database, tmp_path: P
         )
 
     disabled_bundles = LongFormBundleBuilder(
-        fx.database, fx.storage, fx.audit, fx.settings, flags=disabled_flags, clock=at(T0)
+        fx.database,
+        fx.storage,
+        fx.audit,
+        fx.settings,
+        flags=disabled_flags,
+        clock=at(T0),
     )
     with pytest.raises(LongFormDisabledError):
         disabled_bundles.build(

@@ -1,4 +1,6 @@
-"""Click-through rate (CTR) sync and extraction (Prompt Pack v8, prompt #165), context C13.
+"""Click-through rate (CTR) sync and extraction.
+
+(Prompt Pack v8, prompt #165), context C13.
 
 Stores and reads impression click-through rate (``impressions_click_through_rate``)
 **only when actually available** from the analytics source, never defaulting to ``0``
@@ -57,7 +59,11 @@ from ai_youtube_agent.providers.analytics import (
     AnalyticsProvider,
     AnalyticsQuery,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 Clock = Callable[[], datetime]
 
@@ -297,8 +303,10 @@ class CTRSync:
         rows: dict[str, dict[str, Decimal]] = {}
         pages: list[AnalyticsPage] = []
         if eligible:
-            token = self._oauth.get_token(
-                channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
+            token = get_or_renew_token(
+                self._oauth,
+                channel.id,
+                required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,),
             )
             for start in range(0, len(eligible), MAX_VIDEO_IDS):
                 chunk = eligible[start : start + MAX_VIDEO_IDS]
@@ -367,8 +375,8 @@ class CTRSync:
             period_end=period_end,
             metrics=CTR_METRICS,
         )
-        token = self._oauth.get_token(
-            channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
+        token = get_or_renew_token(
+            self._oauth, channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
         )
         page = call_with_retry(
             lambda: self._provider.query(query, token=token),
@@ -537,7 +545,8 @@ class CTRSync:
             repository = MetricSnapshotRepository(connection)
             for video_id in eligible:
                 values = rows.get(video_id)
-                # Store CTR ONLY when impressions_click_through_rate is actually available.
+                # Store CTR ONLY when impressions_click_through_rate is actually
+                # available.
                 if not values or "impressions_click_through_rate" not in values:
                     unavailable.append(video_id)
                     continue

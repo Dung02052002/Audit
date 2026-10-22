@@ -34,12 +34,11 @@ class TestCommentClassifier:
     ) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         brand = Brand(
+            name="Money Minute",
             tone="educational",
             banned_phrases=("secret pump group",),
         )
-        profile = dataclasses.replace(
-            make_strategy_profile(channel), brand=brand
-        )
+        profile = dataclasses.replace(make_strategy_profile(channel), brand=brand)
         c_mod_phrase = Comment.create(
             channel.id,
             "Ugx-mod-1",
@@ -110,24 +109,26 @@ class TestCommentClassifier:
         assert repeat.unchanged_count == 5
 
         # Manual override appends a new classification record while keeping history
-        override = classifier.classify_comment(
+        later = NOW + timedelta(minutes=1)
+        override_classifier = CommentClassifier(
+            database, AuditLog(sink, clock=lambda: later), clock=lambda: later
+        )
+        override = override_classifier.classify_comment(
             c_none.id,
             actor=USER,
             override_label=CommentLabel.REPLY_CANDIDATE,
             rationale="Owner wants to thank early supporter",
         )
         assert override.created is True
-        assert (
-            override.classification.label is CommentLabel.REPLY_CANDIDATE
-        )
+        assert override.classification.label is CommentLabel.REPLY_CANDIDATE
         history = classifier.history_for_comment(c_none.id)
         assert [h.label for h in history] == [
             CommentLabel.NO_ACTION,
             CommentLabel.REPLY_CANDIDATE,
         ]
-        assert len(
-            classifier.list_by_label(channel.id, CommentLabel.REPLY_CANDIDATE)
-        ) == 2
+        assert (
+            len(classifier.list_by_label(channel.id, CommentLabel.REPLY_CANDIDATE)) == 2
+        )
 
     def test_refuses_unknown_comment_or_channel_and_blank_rationale(
         self, database: Database

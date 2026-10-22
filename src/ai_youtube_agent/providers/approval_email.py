@@ -155,10 +155,9 @@ class ApprovalEmailReceipt:
             val = getattr(self, field_name)
             if not isinstance(val, str) or not val.strip():
                 raise ValueError(f"{field_name} must not be empty")
-        if (
-            not isinstance(self.sent_at, datetime)
-            or self.sent_at.utcoffset() != timedelta(0)
-        ):
+        if not isinstance(
+            self.sent_at, datetime
+        ) or self.sent_at.utcoffset() != timedelta(0):
             raise ValueError("sent_at must be timezone-aware UTC")
 
     def as_dict(self) -> dict[str, Any]:
@@ -197,8 +196,12 @@ USER_MESSAGES: dict[EmailErrorCode, str] = {
     EmailErrorCode.UNAVAILABLE: "The approval email service is unavailable.",
     EmailErrorCode.RATE_LIMITED: "The approval email service is rate limited.",
     EmailErrorCode.TIMEOUT: "The approval email service timed out.",
-    EmailErrorCode.INVALID_RECIPIENT: "The approval email recipient address is invalid.",
-    EmailErrorCode.INVALID_MESSAGE: "The approval email message was rejected as invalid.",
+    EmailErrorCode.INVALID_RECIPIENT: (
+        "The approval email recipient address is invalid."
+    ),
+    EmailErrorCode.INVALID_MESSAGE: (
+        "The approval email message was rejected as invalid."
+    ),
     EmailErrorCode.REFUSED: "The approval email service refused the message.",
 }
 

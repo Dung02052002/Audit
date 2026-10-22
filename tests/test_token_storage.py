@@ -79,7 +79,7 @@ def test_managed_token_store_refreshes_expired_tokens_and_audits_safely(
         access_token="access-initial-secret",
         refresh_token="refresh-initial-secret",
         scopes=frozenset({OAuthScope.YOUTUBE_UPLOAD}),
-        ttl=timedelta(minutes=10),
+        expires_at=t0 + timedelta(minutes=10),
     )
     store = ManagedTokenStore(
         vault,

@@ -110,9 +110,7 @@ class RenderPricingPolicy:
             else Decimal("1")
         )
         raw = (
-            (Decimal(duration_ms) / MS_PER_MINUTE)
-            * self.price_per_minute
-            * multiplier
+            (Decimal(duration_ms) / MS_PER_MINUTE) * self.price_per_minute * multiplier
         )
         return quantize_cost_amount(raw)
 
@@ -160,7 +158,8 @@ class RenderCostRecorder:
         if artifact.kind is not ArtifactKind.VIDEO:
             raise RenderCostError(
                 RenderCostErrorCode.NOT_VIDEO_ARTIFACT,
-                f"artifact {artifact.id} has kind {artifact.kind.value}, expected video",
+                f"artifact {artifact.id} has kind {artifact.kind.value}, "
+                "expected video",
             )
         return self.record_usage(
             channel_id,
@@ -189,9 +188,7 @@ class RenderCostRecorder:
     ) -> CostLedgerEntry:
         """Compute and record a render cost from duration and canvas dimensions."""
         _check_positive_int("fps", fps, 120)
-        amount = self._policy.compute_amount(
-            duration_ms, width=width, height=height
-        )
+        amount = self._policy.compute_amount(duration_ms, width=width, height=height)
         return self._ledger.record(
             channel_id,
             CostCategory.RENDER,
@@ -211,7 +208,11 @@ class RenderCostRecorder:
 
 
 def _check_positive_int(name: str, value: object, maximum: int) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= maximum
+    ):
         raise RenderCostError(
             RenderCostErrorCode.INVALID_TELEMETRY,
             f"{name} must be an integer between 1 and {maximum}",

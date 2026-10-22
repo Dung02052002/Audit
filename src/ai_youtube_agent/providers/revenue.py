@@ -72,12 +72,15 @@ RETRYABLE_REVENUE_CODES: Final[frozenset[RevenueErrorCode]] = frozenset(
 )
 
 USER_MESSAGES: Final[dict[RevenueErrorCode, str]] = {
-    RevenueErrorCode.UNAVAILABLE: "The revenue data service is temporarily unavailable.",
+    RevenueErrorCode.UNAVAILABLE: (
+        "The revenue data service is temporarily unavailable."
+    ),
     RevenueErrorCode.TIMEOUT: "The revenue data request timed out.",
     RevenueErrorCode.RATE_LIMITED: "Revenue data requests are currently rate-limited.",
     RevenueErrorCode.QUOTA_EXCEEDED: "The revenue API quota has been exceeded.",
     RevenueErrorCode.UNAUTHORIZED: (
-        "Revenue data could not be read with the current YouTube monetary authorization."
+        "Revenue data could not be read with the current YouTube monetary "
+        "authorization."
     ),
     RevenueErrorCode.NOT_FOUND: "The requested channel has no revenue data source.",
     RevenueErrorCode.INVALID_QUERY: "The revenue query was invalid.",
@@ -154,7 +157,9 @@ class RevenueQuery:
             raise ValueError("revenue_types must not repeat")
         for rtype in self.revenue_types:
             if not isinstance(rtype, str) or rtype not in KNOWN_REVENUE_TYPES:
-                raise ValueError(f"revenue_type {rtype!r} is not a known revenue source")
+                raise ValueError(
+                    f"revenue_type {rtype!r} is not a known revenue source"
+                )
         if not isinstance(self.video_ids, tuple):
             raise TypeError("video_ids must be a tuple")
         if self.scope is MetricScope.CHANNEL:
@@ -264,13 +269,8 @@ class RevenuePage:
             raise ValueError("period_start must be earlier than period_end")
         if self.retrieved_at < self.period_start:
             raise ValueError("retrieved_at must not be earlier than period_start")
-        if (
-            self.stage is RevenueStage.FINAL
-            and self.retrieved_at < self.period_end
-        ):
-            raise ValueError(
-                "final revenue can only be retrieved after period_end"
-            )
+        if self.stage is RevenueStage.FINAL and self.retrieved_at < self.period_end:
+            raise ValueError("final revenue can only be retrieved after period_end")
         if self.data_through is not None:
             _require_utc(self.data_through, "data_through")
             if self.data_through < self.period_start:

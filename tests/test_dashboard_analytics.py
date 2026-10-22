@@ -53,19 +53,16 @@ def _seed_published_item(
     )
     video_art = make_artifact(item, ArtifactKind.VIDEO, media_type="video/mp4")
     approval = make_approval_request(item, [video_art]).approve(USER)
+    published_at = FIXED_NOW - timedelta(days=5)
     job = (
         PublishJob.create(
             approval,
             content_type,
             f"idem-{youtube_video_id}",
-            clock=lambda: FIXED_NOW,
+            clock=lambda: published_at,
         )
-        .start(clock=lambda: FIXED_NOW)
-        .succeed(
-            youtube_video_id,
-            published_at=FIXED_NOW - timedelta(days=5),
-            clock=lambda: FIXED_NOW,
-        )
+        .start(clock=lambda: published_at)
+        .succeed(youtube_video_id, clock=lambda: published_at)
     )
     with db.transaction() as conn:
         ContentItemRepository(conn).add(item)
@@ -197,4 +194,3 @@ def test_analytics_screen_time_range_and_shorts_vs_longform(
     assert 'data-testid="analytics-shorts-card"' in rendered
     assert 'data-testid="analytics-longform-card"' in rendered
     assert "75.00%" in rendered
-

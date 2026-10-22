@@ -133,9 +133,7 @@ class World:
         if self.last_script is None:
             script = Script.create(self.item.id, sections=sections, clock=self.clock)
         else:
-            script = self.last_script.next_version(
-                sections=sections, clock=self.clock
-            )
+            script = self.last_script.next_version(sections=sections, clock=self.clock)
         self.last_script = script
         with self.database.transaction() as connection:
             ScriptRepository(connection).add(script)
@@ -271,9 +269,7 @@ def test_the_cost_is_counted_by_the_channel_list(world: World) -> None:
 def test_the_cost_counts_in_the_budget_gate_spending(world: World) -> None:
     result, stored = world.stored_audio()
     # 1,000 characters at 10 per 1,000 is 10, over the daily budget of 5.00.
-    world.cost_recorder("10").record(
-        stored, with_characters(result, 1000), world.voice
-    )
+    world.cost_recorder("10").record(stored, with_characters(result, 1000), world.voice)
 
     with world.database.transaction() as connection:
         gate = BudgetGate(

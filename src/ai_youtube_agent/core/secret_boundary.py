@@ -135,7 +135,9 @@ def _annotation_uses_secret_str(annotation: Any) -> bool:
 def validate_settings_model(
     settings_cls: type[Settings] = Settings,
 ) -> tuple[SecretBoundaryViolation, ...]:
-    """Verify every secret-bearing field on ``settings_cls`` uses ``SecretStr`` with no plaintext default."""
+    """Verify every secret-bearing field on ``settings_cls`` uses ``SecretStr`` with
+    no plaintext default.
+    """
     violations: list[SecretBoundaryViolation] = []
     for name, field_info in settings_cls.model_fields.items():
         lowered = name.lower()
@@ -156,7 +158,9 @@ def validate_settings_model(
                 SecretBoundaryViolation(
                     rule_code="secret.field_has_default",
                     location=f"{settings_cls.__name__}.{name}",
-                    message=f"Secret field '{name}' must not have a non-None default value.",
+                    message=(
+                        f"Secret field '{name}' must not have a non-None default value."
+                    ),
                 )
             )
     return tuple(violations)
@@ -167,7 +171,9 @@ def scan_text_for_secrets(
     *,
     location: str = "<memory>",
 ) -> tuple[SecretBoundaryViolation, ...]:
-    """Scan ``text`` for high-confidence credential patterns without echoing secret values."""
+    """Scan ``text`` for high-confidence credential patterns without echoing secret
+    values.
+    """
     violations: list[SecretBoundaryViolation] = []
     for line_no, line in enumerate(text.splitlines(), start=1):
         for pattern_name, pattern in REAL_SECRET_PATTERNS:
@@ -177,7 +183,8 @@ def scan_text_for_secrets(
                         rule_code=f"secret.leaked_{pattern_name}",
                         location=f"{location}:{line_no}",
                         message=(
-                            f"Potential credential pattern '{pattern_name}' detected at "
+                            f"Potential credential pattern '{pattern_name}' detected "
+                            "at "
                             f"{location} line {line_no}."
                         ),
                     )
@@ -235,20 +242,23 @@ class SecretBoundaryValidator:
             key, _, val = stripped.partition("=")
             key_lower = key.strip().lower()
             val_clean = val.strip().strip("\"'")
-            if any(tok in key_lower for tok in SECRET_FIELD_NAME_TOKENS):
-                if val_clean and not any(
+            if (
+                any(tok in key_lower for tok in SECRET_FIELD_NAME_TOKENS)
+                and val_clean
+                and not any(
                     marker in val_clean.lower() for marker in SAFE_PLACEHOLDER_MARKERS
-                ):
-                    violations.append(
-                        SecretBoundaryViolation(
-                            rule_code="secret.env_example_non_placeholder",
-                            location=f"{target.name}:{line_no}",
-                            message=(
-                                f"Secret key '{key.strip()}' in {target.name} has a "
-                                "non-placeholder value."
-                            ),
-                        )
+                )
+            ):
+                violations.append(
+                    SecretBoundaryViolation(
+                        rule_code="secret.env_example_non_placeholder",
+                        location=f"{target.name}:{line_no}",
+                        message=(
+                            f"Secret key '{key.strip()}' in {target.name} has a "
+                            "non-placeholder value."
+                        ),
                     )
+                )
         return tuple(violations)
 
     def audit_repository(

@@ -50,14 +50,12 @@ IN_WINDOW = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
 
 
 class TestContributionMarginCalculator:
-    def test_calculates_channel_and_item_contribution_margin_and_never_labels_as_net_profit(
+    def test_channel_and_item_contribution_margin_never_labelled_net_profit(
         self, database: Database
     ) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         profile = make_strategy_profile(channel)
-        item = make_content_item(
-            channel, profile, status=ContentStatus.PUBLISHED
-        )
+        item = make_content_item(channel, profile, status=ContentStatus.PUBLISHED)
         video = make_artifact(item, ArtifactKind.VIDEO)
         approval = make_approval_request(item, [video]).approve(USER)
         vid = "vid000001cm"
@@ -77,9 +75,7 @@ class TestContributionMarginCalculator:
             PublishJobRepository(connection).add(job)
 
         audit = AuditLog(InMemoryAuditSink())
-        rev_service = RevenueSourceService(
-            database, audit, clock=lambda: NOW
-        )
+        rev_service = RevenueSourceService(database, audit, clock=lambda: NOW)
         ledger = CostLedger(database, audit, clock=lambda: IN_WINDOW)
         calc = ContributionMarginCalculator(database, rev_service, ledger)
 
@@ -175,7 +171,8 @@ class TestContributionMarginCalculator:
         assert ch_est.contribution_margin == Decimal("230.000000")
         assert ch_est.contribution_margin_ratio == Decimal("92.00")
 
-        # 3. Content item FINAL contribution margin: 50.00 - (2.50 + 7.50) = 40.00 (80.00%)
+        # 3. Content item FINAL contribution margin: 50.00 - (2.50 + 7.50) = 40.00
+        # (80.00%)
         item_final = calc.for_content_item(
             item.id,
             stage=RevenueStage.FINAL,
@@ -190,7 +187,7 @@ class TestContributionMarginCalculator:
         assert item_final.contribution_margin_ratio == Decimal("80.00")
         assert item_final.is_net_profit is False
 
-    def test_zero_revenue_gives_negative_margin_and_none_ratio_and_currency_mismatch_fails(
+    def test_zero_revenue_negative_margin_none_ratio_currency_mismatch_fails(
         self, database: Database
     ) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
@@ -204,9 +201,7 @@ class TestContributionMarginCalculator:
             ContentItemRepository(connection).add(item)
 
         audit = AuditLog(InMemoryAuditSink())
-        rev_service = RevenueSourceService(
-            database, audit, clock=lambda: NOW
-        )
+        rev_service = RevenueSourceService(database, audit, clock=lambda: NOW)
         ledger = CostLedger(database, audit, clock=lambda: IN_WINDOW)
         calc = ContributionMarginCalculator(database, rev_service, ledger)
 
@@ -248,6 +243,5 @@ class TestContributionMarginCalculator:
                 period_end=END,
             )
         assert (
-            exc_curr.value.margin_code
-            is ContributionMarginErrorCode.CURRENCY_MISMATCH
+            exc_curr.value.margin_code is ContributionMarginErrorCode.CURRENCY_MISMATCH
         )

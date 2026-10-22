@@ -332,7 +332,9 @@ class LongFormMetricsService:
         *,
         video_duration_seconds: Decimal | int | None = None,
     ) -> list[LongFormMetricsView]:
-        """Normalise stored snapshots of one YouTube video id, verifying it is not Shorts."""
+        """Normalise stored snapshots of one YouTube video id, verifying it is not
+        Shorts.
+        """
         if not isinstance(youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             youtube_video_id
         ):
@@ -361,7 +363,8 @@ class LongFormMetricsService:
             if job.content_type is not ContentType.LONGFORM:
                 raise LongFormMetricsError(
                     LongFormMetricsErrorCode.NOT_LONGFORM,
-                    f"video {youtube_video_id} was published as {job.content_type.value}",
+                    f"video {youtube_video_id} was published as "
+                    f"{job.content_type.value}",
                 )
             return job.content_item_id
         finally:

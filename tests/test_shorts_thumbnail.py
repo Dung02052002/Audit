@@ -20,8 +20,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from factories import T0, USER, at, make_approval_request, make_channel
-from test_shorts_scene import Stage
 
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
@@ -50,9 +48,10 @@ from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
-    ContentItemRepository,
 )
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
+from factories import T0, USER, at, make_approval_request, make_channel
+from test_shorts_scene import Stage
 
 Code = ShortsThumbnailErrorCode
 T1 = T0 + timedelta(hours=1)
@@ -61,7 +60,10 @@ SECRET_TITLE = "Secret-Falcon-9912"
 
 def make_jpeg(width: int = 1080, height: int = 1920, marker: int = 0xC0) -> bytes:
     app0 = b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
-    sof_payload = struct.pack(">BHHB", 8, height, width, 3) + b"\x01\x11\x00\x02\x11\x00\x03\x11\x00"
+    sof_payload = (
+        struct.pack(">BHHB", 8, height, width, 3)
+        + b"\x01\x11\x00\x02\x11\x00\x03\x11\x00"
+    )
     sof = bytes([0xFF, marker]) + struct.pack(">H", len(sof_payload) + 2) + sof_payload
     return b"\xff\xd8" + app0 + sof + b"\xff\xd9"
 
@@ -138,6 +140,16 @@ def test_probe_png_jpeg_and_webp_variants() -> None:
         make_jpeg(360, 640),  # width < 640
         make_jpeg(1920, 1080),  # 16:9 horizontal, not 9:16 vertical
         b"\x89PNG\r\n\x1a\n" + b"\x00" * (MAX_THUMBNAIL_BYTES + 1),
+    ],
+    ids=[
+        "empty",
+        "text",
+        "short-png",
+        "empty-jpeg",
+        "bad-webp",
+        "small-jpeg",
+        "horizontal-jpeg",
+        "oversized-png",
     ],
 )
 def test_probe_image_refuses_invalid_images(bad_bytes: bytes) -> None:
@@ -276,8 +288,8 @@ def test_generate_records_a_png_thumbnail_and_audits_scalars_only(
     stored_bytes = rig.storage.read(record.artifact.uri)
     assert hashlib.sha256(stored_bytes).hexdigest() == record.artifact.sha256
 
-    assert len(rig.sink.events) == 1
-    event = rig.sink.events[0]
+    assert len(rig.sink.events()) == 1
+    event = rig.sink.events()[0]
     assert event.action == THUMBNAIL_RECORDED
     assert event.result is AuditResult.SUCCESS
     assert event.metadata["source_kind"] == "generated"
@@ -301,7 +313,7 @@ def test_select_defaults_to_first_scene_image_background_and_replays_when_unchan
     assert replay.created is False
     assert replay.artifact == first.artifact
     assert replay.invalidation is None
-    assert len(rig.sink.events) == 1
+    assert len(rig.sink.events()) == 1
 
 
 def test_recording_a_new_thumbnail_version_invalidates_pending_approvals(
@@ -309,10 +321,7 @@ def test_recording_a_new_thumbnail_version_invalidates_pending_approvals(
 ) -> None:
     recorder = rig.recorder()
     first = recorder.generate(rig.project.id, title_text="First", actor=USER)
-    approval = make_approval_request(
-        content_item_id=rig.item.id,
-        artifacts=(first.artifact,),
-    )
+    approval = make_approval_request(rig.item, [first.artifact])
     with rig.database.transaction() as connection:
         ApprovalRequestRepository(connection).add(approval)
 
@@ -321,12 +330,12 @@ def test_recording_a_new_thumbnail_version_invalidates_pending_approvals(
     assert second.created is True
     assert second.artifact.version == 2
     assert second.invalidation is not None
-    assert second.invalidation.invalidated_ids == (approval.id,)
+    assert [i.approval.id for i in second.invalidation.invalidated] == [approval.id]
     with rig.database.transaction() as connection:
         updated = ApprovalRequestRepository(connection).get(approval.id)
         assert updated is not None
         assert updated.status is ApprovalStatus.INVALIDATED
-    assert [e.action for e in rig.sink.events] == [
+    assert [e.action for e in rig.sink.events()] == [
         THUMBNAIL_RECORDED,
         "approval.invalidated",
         THUMBNAIL_RECORDED,
@@ -428,9 +437,6 @@ def test_written_file_is_cleaned_up_when_database_insert_fails(
     assert not rig.root.exists() or list(rig.root.rglob("*.png")) == []
     with rig.database.transaction() as connection:
         assert (
-            ArtifactRepository(connection).latest(
-                rig.item.id, ArtifactKind.THUMBNAIL
-            )
+            ArtifactRepository(connection).latest(rig.item.id, ArtifactKind.THUMBNAIL)
             is None
         )
-

@@ -1,4 +1,6 @@
-"""Approval Request, Approve, Reject, Request Changes & Expiry service (Prompt Pack v8, prompts #137, #139–#143), context C11 Review.
+"""Approval Request, Approve, Reject, Request Changes & Expiry service.
+
+(Prompt Pack v8, prompts #137, #139–#143), context C11 Review.
 
 ``ApprovalService`` coordinates the lifecycle of human review requests:
 
@@ -159,9 +161,7 @@ class ApprovalService:
                 raise ApprovalNotFoundError(
                     f"content item {content_item_id} was not found"
                 )
-            return ApprovalRequestRepository(conn).list_by_content_item(
-                content_item_id
-            )
+            return ApprovalRequestRepository(conn).list_by_content_item(content_item_id)
 
     def request_approval(
         self,
@@ -227,7 +227,8 @@ class ApprovalService:
             if video_artifact.id not in latest_qc.artifact_ids:
                 raise ApprovalStateError(
                     f"latest QC result {latest_qc.id} does not cover "
-                    f"current video artifact {video_artifact.id} (v{video_artifact.version})"
+                    f"current video artifact {video_artifact.id} "
+                    f"(v{video_artifact.version})"
                 )
 
             # Invalidate any previously pending or approved requests for this item
@@ -240,9 +241,7 @@ class ApprovalService:
             # Advance ContentItem to AWAITING_APPROVAL
             if item.status is ContentStatus.TESTING:
                 prev_updated = item.updated_at
-                item = item.with_status(
-                    ContentStatus.PREVIEW_READY, clock=self._clock
-                )
+                item = item.with_status(ContentStatus.PREVIEW_READY, clock=self._clock)
                 items_repo.update(item, expected_updated_at=prev_updated)
             if item.status is ContentStatus.PREVIEW_READY:
                 prev_updated = item.updated_at
@@ -420,7 +419,8 @@ class ApprovalService:
                         },
                     )
                     raise ApprovalStateError(
-                        f"approval {request.id} is stale for artifact kinds: {kinds_str}"
+                        f"approval {request.id} is stale for artifact kinds: "
+                        f"{kinds_str}"
                     )
 
                 try:
@@ -684,7 +684,7 @@ class ApprovalService:
     ) -> list[ApprovalRequest]:
         """Expire any PENDING or APPROVED request past ``self.ttl`` at ``at`` (#142)."""
         now = at if at is not None else self._now()
-        expired_list: list[ tuple[ApprovalRequest, ApprovalStatus] ] = []
+        expired_list: list[tuple[ApprovalRequest, ApprovalStatus]] = []
         with self._database.transaction() as conn:
             items_repo = ContentItemRepository(conn)
             approvals_repo = ApprovalRequestRepository(conn)
@@ -721,7 +721,10 @@ class ApprovalService:
         recipient_email: str | None = None,
         base_url: str | None = None,
     ) -> ApprovalDecisionResult:
-        """Revalidate an expired or active request against current artifacts and QC (#142)."""
+        """Revalidate an expired or active request against current artifacts and QC.
+
+        (#142)
+        """
         with self._database.transaction() as conn:
             approvals_repo = ApprovalRequestRepository(conn)
             items_repo = ContentItemRepository(conn)
@@ -745,7 +748,8 @@ class ApprovalService:
             if stale:
                 kinds_str = ", ".join(k.value for k in stale)
                 raise ApprovalStateError(
-                    f"cannot revalidate approval {prior.id}; artifacts changed for: {kinds_str}"
+                    f"cannot revalidate approval {prior.id}; "
+                    f"artifacts changed for: {kinds_str}"
                 )
 
             latest_artifacts = _latest_artifacts_by_kind(all_artifacts)
@@ -765,7 +769,8 @@ class ApprovalService:
                 )
             if video_artifact.id not in latest_qc.artifact_ids:
                 raise ApprovalStateError(
-                    f"latest QC result {latest_qc.id} does not cover video {video_artifact.id}"
+                    f"latest QC result {latest_qc.id} does not cover "
+                    f"video {video_artifact.id}"
                 )
 
             if prior.status in EXPIRABLE:

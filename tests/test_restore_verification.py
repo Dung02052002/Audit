@@ -25,7 +25,7 @@ from ai_youtube_agent.content.strategy import (
     Pillar,
     StrategyProfile,
 )
-from ai_youtube_agent.core.artifact import ArtifactKind
+from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.backup_plan import BackupManager
@@ -93,11 +93,13 @@ def test_full_non_production_backup_and_restore_verification(
         b"\x00\x00\x00\x18ftypmp42restore-test-video-bytes",
         media_type="video/mp4",
     )
-    video_art = stored_video.to_artifact(
+    video_art = Artifact.create(
         item.id,
         ArtifactKind.VIDEO,
-        1,
-        "video/mp4",
+        uri=stored_video.uri,
+        sha256=stored_video.sha256,
+        size_bytes=stored_video.size_bytes,
+        media_type="video/mp4",
         clock=_FixedClock(t0),
     )
     approval = ApprovalRequest.create(

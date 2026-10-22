@@ -1,4 +1,6 @@
-"""LongForm Artifact Bundle (Prompt Pack v8, prompt J-114), context C9 LongForm Production.
+"""LongForm Artifact Bundle.
+
+(Prompt Pack v8, prompt J-114), context C9 LongForm Production.
 
 ``LongFormBundleBuilder`` packages and cross-validates the complete deliverable
 bundle for a ``LongFormProject`` (#105):
@@ -27,16 +29,14 @@ bundle for a ``LongFormProject`` (#105):
 
 import hashlib
 import json
-import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, Final
 
 from ai_youtube_agent.content.longform_metadata import (
-    METADATA_MEDIA_TYPE,
     LongFormMetadata,
 )
 from ai_youtube_agent.content.longform_project import (
@@ -45,33 +45,24 @@ from ai_youtube_agent.content.longform_project import (
 )
 from ai_youtube_agent.content.longform_render import (
     JOB_KIND as RENDER_JOB_KIND,
-    MP4_MEDIA_TYPE,
+)
+from ai_youtube_agent.content.longform_render import (
     RENDERED_STEP,
 )
 from ai_youtube_agent.content.longform_script_generator import LongFormDisabledError
 from ai_youtube_agent.content.longform_service import (
-    LongFormProjectNotFoundError,
     longform_project_is_current,
     longform_readiness,
 )
 from ai_youtube_agent.content.longform_thumbnail import (
-    ImageInfo,
     probe_longform_image,
 )
-from ai_youtube_agent.content.policy_check import (
-    PolicyChecker,
-    PolicyInput,
-    PolicyStatus,
-)
 from ai_youtube_agent.content.policy_report import (
-    FindingReport,
     PolicyReport,
     PolicyReporter,
-    RuleOutcomeReport,
 )
 from ai_youtube_agent.content.policy_rule import RuleSet
 from ai_youtube_agent.content.rights_report import RightsReport, RightsReporter
-from ai_youtube_agent.content.text_prompts import banned_phrases
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage
 from ai_youtube_agent.core.audit import (
@@ -79,12 +70,9 @@ from ai_youtube_agent.core.audit import (
     AuditLog,
     AuditResult,
     EntityRef,
-    MetadataValue,
 )
 from ai_youtube_agent.core.config import Settings
-from ai_youtube_agent.core.content_item import ContentItem
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
     ContentItemRepository,
@@ -94,7 +82,7 @@ from ai_youtube_agent.core.db.repositories.longform import LongFormProjectReposi
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
-from ai_youtube_agent.providers.video_render import Mp4Info, probe_mp4
+from ai_youtube_agent.providers.video_render import probe_mp4
 
 BUNDLE_BUILT: Final[str] = "longform.bundle_built"
 BUNDLE_SCHEMA_VERSION: Final[str] = "longform-bundle-v1"
@@ -138,12 +126,8 @@ USER_MESSAGES: Final[dict[LongFormBundleErrorCode, str]] = {
     LongFormBundleErrorCode.VIDEO_STALE: (
         "The rendered MP4 video does not match the current LongForm timeline."
     ),
-    LongFormBundleErrorCode.VIDEO_INVALID: (
-        "The rendered MP4 video file is invalid."
-    ),
-    LongFormBundleErrorCode.SUBTITLES_MISSING: (
-        "The subtitles artifact is missing."
-    ),
+    LongFormBundleErrorCode.VIDEO_INVALID: ("The rendered MP4 video file is invalid."),
+    LongFormBundleErrorCode.SUBTITLES_MISSING: ("The subtitles artifact is missing."),
     LongFormBundleErrorCode.SUBTITLES_STALE: (
         "The subtitles artifact does not match the current LongForm captions."
     ),
@@ -259,9 +243,7 @@ class LongFormBundleBuilder:
         self._rights_reporter = rights_reporter or RightsReporter(
             database, settings, clock=clock
         )
-        self._policy_reporter = policy_reporter or PolicyReporter(
-            database, clock=clock
-        )
+        self._policy_reporter = policy_reporter or PolicyReporter(database, clock=clock)
         self._flags = (
             flags if flags is not None else FeatureFlags(longform_enabled=True)
         )
@@ -300,7 +282,10 @@ class LongFormBundleBuilder:
                     f"project {project_id} is stale",
                     code=LongFormBundleErrorCode.STALE_INPUT,
                 )
-            if longform_readiness(project.config, project.timeline) != LongFormProjectStatus.READY:
+            if (
+                longform_readiness(project.config, project.timeline)
+                != LongFormProjectStatus.READY
+            ):
                 raise LongFormBundleError(
                     f"project {project_id} is not in READY status",
                     code=LongFormBundleErrorCode.PROJECT_NOT_READY,
@@ -471,10 +456,22 @@ class LongFormBundleBuilder:
             "content_item_id": item.id,
             "channel_id": item.channel_id,
             "artifacts": {
-                "audio": {"id": audio.id, "version": audio.version, "sha256": audio.sha256},
-                "video": {"id": video.id, "version": video.version, "sha256": video.sha256},
+                "audio": {
+                    "id": audio.id,
+                    "version": audio.version,
+                    "sha256": audio.sha256,
+                },
+                "video": {
+                    "id": video.id,
+                    "version": video.version,
+                    "sha256": video.sha256,
+                },
                 "subtitles": (
-                    {"id": subtitles.id, "version": subtitles.version, "sha256": subtitles.sha256}
+                    {
+                        "id": subtitles.id,
+                        "version": subtitles.version,
+                        "sha256": subtitles.sha256,
+                    }
                     if subtitles
                     else None
                 ),
@@ -492,7 +489,7 @@ class LongFormBundleBuilder:
             "video_info": {
                 "duration_ms": mp4_info.duration_ms,
                 "timescale": mp4_info.timescale,
-                "major_brand": mp4_info.major_brand,
+                "major_brand": mp4_info.brands[0],
             },
             "reports": {
                 "rights_gate_blocks": rights_report.gate.blocks,
@@ -543,7 +540,10 @@ class LongFormBundleBuilder:
                 f"artifact file {artifact.uri} could not be read: {error}",
                 code=LongFormBundleErrorCode.ARTIFACT_CORRUPTED,
             ) from error
-        if len(data) != artifact.size_bytes or hashlib.sha256(data).hexdigest() != artifact.sha256:
+        if (
+            len(data) != artifact.size_bytes
+            or hashlib.sha256(data).hexdigest() != artifact.sha256
+        ):
             raise LongFormBundleError(
                 f"artifact {artifact.id} data corrupted or size mismatch",
                 code=LongFormBundleErrorCode.ARTIFACT_CORRUPTED,

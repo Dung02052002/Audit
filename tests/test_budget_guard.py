@@ -43,9 +43,7 @@ class TestBudgetGuard:
             monthly_limit=Decimal("50.00"),
             alert_thresholds=(50, 80, 100),
         )
-        profile = dataclasses.replace(
-            make_strategy_profile(channel), budget=budget
-        )
+        profile = dataclasses.replace(make_strategy_profile(channel), budget=budget)
         with database.transaction() as connection:
             ChannelRepository(connection).add(channel)
             StrategyProfileRepository(connection).add(profile)
@@ -55,7 +53,8 @@ class TestBudgetGuard:
         ledger = CostLedger(database, audit, clock=lambda: NOW)
         guard = BudgetGuard(database, audit, clock=lambda: NOW)
 
-        # Spend 20.00 earlier this month + 5.00 today -> daily=5.00 (50%), monthly=25.00 (50%)
+        # Spend 20.00 earlier this month + 5.00 today -> daily=5.00 (50%),
+        # monthly=25.00 (50%)
         with database.transaction() as connection:
             CostRecordRepository(connection).add(
                 CostRecord.create(
@@ -77,9 +76,7 @@ class TestBudgetGuard:
         )
 
         # Projecting +3.00 -> projected daily=8.00 (80%), projected monthly=28.00 (56%)
-        status = guard.enforce(
-            channel.id, estimated_additional_cost=Decimal("3.00")
-        )
+        status = guard.enforce(channel.id, estimated_additional_cost=Decimal("3.00"))
         assert status.allowed is True
         assert status.daily_spend == Decimal("5.000000")
         assert status.monthly_spend == Decimal("25.000000")
@@ -89,9 +86,7 @@ class TestBudgetGuard:
         assert status.monthly_remaining == Decimal("22.000000")
 
         # Triggered alerts: daily 50% and 80%, monthly 50%
-        alert_pairs = [
-            (a.window, a.threshold_percent) for a in status.alerts
-        ]
+        alert_pairs = [(a.window, a.threshold_percent) for a in status.alerts]
         assert alert_pairs == [
             (BudgetWindowKind.DAILY, 50),
             (BudgetWindowKind.DAILY, 80),
@@ -99,11 +94,10 @@ class TestBudgetGuard:
         ]
         assert sink.entries[-1].action == BUDGET_ALERT_TRIGGERED
 
-        # Projecting +6.00 -> projected daily=11.00 > 10.00 -> blocked with budget.projected_daily_exceeded
+        # Projecting +6.00 -> projected daily=11.00 > 10.00 -> blocked with
+        # budget.projected_daily_exceeded
         with pytest.raises(BudgetGuardBlockedError) as exc_proj:
-            guard.enforce(
-                channel.id, estimated_additional_cost=Decimal("6.00")
-            )
+            guard.enforce(channel.id, estimated_additional_cost=Decimal("6.00"))
         assert [r.code for r in exc_proj.value.status.blocking_reasons] == [
             "budget.projected_daily_exceeded"
         ]
@@ -120,9 +114,7 @@ class TestBudgetGuard:
             monthly_limit=Decimal("10.00"),
             alert_thresholds=(50, 100),
         )
-        profile = dataclasses.replace(
-            make_strategy_profile(channel), budget=budget
-        )
+        profile = dataclasses.replace(make_strategy_profile(channel), budget=budget)
         with database.transaction() as connection:
             ChannelRepository(connection).add(channel)
             StrategyProfileRepository(connection).add(profile)
@@ -171,15 +163,11 @@ class TestBudgetGuard:
                 )
             )
 
-        guard = BudgetGuard(
-            database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW
-        )
+        guard = BudgetGuard(database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW)
         with pytest.raises(BudgetGuardError) as exc_nb:
             guard.evaluate(ch_no_budget.id)
         assert exc_nb.value.guard_code is BudgetGuardErrorCode.NO_BUDGET
 
         with pytest.raises(BudgetGuardError) as exc_curr:
             guard.evaluate(ch_mismatch.id)
-        assert (
-            exc_curr.value.guard_code is BudgetGuardErrorCode.CURRENCY_MISMATCH
-        )
+        assert exc_curr.value.guard_code is BudgetGuardErrorCode.CURRENCY_MISMATCH

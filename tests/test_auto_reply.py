@@ -9,7 +9,6 @@ from ai_youtube_agent.content.auto_reply import (
     AUTO_REPLY_POSTED,
     AutoReplyDisabledError,
     AutoReplyErrorCode,
-    AutoReplyGuard,
     AutoReplyService,
 )
 from ai_youtube_agent.content.channel import ChannelStatus
@@ -73,17 +72,13 @@ class TestAutoReplyFlagEnforcement:
             ),
         )
         oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
-        oauth.seed_token(
-            channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL})
-        )
+        oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}))
         sink = InMemoryAuditSink()
         audit = AuditLog(sink, clock=lambda: NOW)
         text_gen = MockTextGenerator(clock=lambda: NOW)
         text_gen.queue("Any low-cost SIPC-insured brokerage works great!")
 
-        draft_svc = ReplyDraftService(
-            database, text_gen, audit, clock=lambda: NOW
-        )
+        draft_svc = ReplyDraftService(database, text_gen, audit, clock=lambda: NOW)
         approval_svc = ReplyApprovalService(
             database,
             provider,
@@ -107,7 +102,8 @@ class TestAutoReplyFlagEnforcement:
         assert outcome.draft.youtube_reply_id is None
         assert provider.post_calls == 0
 
-        # 2. Direct auto_post_draft call is blocked with AutoReplyDisabledError and audited DENIED
+        # 2. Direct auto_post_draft call is blocked with AutoReplyDisabledError and
+        # audited DENIED
         with pytest.raises(AutoReplyDisabledError) as exc_off:
             auto_svc.auto_post_draft(outcome.draft.id)
         assert exc_off.value.auto_reply_code is AutoReplyErrorCode.DISABLED
@@ -115,7 +111,8 @@ class TestAutoReplyFlagEnforcement:
         assert sink.events()[-1].result is AuditResult.DENIED
         assert provider.post_calls == 0
 
-        # 3. When AUTO_REPLY_ENABLED=True is explicitly configured, auto_post_draft posts
+        # 3. When AUTO_REPLY_ENABLED=True is explicitly configured, auto_post_draft
+        # posts
         enabled_svc = AutoReplyService(
             database,
             draft_svc,
@@ -172,7 +169,4 @@ class TestAutoReplyFlagEnforcement:
         )
         with pytest.raises(AutoReplyDisabledError) as exc_mod:
             enabled_svc.auto_post_draft(manual_draft.draft.id)
-        assert (
-            exc_mod.value.auto_reply_code
-            is AutoReplyErrorCode.MODERATION_BLOCKED
-        )
+        assert exc_mod.value.auto_reply_code is AutoReplyErrorCode.MODERATION_BLOCKED

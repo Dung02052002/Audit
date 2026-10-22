@@ -55,9 +55,7 @@ Clock = Callable[[], datetime]
 CLASSIFICATION_RULES_VERSION: Final[str] = "comment-rules-v1"
 COMMENT_CLASSIFIED: Final[str] = "comment.classified"
 COMMENT_ENTITY: Final[str] = "comment"
-DEFAULT_CLASSIFIER_ACTOR: Final[Actor] = Actor(
-    ActorKind.AI, "comment_classifier"
-)
+DEFAULT_CLASSIFIER_ACTOR: Final[Actor] = Actor(ActorKind.AI, "comment_classifier")
 
 _URL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"(?:https?://|www\.|[a-z0-9-]+\.(?:com|net|org|io|me|gg|xyz|ly|co)/)",
@@ -132,9 +130,7 @@ class CommentClassificationError(DomainError):
     ]
     default_http_status = HTTPStatus.NOT_FOUND
 
-    def __init__(
-        self, code: CommentClassificationErrorCode, detail: str
-    ) -> None:
+    def __init__(self, code: CommentClassificationErrorCode, detail: str) -> None:
         if not isinstance(code, CommentClassificationErrorCode):
             raise TypeError("code must be a CommentClassificationErrorCode")
         self.classification_code = code
@@ -201,7 +197,8 @@ def evaluate_comment_rules(
     *,
     banned_phrases: Sequence[str] = (),
 ) -> ClassificationDecision:
-    """Evaluate deterministic classification rules on ``text`` without echoing content."""
+    """Evaluate deterministic classification rules on ``text`` without echoing
+    content."""
     lowered = text.lower()
     stripped = lowered.strip()
 
@@ -234,7 +231,10 @@ def evaluate_comment_rules(
             return ClassificationDecision(
                 label=CommentLabel.NEEDS_ATTENTION,
                 rule_code="attention.viewer_report",
-                rationale="reports a technical, factual, or business inquiry needing creator attention",
+                rationale=(
+                    "reports a technical, factual, or business inquiry needing creator "
+                    "attention"
+                ),
             )
 
     if "?" in stripped or any(q in lowered for q in _QUESTION_STARTERS):
@@ -274,10 +274,9 @@ class CommentClassifier:
         rationale: str | None = None,
         force: bool = False,
     ) -> CommentClassificationOutcome:
-        """Classify a single stored ``Comment`` and persist a ``CommentClassification``."""
-        if override_label is not None and not isinstance(
-            override_label, CommentLabel
-        ):
+        """Classify a single stored ``Comment`` and persist a
+        ``CommentClassification``."""
+        if override_label is not None and not isinstance(override_label, CommentLabel):
             raise TypeError("override_label must be a CommentLabel or None")
         if rationale is not None and (
             not isinstance(rationale, str) or not rationale.strip()
@@ -300,9 +299,7 @@ class CommentClassifier:
                 comment.channel_id
             )
             banned_phrases = (
-                strategy.brand.banned_phrases
-                if strategy and strategy.brand
-                else ()
+                strategy.brand.banned_phrases if strategy and strategy.brand else ()
             )
             if override_label is not None:
                 decision = ClassificationDecision(
@@ -414,17 +411,15 @@ class CommentClassifier:
             by_label=by_label,
         )
 
-    def latest_for_comment(
-        self, comment_id: str
-    ) -> CommentClassification | None:
-        """Return the newest ``CommentClassification`` for ``comment_id``, or ``None``."""
+    def latest_for_comment(self, comment_id: str) -> CommentClassification | None:
+        """Return the newest ``CommentClassification`` for ``comment_id``, or
+        ``None``."""
         history = self.history_for_comment(comment_id)
         return history[-1] if history else None
 
-    def history_for_comment(
-        self, comment_id: str
-    ) -> list[CommentClassification]:
-        """Return all stored ``CommentClassification`` rows for ``comment_id`` in chronological order."""
+    def history_for_comment(self, comment_id: str) -> list[CommentClassification]:
+        """Return all stored ``CommentClassification`` rows for ``comment_id`` in
+        chronological order."""
         connection = self._database.connect()
         try:
             repo = CommentRepository(connection)
@@ -444,7 +439,8 @@ class CommentClassifier:
         *,
         youtube_video_id: str | None = None,
     ) -> list[tuple[Comment, CommentClassification]]:
-        """List comments on ``channel_id`` whose latest classification matches ``label``."""
+        """List comments on ``channel_id`` whose latest classification matches
+        ``label``."""
         if not isinstance(label, CommentLabel):
             raise TypeError("label must be a CommentLabel")
         connection = self._database.connect()

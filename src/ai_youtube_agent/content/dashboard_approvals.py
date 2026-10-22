@@ -1,4 +1,5 @@
-"""Approval Center UI view and service (Prompt Pack v8, prompt Q-200), context X3 Command Center.
+"""Approval Center UI view and service (Prompt Pack v8, prompt Q-200), context X3
+Command Center.
 
 Builds the Command Center Approval Center UI view model and iOS-style HTML
 rendering, presenting:
@@ -43,6 +44,7 @@ from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.audit import Actor, AuditLog
 from ai_youtube_agent.core.content_item import ContentItem
 from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
@@ -136,16 +138,15 @@ class ApprovalCenterView:
             "rejected_or_changes_count": self.rejected_or_changes_count,
             "expired_or_invalidated_count": self.expired_or_invalidated_count,
             "pending_approvals": [a.as_dict() for a in self.pending_approvals],
-            "historical_approvals": [
-                a.as_dict() for a in self.historical_approvals
-            ],
+            "historical_approvals": [a.as_dict() for a in self.historical_approvals],
             "all_approvals": [a.as_dict() for a in self.all_approvals],
             "empty_message": self.empty_message,
         }
 
 
 class ApprovalCenterService:
-    """Builds the Approval Center UI view model, renders HTML, and delegates human decisions."""
+    """Builds the Approval Center UI view model, renders HTML, and delegates human
+    decisions."""
 
     def __init__(
         self,
@@ -160,7 +161,10 @@ class ApprovalCenterService:
         self._clock = clock
         self._ttl = ttl
         self._approval_service = approval_service or ApprovalService(
-            database, AuditLog(database), ttl=ttl, clock=clock
+            database,
+            AuditLog(SqliteAuditSink(database), clock=clock),
+            ttl=ttl,
+            clock=clock,
         )
         self._shell_service = shell_service or DashboardShellService(
             database, clock=clock
@@ -196,7 +200,10 @@ class ApprovalCenterService:
                     pending_approvals=(),
                     historical_approvals=(),
                     all_approvals=(),
-                    empty_message="No pending approvals or channel configured yet. Create a channel to review approvals.",
+                    empty_message=(
+                        "No pending approvals or channel configured yet. Create a "
+                        "channel to review approvals."
+                    ),
                 )
 
             items = ContentItemRepository(connection).list_by_channel(
@@ -244,14 +251,10 @@ class ApprovalCenterService:
             )
 
         pending_list = tuple(
-            q
-            for q in queue_items
-            if q.approval_status == ApprovalStatus.PENDING.value
+            q for q in queue_items if q.approval_status == ApprovalStatus.PENDING.value
         )
         historical_list = tuple(
-            q
-            for q in queue_items
-            if q.approval_status != ApprovalStatus.PENDING.value
+            q for q in queue_items if q.approval_status != ApprovalStatus.PENDING.value
         )
 
         return ApprovalCenterView(
@@ -320,11 +323,13 @@ class ApprovalCenterService:
     def render_html(self, view: ApprovalCenterView) -> str:
         pending_rows = "".join(
             f'<tr data-approval-id="{html.escape(q.approval_request_id)}">'
-            f'<td><a href="{html.escape(q.detail_href)}">{html.escape(q.title)}</a></td>'
+            f"<td><a "
+            f'href="{html.escape(q.detail_href)}">{html.escape(q.title)}</a></td>'
             f"<td>{html.escape(q.content_type)}</td>"
             f"<td>v{q.video_version if q.video_version is not None else '—'}</td>"
             f"<td><code>{html.escape((q.video_sha256 or '')[:12] or '—')}</code></td>"
-            f'<td><span class="yt-pill yt-pill--{q.tone.value}">{html.escape(q.approval_status)}</span>'
+            f'<td><span class="yt-pill '
+            f'yt-pill--{q.tone.value}">{html.escape(q.approval_status)}</span>'
             + (
                 ' <span class="yt-pill yt-pill--danger">STALE</span>'
                 if q.is_stale
@@ -351,12 +356,14 @@ class ApprovalCenterService:
             f"<tr><td>{html.escape(q.title)}</td>"
             f"<td>v{q.video_version if q.video_version is not None else '—'}</td>"
             f"<td><code>{html.escape((q.video_sha256 or '')[:12] or '—')}</code></td>"
-            f'<td><span class="yt-pill yt-pill--{q.tone.value}">{html.escape(q.approval_status)}</span></td></tr>'
+            f'<td><span class="yt-pill yt-pill--{q.tone.value}">'
+            f"{html.escape(q.approval_status)}</span></td></tr>"
             for q in view.historical_approvals
         )
         history_html = (
             '<table class="yt-table" data-testid="approvals-history-table">'
-            "<thead><tr><th>Title</th><th>Video Version</th><th>Video SHA-256</th><th>Status</th></tr></thead>"
+            "<thead><tr><th>Title</th><th>Video Version</th><th>Video "
+            "SHA-256</th><th>Status</th></tr></thead>"
             f"<tbody>{history_rows}</tbody></table>"
             if history_rows
             else '<p class="yt-empty">No past approval decisions yet.</p>'
@@ -371,7 +378,9 @@ class ApprovalCenterService:
       </div>
       <span class="yt-pill yt-pill--warning">{view.pending_count} pending</span>
     </div>
-    <p class="yt-card__subtitle">Pending: {view.pending_count} · Approved: {view.approved_count} · Rejected/Changes: {view.rejected_or_changes_count} · Expired/Invalidated: {view.expired_or_invalidated_count}</p>
+    <p class="yt-card__subtitle">Pending: {view.pending_count} · Approved: \
+{view.approved_count} · Rejected/Changes: {view.rejected_or_changes_count} · \
+Expired/Invalidated: {view.expired_or_invalidated_count}</p>
     {pending_html}
   </section>
 
@@ -381,7 +390,8 @@ class ApprovalCenterService:
         <p class="yt-card__subtitle">Decision Log</p>
         <h2 class="yt-card__title">Approval History</h2>
       </div>
-      <span class="yt-pill yt-pill--neutral">{len(view.historical_approvals)} records</span>
+      <span class="yt-pill yt-pill--neutral">{len(view.historical_approvals)} \
+records</span>
     </div>
     {history_html}
   </section>
@@ -443,4 +453,3 @@ def _to_queue_item(
         created_at=req.created_at,
         detail_href=f"/content/{item.id}",
     )
-

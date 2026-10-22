@@ -1,4 +1,5 @@
-"""Storage and external API cost recorder (Prompt Pack v8, prompt #178), context C14 Economics.
+"""Storage and external API cost recorder (Prompt Pack v8, prompt #178), context C14
+Economics.
 
 ``StorageApiCostRecorder`` computes and records configured ``CostCategory.STORAGE``
 and ``CostCategory.API`` contribution costs into ``CostLedger`` (#174):
@@ -34,9 +35,7 @@ from ai_youtube_agent.core.errors import DomainError
 
 BYTES_PER_GIB: Final[Decimal] = Decimal(1_073_741_824)
 REQUESTS_PER_UNIT: Final[Decimal] = Decimal(1000)
-STORAGE_API_COST_ACTOR: Final[Actor] = Actor(
-    ActorKind.SYSTEM, "storage_api_cost"
-)
+STORAGE_API_COST_ACTOR: Final[Actor] = Actor(ActorKind.SYSTEM, "storage_api_cost")
 
 
 class StorageApiCostErrorCode(StrEnum):
@@ -66,9 +65,7 @@ _STATUS: Final[dict[StorageApiCostErrorCode, HTTPStatus]] = {
 
 class StorageApiCostError(DomainError):
     default_code = StorageApiCostErrorCode.INVALID_STORAGE_BYTES.value
-    default_user_message = USER_MESSAGES[
-        StorageApiCostErrorCode.INVALID_STORAGE_BYTES
-    ]
+    default_user_message = USER_MESSAGES[StorageApiCostErrorCode.INVALID_STORAGE_BYTES]
     default_http_status = HTTPStatus.UNPROCESSABLE_ENTITY
 
     def __init__(self, code: StorageApiCostErrorCode, detail: str) -> None:
@@ -104,7 +101,11 @@ class StoragePricingPolicy:
             )
 
     def compute_amount(self, size_bytes: int) -> Decimal:
-        if isinstance(size_bytes, bool) or not isinstance(size_bytes, int) or size_bytes < 1:
+        if (
+            isinstance(size_bytes, bool)
+            or not isinstance(size_bytes, int)
+            or size_bytes < 1
+        ):
             raise StorageApiCostError(
                 StorageApiCostErrorCode.INVALID_STORAGE_BYTES,
                 "size_bytes must be a positive integer",
@@ -126,9 +127,7 @@ class ApiPricingPolicy:
     operation_rates: Mapping[str, Decimal] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        _check_non_negative_decimal(
-            "price_per_1k_requests", self.price_per_1k_requests
-        )
+        _check_non_negative_decimal("price_per_1k_requests", self.price_per_1k_requests)
         if not isinstance(self.currency, str) or not CURRENCY_PATTERN.match(
             self.currency
         ):
@@ -151,13 +150,9 @@ class ApiPricingPolicy:
                 StorageApiCostErrorCode.INVALID_OPERATION,
                 "operation must be a non-empty string when given",
             )
-        return self.operation_rates.get(
-            operation.strip(), self.price_per_1k_requests
-        )
+        return self.operation_rates.get(operation.strip(), self.price_per_1k_requests)
 
-    def compute_amount(
-        self, requests: int, *, operation: str | None = None
-    ) -> Decimal:
+    def compute_amount(self, requests: int, *, operation: str | None = None) -> Decimal:
         if isinstance(requests, bool) or not isinstance(requests, int) or requests < 1:
             raise StorageApiCostError(
                 StorageApiCostErrorCode.INVALID_API_REQUESTS,
@@ -171,14 +166,13 @@ class ApiPricingPolicy:
         return {
             "price_per_1k_requests": str(self.price_per_1k_requests),
             "currency": self.currency,
-            "operation_rates": {
-                k: str(v) for k, v in self.operation_rates.items()
-            },
+            "operation_rates": {k: str(v) for k, v in self.operation_rates.items()},
         }
 
 
 class StorageApiCostRecorder:
-    """Records configured ``CostCategory.STORAGE`` and ``CostCategory.API`` costs into ``CostLedger``."""
+    """Records configured ``CostCategory.STORAGE`` and ``CostCategory.API`` costs into
+    ``CostLedger``."""
 
     def __init__(
         self,
@@ -215,7 +209,8 @@ class StorageApiCostRecorder:
         provider: str = "local_storage",
         actor: Actor = STORAGE_API_COST_ACTOR,
     ) -> CostLedgerEntry:
-        """Record the storage cost of an ``Artifact`` idempotently by ``storage:{artifact.id}``."""
+        """Record the storage cost of an ``Artifact`` idempotently by
+        ``storage:{artifact.id}``."""
         if not isinstance(artifact, Artifact):
             raise TypeError("artifact must be an Artifact")
         return self.record_storage_bytes(
@@ -262,7 +257,8 @@ class StorageApiCostRecorder:
         ref: str | None = None,
         actor: Actor = STORAGE_API_COST_ACTOR,
     ) -> CostLedgerEntry:
-        """Compute and record a ``CostCategory.API`` entry for ``requests`` external API calls."""
+        """Compute and record a ``CostCategory.API`` entry for ``requests`` external API
+        calls."""
         amount = self._api_policy.compute_amount(requests, operation=operation)
         meta: dict[str, MetadataValue] = {"requests": requests}
         if operation is not None:

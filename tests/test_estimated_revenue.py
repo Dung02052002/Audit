@@ -40,7 +40,7 @@ from ai_youtube_agent.pipeline.publish_result import PublishResultService
 from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
 from ai_youtube_agent.providers.mock_revenue import MockRevenueProvider
 from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvider
-from ai_youtube_agent.providers.revenue import RevenueErrorCode, RevenueProviderError
+from ai_youtube_agent.providers.revenue import RevenueErrorCode
 from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthError
 from factories import (
     USER,
@@ -297,8 +297,7 @@ class TestChannelEstimatedRevenueSync:
                 actor=USER,
             )
         assert (
-            exc_info.value.revenue_code
-            is EstimatedRevenueErrorCode.PERIOD_NOT_STARTED
+            exc_info.value.revenue_code is EstimatedRevenueErrorCode.PERIOD_NOT_STARTED
         )
 
 

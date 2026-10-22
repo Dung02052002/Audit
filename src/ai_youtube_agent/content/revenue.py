@@ -30,8 +30,11 @@ from typing import Any
 
 from ai_youtube_agent.content.analytics import SOURCE_PATTERN as DATA_SOURCE_PATTERN
 from ai_youtube_agent.content.analytics import MetricScope
-from ai_youtube_agent.content.strategy import CURRENCY_PATTERN, RevenueSource
+from ai_youtube_agent.content.strategy import CURRENCY_PATTERN
 from ai_youtube_agent.content.strategy import SOURCE_PATTERN as REVENUE_TYPE_PATTERN
+from ai_youtube_agent.content.strategy import (
+    RevenueSource as RevenueSource,  # noqa: F401, re-export
+)
 
 Clock = Callable[[], datetime]
 

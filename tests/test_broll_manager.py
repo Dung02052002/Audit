@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from tests.test_longform_project import USER, Clock, _seed_longform_item
 
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
@@ -20,13 +21,11 @@ from ai_youtube_agent.content.longform_service import (
 )
 from ai_youtube_agent.content.provenance_recorder import ProvenanceRecorder
 from ai_youtube_agent.content.rights import RightsRecord, RiskLevel
-from ai_youtube_agent.content.shorts_timeline import AssetRole
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.migrate import migrate
 from ai_youtube_agent.core.db.repositories.review import RightsRecordRepository
 from ai_youtube_agent.core.flags import FeatureFlags
-from tests.test_longform_project import USER, Clock, _seed_longform_item
 
 
 def test_broll_manager_auto_assigns_backgrounds_and_promotes_to_ready(
@@ -45,8 +44,11 @@ def test_broll_manager_auto_assigns_backgrounds_and_promotes_to_ready(
 
     project = service.create(item.id, actor=USER)
     planned = service.plan(project.id, expected_version=1, actor=USER)
-    captioned = service.caption(
+    chaptered = service.generate_chapters(
         project.id, expected_version=planned.version, actor=USER
+    )
+    captioned = service.caption(
+        project.id, expected_version=chaptered.version, actor=USER
     )
 
     registry = AssetRegistry(database, audit, clock=clock)
@@ -54,29 +56,38 @@ def test_broll_manager_auto_assigns_backgrounds_and_promotes_to_ready(
 
     clip_a = registry.register(
         channel.id,
-        kind=AssetKind.VIDEO,
-        category=AssetCategory.THIRD_PARTY_LICENSED,
+        kind=AssetKind.VIDEO_CLIP,
+        category=AssetCategory.LICENSED,
         title="Tokamak Clip A",
         source="https://assets.example/tokamak-a.mp4",
         license_ref="CC-BY-4.0",
         attribution="Lab A",
         actor=USER,
-    ).asset
+    )
     clip_b = registry.register(
         channel.id,
         kind=AssetKind.IMAGE,
-        category=AssetCategory.ORIGINAL,
+        category=AssetCategory.USER_OWNED,
+        owner="producer",
         title="Diagram B",
         source="https://assets.example/diagram-b.png",
         actor=USER,
-    ).asset
+    )
     registry.attach(clip_a.id, item.id, purpose="b-roll", actor=USER)
     registry.attach(clip_b.id, item.id, purpose="b-roll", actor=USER)
+    # Attaching creates an UNKNOWN (blocking) rights record; assess both as low.
+    with database.transaction() as conn:
+        rights_repo = RightsRecordRepository(conn)
+        for record in rights_repo.list_by_content_item(item.id):
+            rights_repo.update(
+                record.with_risk_level(RiskLevel.LOW, clock=clock),
+                expected_updated_at=record.updated_at,
+            )
     prov_a = provenance_recorder.record(
         clip_a.id,
         source_url="https://assets.example/tokamak-a.mp4",
         license_name="CC-BY-4.0",
-        attribution_text="Lab A",
+        attribution="Lab A",
         actor=USER,
     )
 
@@ -85,9 +96,7 @@ def test_broll_manager_auto_assigns_backgrounds_and_promotes_to_ready(
     )
 
     assert ready.status is LongFormProjectStatus.READY
-    assigned_ids = [
-        scene.assets[0].asset_id for scene in ready.timeline.scenes
-    ]
+    assigned_ids = [scene.assets[0].asset_id for scene in ready.timeline.scenes]
     assert assigned_ids == [
         clip_a.id,
         clip_b.id,
@@ -99,7 +108,7 @@ def test_broll_manager_auto_assigns_backgrounds_and_promotes_to_ready(
     ]
     assert ready.timeline.scenes[0].assets[0].provenance_id == prov_a.id
 
-    events = [e for e in sink.events if e.action == BROLL_ASSIGNED]
+    events = [e for e in sink.events() if e.action == BROLL_ASSIGNED]
     assert len(events) == 1
     assert events[0].metadata["mode"] == "auto"
     assert events[0].metadata["assigned_count"] == 7
@@ -125,12 +134,13 @@ def test_broll_manager_refuses_blocked_or_unattached_assets(
     registry = AssetRegistry(database, audit, clock=clock)
     unattached = registry.register(
         channel.id,
-        kind=AssetKind.VIDEO,
-        category=AssetCategory.ORIGINAL,
+        kind=AssetKind.VIDEO_CLIP,
+        category=AssetCategory.USER_OWNED,
+        owner="producer",
         title="Unattached Clip",
         source="https://assets.example/unattached.mp4",
         actor=USER,
-    ).asset
+    )
 
     with pytest.raises(LongFormProjectError) as exc_info:
         broll.assign(
@@ -148,7 +158,7 @@ def test_broll_manager_refuses_blocked_or_unattached_assets(
         unattached.id,
         source="https://assets.example/unattached.mp4",
         clock=clock,
-    ).assess(RiskLevel.HIGH, clock=clock)
+    ).with_risk_level(RiskLevel.HIGH, clock=clock)
     with database.transaction() as conn:
         RightsRecordRepository(conn).add(record)
 
@@ -173,7 +183,4 @@ def test_broll_manager_refuses_when_longform_disabled(tmp_path: Path) -> None:
     )
 
     with pytest.raises(LongFormDisabledError):
-        broll.auto_assign_backgrounds(
-            "project-1", expected_version=1, actor=USER
-        )
-
+        broll.auto_assign_backgrounds("project-1", expected_version=1, actor=USER)

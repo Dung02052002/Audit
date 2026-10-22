@@ -1,5 +1,7 @@
-"""L-141..L-144 Approval Tests: request changes, expiry/revalidation, audit trail, stale approval & version invalidation."""
+"""L-141..L-144 Approval Tests: request changes, expiry/revalidation, audit trail, stale
+approval & version invalidation."""
 
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -11,14 +13,12 @@ from ai_youtube_agent.content.approval import (
     ApprovalExpiredError,
     ApprovalNotAllowedError,
     ApprovalReasonRequiredError,
-    ApprovalStateError,
     ApprovalStatus,
 )
 from ai_youtube_agent.content.approval_audit import (
     APPROVAL_APPROVED,
     APPROVAL_CHANGES_REQUESTED,
     APPROVAL_EXPIRED,
-    APPROVAL_REJECTED,
     APPROVAL_REQUESTED,
     APPROVAL_REVALIDATED,
     ApprovalAuditService,
@@ -28,6 +28,7 @@ from ai_youtube_agent.content.qc_regression import build_shorts_qc_fixture
 from ai_youtube_agent.content.qc_report import QCReportBuilder
 from ai_youtube_agent.core.approval_gate import ApprovalGate
 from ai_youtube_agent.core.artifact import ArtifactKind
+from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, AuditSink
 from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.core.content_item import ContentStatus
@@ -59,12 +60,7 @@ class MutableClock:
         return self.now
 
 
-from ai_youtube_agent.core.artifact_storage import LocalFileStorage
-
-
-def _prepare_shorts_ready_for_approval(
-    database: Database, tmp_path: Path
-):
+def _prepare_shorts_ready_for_approval(database: Database, tmp_path: Path):
     storage = LocalFileStorage(tmp_path / "artifacts")
     fixture = build_shorts_qc_fixture(database, storage)
     container = build_container(
@@ -75,17 +71,19 @@ def _prepare_shorts_ready_for_approval(
         )
     )
     qc_builder = container.resolve(QCReportBuilder)
-    qc_builder.evaluate(fixture.item.id, actor=USER)
+    qc_builder.generate(fixture.item.id, actor=USER)
     with database.transaction() as conn:
         items = ContentItemRepository(conn)
         item = items.get(fixture.item.id)
         assert item is not None
-        prev = item.updated_at
-        item = item.with_status(ContentStatus.TESTING)
-        items.update(item, expected_updated_at=prev)
-        prev = item.updated_at
-        item = item.with_status(ContentStatus.PREVIEW_READY)
-        items.update(item, expected_updated_at=prev)
+        for status in (
+            ContentStatus.GENERATING,
+            ContentStatus.TESTING,
+            ContentStatus.PREVIEW_READY,
+        ):
+            prev = item.updated_at
+            item = item.with_status(status)
+            items.update(item, expected_updated_at=prev)
     return fixture, container
 
 
@@ -118,18 +116,20 @@ def test_request_changes_transitions_to_changes_requested_and_generating(
 
     # ApprovalGate blocks publishing when latest request is changes_requested
     with database.transaction() as conn:
-        gate = ApprovalGate(
-            ApprovalRequestRepository(conn), ArtifactRepository(conn)
-        )
+        gate = ApprovalGate(ApprovalRequestRepository(conn), ArtifactRepository(conn))
         res = gate.evaluate(
             GateContext(
-                changed.content_item,
+                # Only an approved item may ask to publish; the newest request
+                # is the changes_requested one, so the gate must block.
+                dataclasses.replace(
+                    changed.content_item, status=ContentStatus.APPROVED
+                ),
                 ContentStatus.PUBLISHING,
                 USER,
                 datetime.now(UTC),
             )
         )
-    assert res.is_blocked
+    assert not res.is_passed
     assert [r.code for r in res.reasons] == ["approval.not_approved"]
 
     trail = audit_service.trail_for_request(req_id)
@@ -180,7 +180,8 @@ def test_approval_expiry_and_revalidation_workflow(
     assert approved.approval.status is ApprovalStatus.APPROVED
     assert approved.content_item.status is ContentStatus.APPROVED
 
-    # Advance clock past TTL after approval: ApprovalGate with ttl blocks as approval.expired
+    # Advance clock past TTL after approval: ApprovalGate with ttl blocks as
+    # approval.expired
     clock.advance(timedelta(hours=25))
     with database.transaction() as conn:
         gate = ApprovalGate(
@@ -196,13 +197,11 @@ def test_approval_expiry_and_revalidation_workflow(
                 clock.now,
             )
         )
-    assert gate_res.is_blocked
+    assert not gate_res.is_passed
     assert [r.code for r in gate_res.reasons] == ["approval.expired"]
 
     # expire_stale transitions the expired APPROVED request to EXPIRED
-    expired_list = service.expire_stale(
-        fixture.item.id, actor=SYSTEM, at=clock.now
-    )
+    expired_list = service.expire_stale(fixture.item.id, actor=SYSTEM, at=clock.now)
     assert len(expired_list) == 1
     assert expired_list[0].id == new_req_id
     assert expired_list[0].status is ApprovalStatus.EXPIRED
@@ -228,7 +227,8 @@ def test_stale_approval_and_version_invalidation_blocks_publish(
     approved = service.approve(created.approval.id, actor=USER)
     assert approved.approval.status is ApprovalStatus.APPROVED
 
-    # Storing a new VIDEO artifact version invalidates the approval and moves item to GENERATING
+    # Storing a new VIDEO artifact version invalidates the approval and moves item to
+    # GENERATING
     invalidation = VersionInvalidation(database, container.resolve(AuditLog))
     new_video = fixture.video_artifact.next_version(
         uri="file:///d:/Project_Audit/data/artifacts/v2.mp4",
@@ -237,8 +237,8 @@ def test_stale_approval_and_version_invalidation_blocks_publish(
         media_type="video/mp4",
     )
     inv_result = invalidation.store_artifact_version(new_video)
-    assert approved.approval.id in [r.id for r in inv_result.invalidated_requests]
-    assert inv_result.content_item.status is ContentStatus.GENERATING
+    assert approved.approval.id in [r.approval.id for r in inv_result.invalidated]
+    assert inv_result.item.status is ContentStatus.GENERATING
 
     reloaded_req = service.get(approved.approval.id)
     assert reloaded_req.status is ApprovalStatus.INVALIDATED
@@ -274,14 +274,10 @@ def test_approval_api_request_changes_expire_revalidate_and_audit_routes(
     assert audit_req_resp.status_code == 200
     assert audit_req_resp.json()["total_events"] >= 2
 
-    audit_item_resp = client.get(
-        f"/approvals/by-item/{fixture.item.id}/audit"
-    )
+    audit_item_resp = client.get(f"/approvals/by-item/{fixture.item.id}/audit")
     assert audit_item_resp.status_code == 200
     assert audit_item_resp.json()["content_item_id"] == fixture.item.id
 
-    expire_resp = client.post(
-        f"/approvals/by-item/{fixture.item.id}/expire"
-    )
+    expire_resp = client.post(f"/approvals/by-item/{fixture.item.id}/expire")
     assert expire_resp.status_code == 200
     assert expire_resp.json()["expired_count"] == 0

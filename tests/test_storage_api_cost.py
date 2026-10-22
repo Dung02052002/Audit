@@ -63,9 +63,7 @@ class TestStorageApiCostRecorder:
 
         # 0.5 GiB storage -> 0.5 * 0.040 = 0.020000
         half_gib = int(BYTES_PER_GIB) // 2
-        video_art = make_artifact(
-            item, ArtifactKind.VIDEO, size_bytes=half_gib
-        )
+        video_art = make_artifact(item, ArtifactKind.VIDEO, size_bytes=half_gib)
         st_entry = recorder.record_artifact_storage(channel.id, video_art)
         assert st_entry.created is True
         assert st_entry.cost.category is CostCategory.STORAGE
@@ -112,9 +110,7 @@ class TestStorageApiCostRecorder:
             ChannelRepository(connection).add(channel)
             StrategyProfileRepository(connection).add(profile)
 
-        ledger = CostLedger(
-            database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW
-        )
+        ledger = CostLedger(database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW)
         recorder = StorageApiCostRecorder(ledger)
 
         with pytest.raises(StorageApiCostError) as exc_bytes:
@@ -122,24 +118,15 @@ class TestStorageApiCostRecorder:
                 channel.id, provider="local_storage", size_bytes=0
             )
         assert (
-            exc_bytes.value.cost_code
-            is StorageApiCostErrorCode.INVALID_STORAGE_BYTES
+            exc_bytes.value.cost_code is StorageApiCostErrorCode.INVALID_STORAGE_BYTES
         )
 
         with pytest.raises(StorageApiCostError) as exc_req:
-            recorder.record_api_calls(
-                channel.id, provider="ext_api", requests=0
-            )
-        assert (
-            exc_req.value.cost_code
-            is StorageApiCostErrorCode.INVALID_API_REQUESTS
-        )
+            recorder.record_api_calls(channel.id, provider="ext_api", requests=0)
+        assert exc_req.value.cost_code is StorageApiCostErrorCode.INVALID_API_REQUESTS
 
         with pytest.raises(StorageApiCostError) as exc_op:
             recorder.record_api_calls(
                 channel.id, provider="ext_api", requests=1, operation="   "
             )
-        assert (
-            exc_op.value.cost_code
-            is StorageApiCostErrorCode.INVALID_OPERATION
-        )
+        assert exc_op.value.cost_code is StorageApiCostErrorCode.INVALID_OPERATION

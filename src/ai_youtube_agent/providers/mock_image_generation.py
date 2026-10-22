@@ -5,7 +5,8 @@ illustrations in pure Python without paid external APIs:
 - Preserves location color continuity by deriving background/stage bands from
   ``request.palette_rgb`` (or ``request.location_id``).
 - Preserves character and shot distinction by deriving foreground composition
-  bands from ``request.character_ids``, ``request.shot_id``, and ``request.prompt_hash``.
+  bands from ``request.character_ids``, ``request.shot_id``, and
+  ``request.prompt_hash``.
 - Produces valid PNGs at ``1080x1920`` (Shorts 9:16) or ``1920x1080`` (LongForm 16:9)
   that pass ``probe_image`` and FFmpeg rendering.
 """
@@ -45,7 +46,7 @@ def synthesize_scene_png(request: ImageGenerationRequest) -> bytes:
     height = request.height
 
     loc_seed = hashlib.sha256(
-        f"loc|{request.location_id}|{request.style}".encode("utf-8")
+        f"loc|{request.location_id}|{request.style}".encode()
     ).digest()
     shot_seed = hashlib.sha256(request.prompt_hash.encode("utf-8")).digest()
 
@@ -194,4 +195,3 @@ class DeterministicSceneImageGenerator:
                 "scene image generator is unhealthy",
                 provider=self.name,
             )
-

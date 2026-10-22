@@ -39,7 +39,7 @@ def test_graceful_shutdown_checkpoints_running_jobs_and_stops_sessions(
     audit = AuditLog(sink)
     queue = SqliteJobQueue(database, clock=_FixedClock(t0))
 
-    session = Session.start(user, clock=_FixedClock(t0))
+    session = Session.start(actor=user, clock=_FixedClock(t0))
     running_job = AIJob.create(
         "content.generate",
         "gen:shutdown-1",

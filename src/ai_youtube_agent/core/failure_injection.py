@@ -178,7 +178,10 @@ class FailureInjector:
         operation: str = "transaction",
         fail_before_commit: bool = False,
     ) -> Iterator[sqlite3.Connection]:
-        """Run a ``Database.transaction()`` that injects faults before or after SQL work."""
+        """Run a ``Database.transaction()`` that injects faults.
+
+        Faults are injected before or after SQL work.
+        """
         if not fail_before_commit:
             self.maybe_trip(FaultTarget.DATABASE, operation)
         with database.transaction() as conn:

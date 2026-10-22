@@ -20,9 +20,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from factories import T0, USER, at, make_approval_request
-from test_shorts_captions import CONFIG, RULES, cap, timeline_of
-from test_shorts_scene import Stage
 
 from ai_youtube_agent.content import shorts_subtitles
 from ai_youtube_agent.content.approval import ApprovalStatus
@@ -55,6 +52,9 @@ from ai_youtube_agent.core.audit import AuditLog, AuditResult, InMemoryAuditSink
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.content import ArtifactRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
+from factories import T0, USER, at, make_approval_request
+from test_shorts_captions import CONFIG, RULES, cap, timeline_of
+from test_shorts_scene import Stage
 
 Code = ShortsSubtitleErrorCode
 T1 = T0 + timedelta(hours=1)
@@ -104,7 +104,11 @@ def test_srt_wraps_like_the_screen() -> None:
 
 def test_srt_keeps_vietnamese_text_in_nfc() -> None:
     decomposed = unicodedata.normalize("NFD", "Xin chào các bạn")
-    timeline = timeline_of(cap(1, "s1", decomposed, 0, 2000))
+    # The caption model refuses decomposed text, so no NFD reaches the SRT.
+    with pytest.raises(ValueError, match="NFC"):
+        cap(1, "s1", decomposed, 0, 2000)
+    composed = unicodedata.normalize("NFC", decomposed)
+    timeline = timeline_of(cap(1, "s1", composed, 0, 2000))
 
     srt = render_srt(timeline, RULES)
 
@@ -376,7 +380,12 @@ def test_a_project_without_captions_is_refused(
     database: Database, tmp_path: Path
 ) -> None:
     shop = Shop(database, tmp_path)
-    shop.project = shop.stage.project
+    shop.project = shop.service.save_timeline(
+        shop.project.id,
+        dataclasses.replace(shop.project.timeline, captions=()),
+        expected_version=shop.project.version,
+        actor=USER,
+    )
 
     refused(shop.record, Code.NO_CAPTIONS)
     shop.nothing_stored()

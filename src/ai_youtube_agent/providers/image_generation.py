@@ -103,7 +103,8 @@ class ImageGenerationRequest:
             or not (MIN_IMAGE_DIMENSION <= self.width <= MAX_IMAGE_DIMENSION)
         ):
             raise ValueError(
-                f"width must be an int between {MIN_IMAGE_DIMENSION} and {MAX_IMAGE_DIMENSION}"
+                f"width must be an int between {MIN_IMAGE_DIMENSION} and "
+                f"{MAX_IMAGE_DIMENSION}"
             )
         if (
             isinstance(self.height, bool)
@@ -111,7 +112,8 @@ class ImageGenerationRequest:
             or not (MIN_IMAGE_DIMENSION <= self.height <= MAX_IMAGE_DIMENSION)
         ):
             raise ValueError(
-                f"height must be an int between {MIN_IMAGE_DIMENSION} and {MAX_IMAGE_DIMENSION}"
+                f"height must be an int between {MIN_IMAGE_DIMENSION} and "
+                f"{MAX_IMAGE_DIMENSION}"
             )
 
     @property
@@ -184,4 +186,3 @@ class ImageGenerator(Protocol):
     def generate(self, request: ImageGenerationRequest) -> GeneratedImage: ...
 
     def check(self) -> None: ...
-

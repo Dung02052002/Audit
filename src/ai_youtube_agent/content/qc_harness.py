@@ -2,7 +2,8 @@
 
 ``VideoArtifactTestHarness`` provides a reusable, extensible inspection harness
 for rendered video artifacts:
-- Registers and runs discrete ``VideoCheck`` functions against a ``VideoInspectionContext``.
+- Registers and runs discrete ``VideoCheck`` functions against a
+  ``VideoInspectionContext``.
 - Integrates the Phase K video and artifact checks:
   - ``video.container`` (#117)
   - ``video.resolution`` (#118)
@@ -56,7 +57,6 @@ from ai_youtube_agent.core.audit import (
 )
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.asset import AssetRepository
 from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
@@ -91,7 +91,9 @@ class QCHarnessErrorCode(StrEnum):
 USER_MESSAGES: Final[dict[QCHarnessErrorCode, str]] = {
     QCHarnessErrorCode.HARNESS: "The video QC inspection could not be completed.",
     QCHarnessErrorCode.ITEM_NOT_FOUND: "The content item does not exist.",
-    QCHarnessErrorCode.VIDEO_MISSING: "No rendered video artifact exists for this item.",
+    QCHarnessErrorCode.VIDEO_MISSING: (
+        "No rendered video artifact exists for this item."
+    ),
     QCHarnessErrorCode.VIDEO_CORRUPTED: "The video artifact data could not be read.",
     QCHarnessErrorCode.STRATEGY_MISSING: (
         "The channel has no strategy profile format settings."

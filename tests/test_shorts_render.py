@@ -25,10 +25,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from factories import USER, at, make_approval_request, make_audio_metadata, make_channel
-from test_audio_mix import tone
-from test_shorts_audio_mix import DURATION_MS, T1, VOICE_RATE, FakeSource, Shop
-from test_shorts_project import World
 
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
@@ -92,6 +88,10 @@ from ai_youtube_agent.providers.video_render import (
     VideoRenderError,
     probe_mp4,
 )
+from factories import USER, at, make_approval_request, make_audio_metadata, make_channel
+from test_audio_mix import tone
+from test_shorts_audio_mix import DURATION_MS, T1, VOICE_RATE, FakeSource, Shop
+from test_shorts_project import World
 
 Code = ShortsRenderErrorCode
 

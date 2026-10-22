@@ -1,4 +1,6 @@
-"""YouTube OAuth / token provider contract (Prompt Pack v8, prompt #145), context C12 Publishing.
+"""YouTube OAuth / token provider contract.
+
+(Prompt Pack v8, prompt #145), context C12 Publishing.
 
 Defines the secure OAuth/token interface for YouTube operations:
 
@@ -122,7 +124,9 @@ class OAuthToken:
             raise TypeError("access_token must be a SecretStr")
         raw_access = self.access_token.get_secret_value()
         if not raw_access or any(ch.isspace() for ch in raw_access):
-            raise ValueError("access_token must be a non-empty token without whitespace")
+            raise ValueError(
+                "access_token must be a non-empty token without whitespace"
+            )
         if self.refresh_token is not None:
             if not isinstance(self.refresh_token, SecretStr):
                 raise TypeError("refresh_token must be a SecretStr or None")
@@ -135,9 +139,13 @@ class OAuthToken:
             raise ValueError("scopes must be a non-empty frozenset of OAuthScope")
         if any(not isinstance(scope, OAuthScope) for scope in self.scopes):
             raise TypeError("scopes must contain OAuthScope values")
-        if not isinstance(self.issued_at, datetime) or self.issued_at.utcoffset() != timedelta(0):
+        if not isinstance(
+            self.issued_at, datetime
+        ) or self.issued_at.utcoffset() != timedelta(0):
             raise ValueError("issued_at must be timezone-aware UTC")
-        if not isinstance(self.expires_at, datetime) or self.expires_at.utcoffset() != timedelta(0):
+        if not isinstance(
+            self.expires_at, datetime
+        ) or self.expires_at.utcoffset() != timedelta(0):
             raise ValueError("expires_at must be timezone-aware UTC")
         if self.expires_at <= self.issued_at:
             raise ValueError("expires_at must be strictly after issued_at")
@@ -147,7 +155,11 @@ class OAuthToken:
     def is_expired(self, now: datetime, *, skew_seconds: int = 60) -> bool:
         if not isinstance(now, datetime) or now.utcoffset() != timedelta(0):
             raise ValueError("now must be timezone-aware UTC")
-        if isinstance(skew_seconds, bool) or not isinstance(skew_seconds, int) or skew_seconds < 0:
+        if (
+            isinstance(skew_seconds, bool)
+            or not isinstance(skew_seconds, int)
+            or skew_seconds < 0
+        ):
             raise ValueError("skew_seconds must be a non-negative integer")
         return now + timedelta(seconds=skew_seconds) >= self.expires_at
 
@@ -168,7 +180,8 @@ class OAuthToken:
         if self.is_expired(now, skew_seconds=skew_seconds):
             raise YouTubeOAuthError(
                 OAuthErrorCode.TOKEN_EXPIRED,
-                f"OAuth token for channel {self.channel_id} expired at {self.expires_at.isoformat()}",
+                f"OAuth token for channel {self.channel_id} expired at "
+                f"{self.expires_at.isoformat()}",
                 provider=provider,
             )
         req_tuple = tuple(required_scopes)
@@ -176,12 +189,16 @@ class OAuthToken:
             missing = sorted(s.value for s in set(req_tuple) - self.scopes)
             raise YouTubeOAuthError(
                 OAuthErrorCode.INSUFFICIENT_SCOPE,
-                f"OAuth token for channel {self.channel_id} is missing scopes: {', '.join(missing)}",
+                f"OAuth token for channel {self.channel_id} is missing scopes: "
+                f"{', '.join(missing)}",
                 provider=provider,
             )
 
     def redacted_dict(self) -> dict[str, Any]:
-        """Return safe metadata without ever exposing access or refresh token secrets."""
+        """Return safe metadata.
+
+        Never exposes access or refresh token secrets.
+        """
         return {
             "channel_id": self.channel_id,
             "token_type": self.token_type,
@@ -209,3 +226,32 @@ class YouTubeOAuthProvider(Protocol):
     def revoke_token(self, channel_id: str) -> None: ...
 
     def check(self) -> None: ...
+
+
+def get_or_renew_token(
+    oauth: YouTubeOAuthProvider,
+    channel_id: str,
+    *,
+    required_scopes: Iterable[OAuthScope] = (),
+) -> OAuthToken:
+    """Return a valid token, renewing an expired one once through the refresh grant.
+
+    Only ``TOKEN_EXPIRED`` triggers a refresh; the renewed token is checked for the
+    required scopes. Every other OAuth error propagates unchanged.
+    """
+    scopes = tuple(required_scopes)
+    try:
+        return oauth.get_token(channel_id, required_scopes=scopes)
+    except YouTubeOAuthError as error:
+        if error.oauth_code is not OAuthErrorCode.TOKEN_EXPIRED:
+            raise
+    token = oauth.refresh_token(channel_id)
+    if not token.has_scopes(scopes):
+        missing = sorted(s.value for s in set(scopes) - token.scopes)
+        raise YouTubeOAuthError(
+            OAuthErrorCode.INSUFFICIENT_SCOPE,
+            f"OAuth token for channel {channel_id} is missing scopes: "
+            f"{', '.join(missing)}",
+            provider=oauth.name,
+        )
+    return token

@@ -1,4 +1,6 @@
-"""Tests for finalized revenue sync, freshness, and reconciliation (O-172, prompt #172)."""
+"""Tests for finalized revenue sync, freshness, and reconciliation (O-172, prompt
+#172).
+"""
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -33,7 +35,6 @@ from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
     ContentItemRepository,
 )
-from ai_youtube_agent.core.db.repositories.economics import RevenueRecordRepository
 from ai_youtube_agent.core.db.repositories.publish import PublishJobRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
 from ai_youtube_agent.pipeline.publish import PublishJob

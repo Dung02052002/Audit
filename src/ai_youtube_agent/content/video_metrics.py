@@ -55,7 +55,11 @@ from ai_youtube_agent.providers.analytics import (
     AnalyticsProvider,
     AnalyticsQuery,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 Clock = Callable[[], datetime]
 
@@ -120,7 +124,9 @@ class VideoMetricsResult:
             "created_count": self.created_count,
             "unchanged_count": self.unchanged_count,
             "pages": self.pages,
-            "data_through": self.data_through.isoformat() if self.data_through else None,
+            "data_through": self.data_through.isoformat()
+            if self.data_through
+            else None,
             "complete": self.complete,
         }
 
@@ -140,7 +146,9 @@ class VideoMetricsSync:
         clock: Clock | None = None,
     ) -> None:
         if isinstance(page_size, bool) or not 1 <= page_size <= MAX_VIDEO_IDS:
-            raise ValueError(f"page_size must be a whole number from 1 to {MAX_VIDEO_IDS}")
+            raise ValueError(
+                f"page_size must be a whole number from 1 to {MAX_VIDEO_IDS}"
+            )
         self._page_size = page_size
         self._database = database
         self._provider = provider
@@ -172,15 +180,19 @@ class VideoMetricsSync:
         }
         wanted = self._select(published, video_ids)
         eligible = tuple(
-            video_id for video_id in wanted if published[video_id].published_at < period_end
+            video_id
+            for video_id in wanted
+            if published[video_id].published_at < period_end
         )
         skipped = tuple(video_id for video_id in wanted if video_id not in eligible)
 
         rows: dict[str, dict[str, Decimal]] = {}
         pages: list[AnalyticsPage] = []
         if eligible:
-            token = self._oauth.get_token(
-                channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
+            token = get_or_renew_token(
+                self._oauth,
+                channel.id,
+                required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,),
             )
             for start in range(0, len(eligible), MAX_VIDEO_IDS):
                 chunk = eligible[start : start + MAX_VIDEO_IDS]
@@ -195,7 +207,9 @@ class VideoMetricsSync:
                     pages,
                 )
 
-        outcomes, no_data = self._store(channel.id, eligible, rows, pages, requested_metrics)
+        outcomes, no_data = self._store(
+            channel.id, eligible, rows, pages, requested_metrics
+        )
         through = _earliest(page.data_through for page in pages) if pages else None
         complete = bool(pages) and all(
             page.data_through is not None and page.data_through >= period_end
@@ -308,12 +322,16 @@ class VideoMetricsSync:
                     continue
                 same_period = [
                     stored
-                    for stored in repository.list_by_subject(MetricScope.VIDEO, video_id)
+                    for stored in repository.list_by_subject(
+                        MetricScope.VIDEO, video_id
+                    )
                     if stored.source == first.source
                     and stored.period_start == first.period_start
                     and stored.period_end == first.period_end
                 ]
-                missing = tuple(name for name in requested_metrics if name not in values)
+                missing = tuple(
+                    name for name in requested_metrics if name not in values
+                )
                 if same_period and dict(same_period[-1].metrics) == values:
                     outcomes.append(
                         VideoSnapshotOutcome(video_id, same_period[-1], False, missing)

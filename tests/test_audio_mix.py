@@ -131,7 +131,8 @@ def test_encoding_rounds_half_to_even_and_clamps() -> None:
     pcm = pcm_of([0.5 / FULL, 1.5 / FULL, 2.0, -2.0])
 
     values = array("h")
-    values.frombytes(wave.open(io.BytesIO(encode_wav(pcm))).readframes(4))
+    with wave.open(io.BytesIO(encode_wav(pcm))) as reader:
+        values.frombytes(reader.readframes(4))
 
     assert list(values) == [0, 2, 32767, -32768]
 
@@ -199,7 +200,9 @@ def test_pcm_needs_whole_frames_and_a_supported_rate() -> None:
 @pytest.mark.parametrize(("rate", "channels"), [(8000, 1), (16000, 2), (44100, 2)])
 def test_output_has_the_format_and_exact_length_of_the_voice(rate, channels) -> None:
     frames = rate * 1234 // 1000 + 1  # an awkward length
-    voice = pcm_of([0.1 * ((i % 7) - 3) for i in range(frames * channels)], rate, channels)
+    voice = pcm_of(
+        [0.1 * ((i % 7) - 3) for i in range(frames * channels)], rate, channels
+    )
     other = tone(900, rate=22050, ch=1)
 
     result = mix_audio(voice, [track(MixRole.MUSIC, other)])
@@ -216,7 +219,9 @@ def test_mono_track_is_duplicated_for_a_stereo_voice() -> None:
 
     out = out_of(result)
     assert out.channels == 2
-    assert out.samples[100 * 2] == out.samples[100 * 2 + 1] == pytest.approx(0.4, abs=1e-3)
+    assert (
+        out.samples[100 * 2] == out.samples[100 * 2 + 1] == pytest.approx(0.4, abs=1e-3)
+    )
 
 
 def test_stereo_track_is_averaged_for_a_mono_voice() -> None:
@@ -242,9 +247,7 @@ def test_resampling_keeps_the_duration_and_the_level() -> None:
 def test_linear_resampling_interpolates_between_samples() -> None:
     ramp = pcm_of([0.0, 0.5] * 4000, rate=8000)  # 1 s
 
-    result = mix_audio(
-        silence(1000, rate=16000), [track(pcm=ramp, gain_db=0)], FLAT
-    )
+    result = mix_audio(silence(1000, rate=16000), [track(pcm=ramp, gain_db=0)], FLAT)
 
     out = out_of(result)
     assert out.samples[1] == pytest.approx(0.25, abs=1e-3)
@@ -302,7 +305,9 @@ def test_a_short_effect_does_not_warn() -> None:
 
 def test_a_track_past_the_voice_end_is_clipped_with_a_warning() -> None:
     result = mix_audio(
-        silence(1000), [track(pcm=dc(5000, 0.4), end_ms=4000, gain_db=0, label="x")], FLAT
+        silence(1000),
+        [track(pcm=dc(5000, 0.4), end_ms=4000, gain_db=0, label="x")],
+        FLAT,
     )
 
     assert out_of(result).frames == RATE
@@ -399,7 +404,9 @@ def test_fades_are_clamped_to_half_the_span() -> None:
         FLAT,
     )
 
-    assert sample_at(result, 500) == pytest.approx(0.5, abs=0.01)  # the two fades meet where both are full
+    assert sample_at(result, 500) == pytest.approx(
+        0.5, abs=0.01
+    )  # the two fades meet where both are full
     assert sample_at(result, 250) < 0.5
 
 
@@ -442,7 +449,9 @@ def test_ducking_depth_follows_the_constraint() -> None:
         ducking_voice(), [track(MixRole.MUSIC, dc(6000, 0.5), gain_db=0)], constraints
     )
 
-    assert sample_at(result, 3000) == pytest.approx(0.5 * 10 ** (-6 / 20) + 0.02, abs=0.01)
+    assert sample_at(result, 3000) == pytest.approx(
+        0.5 * 10 ** (-6 / 20) + 0.02, abs=0.01
+    )
 
 
 def test_music_is_not_ducked_in_silence() -> None:
@@ -554,7 +563,11 @@ def test_a_report_has_plain_numbers_for_the_audit() -> None:
 
 def test_too_many_tracks_or_too_much_audio_is_refused() -> None:
     with pytest.raises(MixInputError):
-        mix_audio(silence(1000), [track(label=f"t{n}") for n in range(3)], MixConstraints(max_tracks=2))
+        mix_audio(
+            silence(1000),
+            [track(label=f"t{n}") for n in range(3)],
+            MixConstraints(max_tracks=2),
+        )
     with pytest.raises(MixInputError):
         mix_audio(silence(2000), [], MixConstraints(max_total_seconds=1))
 

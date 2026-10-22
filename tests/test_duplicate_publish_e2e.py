@@ -3,6 +3,7 @@ idempotently replayed (same approval) or hard-blocked (same video bytes on chann
 """
 
 import json
+
 import pytest
 
 from ai_youtube_agent.content.approval import ApprovalRequest
@@ -37,6 +38,16 @@ from publish_helpers import (
 )
 
 
+def _stored_status(database: Database, item_id: str) -> ContentStatus:
+    connection = database.connect()
+    try:
+        item = ContentItemRepository(connection).get(item_id)
+    finally:
+        connection.close()
+    assert item is not None
+    return item.status
+
+
 def test_duplicate_publish_replays_same_approval_and_blocks_same_video_bytes(
     database: Database, tmp_path
 ) -> None:
@@ -55,13 +66,14 @@ def test_duplicate_publish_replays_same_approval_and_blocks_same_video_bytes(
     # 1. First publish succeeds and uploads once
     first = publisher.publish(seed.item.id, actor=SYSTEM)
     assert first.replayed is False
-    assert first.item.status is ContentStatus.PUBLISHED
+    assert _stored_status(database, seed.item.id) is ContentStatus.PUBLISHED
     assert len(pub.uploader.uploads) == 1
 
-    # 2. Second publish of the same item & approval replays idempotently without uploading
+    # 2. Second publish of the same item & approval replays idempotently without
+    # uploading
     second = publisher.publish(seed.item.id, actor=SYSTEM)
     assert second.replayed is True
-    assert second.result.youtube_video_id == first.result.youtube_video_id
+    assert second.job.result.youtube_video_id == first.job.result.youtube_video_id
     assert len(pub.uploader.uploads) == 1
     assert any(e.action == PUBLISH_REPLAYED for e in pub.sink.events())
 

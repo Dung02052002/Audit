@@ -22,8 +22,6 @@ from ai_youtube_agent.content.comment_classifier import (
     CommentClassifier,
 )
 from ai_youtube_agent.content.duplicate_reply_guard import (
-    REPLY_DUPLICATE_BLOCKED,
-    DuplicateReplyError,
     DuplicateReplyGuard,
 )
 from ai_youtube_agent.content.reply_approval import (

@@ -6,19 +6,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from tests.factories import make_strategy_profile
 
 from ai_youtube_agent.content.channel import (
     Channel,
     ChannelStatus,
     YouTubeIdentifiers,
 )
-from ai_youtube_agent.core.artifact import ArtifactKind
+from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.backup_plan import BackupError, BackupManager
 from ai_youtube_agent.core.content_item import ContentItem, ContentType
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
+from ai_youtube_agent.core.db.repositories.channel import (
+    ChannelRepository,
+    StrategyProfileRepository,
+)
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
     ContentItemRepository,
@@ -43,10 +47,11 @@ def test_backup_manager_creates_consistent_db_and_artifact_bundle(
         YouTubeIdentifiers("UC1234567890123456789012", "@backupch"),
         clock=_FixedClock(t0),
     ).with_status(ChannelStatus.ACTIVE, clock=_FixedClock(t0))
+    profile = make_strategy_profile(ch)
     item = ContentItem.create(
         ch.id,
-        "sp-1",
-        1,
+        profile.id,
+        profile.version,
         ContentType.SHORTS,
         "Backed Up Short",
         clock=_FixedClock(t0),
@@ -59,16 +64,19 @@ def test_backup_manager_creates_consistent_db_and_artifact_bundle(
         b"1\n00:00:00,000 --> 00:00:02,000\nBackup subtitle line\n",
         media_type="application/x-subrip",
     )
-    artifact = stored_file.to_artifact(
+    artifact = Artifact.create(
         item.id,
         ArtifactKind.SUBTITLES,
-        1,
-        "application/x-subrip",
+        uri=stored_file.uri,
+        sha256=stored_file.sha256,
+        size_bytes=stored_file.size_bytes,
+        media_type="application/x-subrip",
         clock=_FixedClock(t0),
     )
 
     with database.transaction() as conn:
         ChannelRepository(conn).add(ch)
+        StrategyProfileRepository(conn).add(profile)
         ContentItemRepository(conn).add(item)
         ArtifactRepository(conn).add(artifact)
 

@@ -1,4 +1,5 @@
-"""Unified contribution cost ledger (Prompt Pack v8, prompt #174), context C14 Economics.
+"""Unified contribution cost ledger (Prompt Pack v8, prompt #174), context C14
+Economics.
 
 ``CostLedger`` records and aggregates all tracked contribution costs across
 ``CostCategory`` (``production``, ``api``, ``tts``, ``render``, ``storage``, ``llm``):
@@ -21,7 +22,7 @@
 import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from http import HTTPStatus
@@ -55,7 +56,8 @@ COST_AMOUNT_STEP: Final[Decimal] = Decimal("0.000001")
 
 
 def quantize_cost_amount(value: Decimal) -> Decimal:
-    """Round a non-negative finite ``Decimal`` cost amount half-up to 6 decimal places."""
+    """Round a non-negative finite ``Decimal`` cost amount half-up to 6 decimal
+    places."""
     if (
         isinstance(value, bool)
         or not isinstance(value, Decimal)
@@ -176,7 +178,8 @@ class CostLedger:
         actor: Actor = SYSTEM_LEDGER_ACTOR,
         extra_metadata: Mapping[str, MetadataValue] | None = None,
     ) -> CostLedgerEntry:
-        """Record a contribution cost in ``cost_records``, idempotently when ``ref`` is set."""
+        """Record a contribution cost in ``cost_records``, idempotently when ``ref`` is
+        set."""
         if not isinstance(category, CostCategory):
             raise TypeError("category must be a CostCategory")
         rounded = quantize_cost_amount(amount)
@@ -194,7 +197,8 @@ class CostLedger:
                     if existing.channel_id != channel_id:
                         raise CostLedgerError(
                             CostLedgerErrorCode.CHANNEL_MISMATCH,
-                            f"cost ref {ref!r} in category {category.value} belongs to channel {existing.channel_id}",
+                            f"cost ref {ref!r} in category {category.value} belongs to "
+                            f"channel {existing.channel_id}",
                         )
                     return CostLedgerEntry(existing, False)
             cost = CostRecord.create(
@@ -373,7 +377,8 @@ class CostLedger:
         end: datetime | None = None,
         content_item_id: str | None = None,
     ) -> CostLedgerSummary:
-        """Aggregate tracked contribution costs for ``channel_id`` (and optional item/window)."""
+        """Aggregate tracked contribution costs for ``channel_id`` (and optional
+        item/window)."""
         records = self.list_for_channel(
             channel_id,
             start=start,
@@ -445,12 +450,14 @@ class CostLedger:
             if item.channel_id != channel_id:
                 raise CostLedgerError(
                     CostLedgerErrorCode.CHANNEL_MISMATCH,
-                    f"content item {content_item_id} belongs to channel {item.channel_id}, not {channel_id}",
+                    f"content item {content_item_id} belongs to channel "
+                    f"{item.channel_id}, not {channel_id}",
                 )
         strategy = StrategyProfileRepository(connection).get_by_channel(channel_id)
         budget = strategy.budget if strategy else None
         if budget is not None and budget.currency != currency:
             raise CostLedgerError(
                 CostLedgerErrorCode.CURRENCY_MISMATCH,
-                f"cost currency {currency} differs from channel budget currency {budget.currency}",
+                f"cost currency {currency} differs from channel budget currency "
+                f"{budget.currency}",
             )

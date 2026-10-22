@@ -418,9 +418,7 @@ class OrchestratorAuditService:
             return True
         if event.metadata.get("job_id") == job.id:
             return True
-        if event.job_id == job.id:
-            return True
-        return False
+        return event.job_id == job.id
 
     @staticmethod
     def _match_session_job(

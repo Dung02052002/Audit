@@ -16,6 +16,7 @@ Implements the ``change -> rerender -> retest -> new preview`` workflow (#136):
    ``PreviewSnapshot``, ``QCReport``, and ``VersionComparisonResult``.
 """
 
+import contextlib
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -25,6 +26,9 @@ from http import HTTPStatus
 from typing import Any, Final
 
 from ai_youtube_agent.content.longform_metadata import LongFormMetadata
+from ai_youtube_agent.content.longform_thumbnail import (
+    generate_longform_thumbnail_png,
+)
 from ai_youtube_agent.content.policy_check import (
     PolicyChecker,
     PolicyInput,
@@ -182,7 +186,8 @@ class PreviewEditChanges:
 
 @dataclass(frozen=True)
 class PreviewEditLoopResult:
-    """Outcome of a completed ``change -> rerender -> retest -> new preview`` cycle (#136)."""
+    """Outcome of a completed ``change -> rerender -> retest -> new preview`` cycle
+    (#136)."""
 
     item: ContentItem
     previous_video_version: int
@@ -244,7 +249,8 @@ class PreviewEditLoopService:
         *,
         actor: Actor,
     ) -> PreviewEditLoopResult:
-        """Execute ``change -> rerender -> retest -> new preview`` for ``content_item_id``."""
+        """Execute ``change -> rerender -> retest -> new preview`` for
+        ``content_item_id``."""
         if not isinstance(actor, Actor):
             raise TypeError("actor must be an Actor")
         if actor.kind is ActorKind.AI:
@@ -268,7 +274,8 @@ class PreviewEditLoopService:
                     )
                 if item.status not in EDITABLE_ITEM_STATUSES:
                     raise PreviewEditError(
-                        f"item {item.id} is in {item.status.value} and cannot enter edit loop",
+                        f"item {item.id} is in {item.status.value} and cannot enter "
+                        f"edit loop",
                         code=PreviewEditErrorCode.INVALID_STATUS,
                     )
 
@@ -280,7 +287,8 @@ class PreviewEditLoopService:
                     )
                 previous_video_version = latest_video.version
 
-                # 1. Move item to GENERATING (if not already GENERATING) and apply title change
+                # 1. Move item to GENERATING (if not already GENERATING) and apply title
+                # change
                 current_item = item
                 if current_item.status is not ContentStatus.GENERATING:
                     moved = current_item.with_status(
@@ -306,9 +314,8 @@ class PreviewEditLoopService:
                 # 2a. Update SUBTITLES if requested
                 if changes.subtitle_bytes is not None:
                     latest_sub = artifacts_repo.latest(item.id, ArtifactKind.SUBTITLES)
-                    sub_media = (
-                        changes.subtitle_media_type
-                        or (latest_sub.media_type if latest_sub else "application/x-subrip")
+                    sub_media = changes.subtitle_media_type or (
+                        latest_sub.media_type if latest_sub else "application/x-subrip"
                     )
                     sub_sha = hashlib.sha256(changes.subtitle_bytes).hexdigest()
                     if latest_sub is None or latest_sub.sha256 != sub_sha:
@@ -359,12 +366,30 @@ class PreviewEditLoopService:
                         if item.content_type is ContentType.SHORTS
                         else (1920, 1080)
                     )
-                    accent_r = (next_thumb_ver * 53) % 200 + 30
-                    png_bytes = generate_thumbnail_png(
-                        w,
-                        h,
-                        primary_rgb=(20, 28, 44),
-                        accent_rgb=(accent_r, 90, 220),
+                    thumb_meta = artifacts_repo.latest(item.id, ArtifactKind.METADATA)
+                    if thumb_meta is None:
+                        raise PreviewEditError(
+                            f"item {item.id} has no metadata artifact for the "
+                            f"thumbnail",
+                            code=PreviewEditErrorCode.ARTIFACT_MISSING,
+                        )
+                    raw_thumb_meta = self._storage.read(thumb_meta.uri)
+                    if item.content_type is ContentType.SHORTS:
+                        parsed_thumb_meta = ShortsMetadata.from_json_bytes(
+                            raw_thumb_meta
+                        )
+                        thumbnail_png = generate_thumbnail_png
+                    else:
+                        parsed_thumb_meta = LongFormMetadata.from_bytes(raw_thumb_meta)
+                        thumbnail_png = generate_longform_thumbnail_png
+                    png_bytes = thumbnail_png(
+                        width=w,
+                        height=h,
+                        project_id=parsed_thumb_meta.project_id,
+                        script_id=parsed_thumb_meta.script_id,
+                        title_text=changes.title.strip()
+                        if changes.title is not None
+                        else current_item.title,
                     )
                     stored_thumb = self._storage.write(
                         item.id,
@@ -429,7 +454,10 @@ class PreviewEditLoopService:
                             if changes.description is not None
                             else s_meta.description
                         )
-                        if "#shorts" not in new_title.lower() and "#shorts" not in new_desc.lower():
+                        if (
+                            "#shorts" not in new_title.lower()
+                            and "#shorts" not in new_desc.lower()
+                        ):
                             new_desc = f"{new_desc}\n\n#Shorts"
                         new_tags = (
                             changes.tags if changes.tags is not None else s_meta.tags
@@ -437,6 +465,7 @@ class PreviewEditLoopService:
                         policy_eval = self._policy_checker.check(
                             PolicyInput(
                                 content_item_id=item.id,
+                                channel_id=item.channel_id,
                                 title=new_title,
                                 description=new_desc,
                                 tags=new_tags,
@@ -477,6 +506,7 @@ class PreviewEditLoopService:
                         policy_eval = self._policy_checker.check(
                             PolicyInput(
                                 content_item_id=item.id,
+                                channel_id=item.channel_id,
                                 title=new_title,
                                 description=new_desc,
                                 tags=new_tags,
@@ -536,16 +566,14 @@ class PreviewEditLoopService:
                         new_video_bytes = changes.rendered_video_bytes
                     else:
                         payload_seed = (
-                            f"rerender:{item.id}:v{next_vid_ver}:{current_item.title}".encode(
-                                "utf-8"
-                            )
+                            f"rerender:{item.id}:v{next_vid_ver}:{current_item.title}".encode()
                             * 16
                         )
                         new_video_bytes = stub_mp4(old_info.duration_ms, payload_seed)
 
                     new_vid_sha = hashlib.sha256(new_video_bytes).hexdigest()
                     if new_vid_sha == latest_video.sha256:
-                        extra_tag = f":v{next_vid_ver}".encode("utf-8")
+                        extra_tag = f":v{next_vid_ver}".encode()
                         new_video_bytes = stub_mp4(
                             old_info.duration_ms, new_video_bytes[-64:] + extra_tag
                         )
@@ -621,10 +649,8 @@ class PreviewEditLoopService:
                 current_item = testing_item
         except BaseException:
             for uri in written_uris:
-                try:
+                with contextlib.suppress(Exception):
                     self._storage.delete(uri)
-                except Exception:
-                    pass
             raise
 
         invalidated_ids: list[str] = []
@@ -635,7 +661,7 @@ class PreviewEditLoopService:
                     invalidated_ids.append(entry.approval.id)
 
         # 3. Retest: evaluate full Phase K QC report on the new artifacts
-        qc_report = self._qc_builder.evaluate(content_item_id, actor=actor)
+        qc_report = self._qc_builder.generate(content_item_id, actor=actor)
 
         # 4. Move TESTING -> PREVIEW_READY when QC passes or warns
         final_item = current_item

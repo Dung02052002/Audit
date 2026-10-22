@@ -11,7 +11,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, AuditResult, EntityRef
+from ai_youtube_agent.core.audit import (
+    Actor,
+    ActorKind,
+    AuditLog,
+    AuditResult,
+    EntityRef,
+)
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.jobs import (
     AIJobRepository,
@@ -156,6 +162,7 @@ class GracefulShutdownService:
 
             for job in job_repo.list_all():
                 if job.status is AIJobStatus.RUNNING:
+                    at = max(now, job.updated_at)
                     updated_job = job.record_checkpoint(
                         "runtime.shutdown_checkpoint",
                         {
@@ -164,7 +171,7 @@ class GracefulShutdownService:
                             "shutdown_at": now.isoformat(),
                             "safe_to_resume": True,
                         },
-                        clock=lambda: max(now, job.updated_at),
+                        clock=lambda at=at: at,
                     )
                     job_repo.update(updated_job, expected_updated_at=job.updated_at)
                     checkpointed_ids.append(job.id)
@@ -175,9 +182,10 @@ class GracefulShutdownService:
 
             for session in session_repo.list_all():
                 if session.status is SessionStatus.ACTIVE:
+                    at = max(now, session.started_at)
                     stopped = session.stop(
                         stop_actor,
-                        clock=lambda: max(now, session.started_at),
+                        clock=lambda at=at: at,
                     )
                     session_repo.update(
                         stopped,

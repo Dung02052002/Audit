@@ -3,6 +3,7 @@ cost-incurring jobs across CostLedger, BudgetGuard, BudgetGate, and JobScheduler
 """
 
 from decimal import Decimal
+
 import pytest
 
 from ai_youtube_agent.content.budget_guard import (
@@ -29,7 +30,6 @@ from ai_youtube_agent.pipeline.job_queue import SqliteJobQueue
 from ai_youtube_agent.pipeline.job_scheduler import JobScheduler
 from factories import (
     SYSTEM,
-    T0,
     at,
     make_channel,
     make_content_item,

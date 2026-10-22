@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset_usage import AssetUsage
 from ai_youtube_agent.content.disclosure import DisclosureRecord
 from ai_youtube_agent.content.disclosure_rule import (
     DISCLOSURE_RULES,
@@ -17,7 +18,10 @@ from ai_youtube_agent.content.qc_disclosure import (
 )
 from ai_youtube_agent.core.audit import Actor, ActorKind
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.asset import AssetRepository
+from ai_youtube_agent.core.db.repositories.asset import (
+    AssetRepository,
+    AssetUsageRepository,
+)
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
@@ -130,8 +134,8 @@ def test_disclosure_qc_checker_detects_asset_drift(database: Database) -> None:
         channel.id,
         AssetKind.IMAGE,
         AssetCategory.GENERATED,
-        "gen.png",
-        created_by=SYSTEM,
+        title="gen.png",
+        source="ai-gen",
         clock=lambda: NOW,
     )
     with database.transaction() as conn:
@@ -141,7 +145,11 @@ def test_disclosure_qc_checker_detects_asset_drift(database: Database) -> None:
         DisclosureRepository(conn).add(record)
         assets_repo = AssetRepository(conn)
         assets_repo.add(new_asset)
-        assets_repo.attach(item.id, new_asset.id, attached_by=SYSTEM, attached_at=NOW)
+        AssetUsageRepository(conn).add(
+            AssetUsage.create(
+                new_asset.id, item.id, attached_by=SYSTEM, clock=lambda: NOW
+            )
+        )
 
     checker = DisclosureQCChecker(database)
     qc_eval = checker.evaluate(item.id)

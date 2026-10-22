@@ -7,9 +7,7 @@ import pytest
 from ai_youtube_agent.content.asset import AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_registry import AssetRegistry
 from ai_youtube_agent.content.channel import Channel, YouTubeIdentifiers
-from ai_youtube_agent.content.longform_config import LongFormConfig
 from ai_youtube_agent.content.longform_project import (
-    LongFormProject,
     LongFormProjectStatus,
 )
 from ai_youtube_agent.content.longform_script_generator import LongFormDisabledError
@@ -123,7 +121,7 @@ def _seed_longform_item(
         ScriptSection(SectionKind.OUTRO, "Summary of reactor milestones.", seconds=15),
         ScriptSection(SectionKind.CTA, "Subscribe for more physics.", seconds=15),
     )
-    script = Script.create(item.id, sections, actor=USER, clock=clock)
+    script = Script.create(item.id, sections=sections, created_by=USER, clock=clock)
     profile = VoiceProfile.create(
         channel.id,
         provider="mock_tts",
@@ -172,7 +170,7 @@ def test_longform_service_refuses_when_feature_flag_is_disabled(
 
     with pytest.raises(LongFormDisabledError):
         service.create("any-item", actor=USER)
-    assert sink.events == []
+    assert sink.events() == ()
 
 
 def test_longform_service_lifecycle_create_plan_caption_and_ready(
@@ -198,30 +196,35 @@ def test_longform_service_lifecycle_create_plan_caption_and_ready(
     assert planned.status is LongFormProjectStatus.PLANNED
     assert planned.version == 2
     assert len(planned.timeline.scenes) == 7
-    assert len(planned.timeline.chapters) == 4
-    assert planned.timeline.chapters[0].start_ms == 0
+    assert planned.timeline.chapters == ()
 
-    captioned = service.caption(
+    chaptered = service.generate_chapters(
         project.id, expected_version=planned.version, actor=USER
     )
+    assert len(chaptered.timeline.chapters) == 4
+    assert chaptered.timeline.chapters[0].start_ms == 0
+
+    captioned = service.caption(
+        project.id, expected_version=chaptered.version, actor=USER
+    )
     assert captioned.status is LongFormProjectStatus.PLANNED
-    assert len(captioned.timeline.captions) == 7
+    assert {c.scene_id for c in captioned.timeline.captions} == {
+        scene.id for scene in captioned.timeline.scenes
+    }
 
     # Attach a background asset to every scene -> project becomes READY.
     registry = AssetRegistry(database, audit, clock=clock)
     asset = registry.register(
         channel.id,
-        kind=AssetKind.VIDEO,
-        category=AssetCategory.THIRD_PARTY_LICENSED,
+        kind=AssetKind.VIDEO_CLIP,
+        category=AssetCategory.LICENSED,
         title="Plasma Chamber Loop",
         source="https://assets.example/plasma.mp4",
         license_ref="CC-BY-4.0",
         attribution="Plasma Visuals",
         actor=USER,
-    ).asset
-    registry.attach(
-        asset.id, item.id, purpose="scene backgrounds", actor=USER
     )
+    registry.attach(asset.id, item.id, purpose="scene backgrounds", actor=USER)
 
     from dataclasses import replace
 
@@ -241,7 +244,7 @@ def test_longform_service_lifecycle_create_plan_caption_and_ready(
     assert ready.status is LongFormProjectStatus.READY
     assert service.is_current(project.id) is True
 
-    actions = [e.action for e in sink.events]
+    actions = [e.action for e in sink.events()]
     assert CREATED in actions
     assert TIMELINE_SAVED in actions
 
@@ -260,13 +263,11 @@ def test_longform_service_rebind_resets_to_draft(tmp_path: Path) -> None:
 
     created = service.create(item.id, actor=USER)
     planned = service.plan(created.id, expected_version=1, actor=USER)
-    rebound = service.rebind(
-        planned.id, expected_version=planned.version, actor=USER
-    )
+    rebound = service.rebind(planned.id, expected_version=planned.version, actor=USER)
 
     assert rebound.status is LongFormProjectStatus.DRAFT
     assert rebound.timeline.scenes == ()
-    assert any(e.action == REBOUND for e in sink.events)
+    assert any(e.action == REBOUND for e in sink.events())
 
 
 def test_longform_service_refuses_chapters_when_disabled_in_config(
@@ -291,4 +292,3 @@ def test_longform_service_refuses_chapters_when_disabled_in_config(
             project.id, expected_version=planned.version, actor=USER
         )
     assert exc_info.value.code == LongFormProjectErrorCode.CHAPTER_INVALID.value
-

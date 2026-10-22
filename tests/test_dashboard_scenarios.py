@@ -6,25 +6,23 @@ Covers:
 2. Mocked data rendering across all Command Center screens: Home, Channel Overview,
    Content, Video Detail, Analytics, Revenue, Comments, AI Center, Approvals,
    Settings, and Actionable Alerts.
-3. Empty states across all screens when no channels, no items, no jobs, or no comments exist.
+3. Empty states across all screens when no channels, no items, no jobs, or no comments
+  exist.
 4. Error states handling channel not found, content not found, or invalid parameters.
 5. Strict XSS safety: user input and model text are always properly HTML-escaped.
 """
 
 from datetime import UTC, datetime
-from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
-from ai_youtube_agent.bootstrap import build_container
-from ai_youtube_agent.content.analytics import MetricScope, MetricSnapshot
-from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.channel import ChannelStatus
-from ai_youtube_agent.content.comment import Comment, CommentLabel, ReplyDraft, ReplyStatus
-from ai_youtube_agent.content.cost_ledger import CostCategory, CostLedger
+from ai_youtube_agent.content.comment import (
+    Comment,
+    CommentLabel,
+)
 from ai_youtube_agent.content.dashboard_ai_center import AICenterScreenService
-from ai_youtube_agent.content.dashboard_alerts import AlertCategory, AlertsScreenService
+from ai_youtube_agent.content.dashboard_alerts import AlertsScreenService
 from ai_youtube_agent.content.dashboard_analytics import AnalyticsScreenService
 from ai_youtube_agent.content.dashboard_approvals import ApprovalCenterService
 from ai_youtube_agent.content.dashboard_channel import ChannelOverviewService
@@ -34,7 +32,6 @@ from ai_youtube_agent.content.dashboard_home import HomeScreenService
 from ai_youtube_agent.content.dashboard_revenue import RevenueScreenService
 from ai_youtube_agent.content.dashboard_settings import SettingsScreenService
 from ai_youtube_agent.content.dashboard_shell import (
-    BadgeTone,
     DashboardError,
     DashboardErrorCode,
     DashboardScreenId,
@@ -43,10 +40,8 @@ from ai_youtube_agent.content.dashboard_shell import (
 )
 from ai_youtube_agent.content.dashboard_video_detail import VideoDetailService
 from ai_youtube_agent.core.artifact import ArtifactKind
-from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.core.content_item import ContentStatus, ContentType
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.analytics import MetricSnapshotRepository
 from ai_youtube_agent.core.db.repositories.channel import (
     ChannelRepository,
     StrategyProfileRepository,
@@ -54,20 +49,20 @@ from ai_youtube_agent.core.db.repositories.channel import (
 from ai_youtube_agent.core.db.repositories.community import (
     CommentClassificationRepository,
     CommentRepository,
-    ReplyDraftRepository,
 )
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
     ContentItemRepository,
 )
-from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository, SessionRepository
+from ai_youtube_agent.core.db.repositories.jobs import (
+    AIJobRepository,
+    SessionRepository,
+)
 from ai_youtube_agent.core.db.repositories.review import (
     ApprovalRequestRepository,
     QCResultRepository,
 )
-from ai_youtube_agent.core.flags import FeatureFlags
-from ai_youtube_agent.core.health import CheckKind, CheckResult, HealthCheck, HealthRegistry, HealthStatus
-from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus, Session, SessionStatus
+from ai_youtube_agent.pipeline.job import AIJob, Session
 from factories import (
     USER,
     make_approval_request,
@@ -82,18 +77,27 @@ FIXED_NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
 
 
 def test_command_center_empty_states_across_all_screens(database: Database) -> None:
-    """Verifies that all 11 screens render graceful empty states when no channels exist."""
+    """Verifies that all 11 screens render graceful empty states when no channels
+    exist."""
     shell_svc = DashboardShellService(database, clock=lambda: FIXED_NOW)
-    home_svc = HomeScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    home_svc = HomeScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
     channel_svc = ChannelOverviewService(database, shell_service=shell_svc)
     content_svc = ContentScreenService(database, shell_service=shell_svc)
     analytics_svc = AnalyticsScreenService(database, shell_service=shell_svc)
     revenue_svc = RevenueScreenService(database, shell_service=shell_svc)
     comments_svc = CommentsScreenService(database, shell_service=shell_svc)
     ai_svc = AICenterScreenService(database, shell_service=shell_svc)
-    approvals_svc = ApprovalCenterService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
-    settings_svc = SettingsScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
-    alerts_svc = AlertsScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    approvals_svc = ApprovalCenterService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
+    settings_svc = SettingsScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
+    alerts_svc = AlertsScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
 
     # 1. Shell
     shell_state = shell_svc.build_shell(DashboardScreenId.HOME)
@@ -146,7 +150,9 @@ def test_command_center_empty_states_across_all_screens(database: Database) -> N
     # 10. Settings
     settings_view = settings_svc.load()
     assert settings_view.load_state is ViewLoadState.EMPTY
-    assert "No channel selected or configured" in settings_svc.render_html(settings_view)
+    assert "No channel selected or configured" in settings_svc.render_html(
+        settings_view
+    )
 
     # 11. Alerts
     alerts_view = alerts_svc.load()
@@ -157,7 +163,8 @@ def test_command_center_empty_states_across_all_screens(database: Database) -> N
 def test_command_center_populates_screens_and_calculates_badges(
     database: Database,
 ) -> None:
-    """Verifies that populated data renders across screens with accurate dynamic badge counts."""
+    """Verifies that populated data renders across screens with accurate dynamic badge
+    counts."""
     channel = make_channel(title="Alpha Tech", status=ChannelStatus.ACTIVE)
     profile = make_strategy_profile(channel)
 
@@ -202,6 +209,7 @@ def test_command_center_populates_screens_and_calculates_badges(
         published_at=FIXED_NOW,
     )
     from ai_youtube_agent.content.comment import CommentClassification
+
     classification = CommentClassification.create(
         comment_id=comment.id,
         label=CommentLabel.NEEDS_ATTENTION,
@@ -231,7 +239,9 @@ def test_command_center_populates_screens_and_calculates_badges(
     assert shell.active_jobs_badge == 1
 
     # Verify Home Screen
-    home_svc = HomeScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    home_svc = HomeScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
     home_view = home_svc.load(channel.id)
     assert home_view.load_state is ViewLoadState.READY
     assert home_view.pending_approvals_count == 1
@@ -243,7 +253,9 @@ def test_command_center_populates_screens_and_calculates_badges(
     assert "Alpha Tech" in home_html
 
     # Verify Approvals Screen
-    appr_svc = ApprovalCenterService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    appr_svc = ApprovalCenterService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
     appr_view = appr_svc.load(channel.id)
     assert appr_view.load_state is ViewLoadState.READY
     assert appr_view.pending_count == 1
@@ -270,7 +282,9 @@ def test_command_center_populates_screens_and_calculates_badges(
     assert 'data-testid="ai-center-screen"' in ai_html
 
     # Verify Settings Screen
-    settings_svc = SettingsScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    settings_svc = SettingsScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
     sett_view = settings_svc.load(channel.id)
     assert sett_view.load_state is ViewLoadState.READY
     assert sett_view.channel.title == "Alpha Tech"
@@ -278,7 +292,9 @@ def test_command_center_populates_screens_and_calculates_badges(
     assert 'data-testid="settings-screen"' in sett_html
 
     # Verify Alerts Screen
-    alerts_svc = AlertsScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    alerts_svc = AlertsScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
     alert_view = alerts_svc.load(channel.id)
     assert alert_view.load_state is ViewLoadState.READY
     assert len(alert_view.approval_alerts) == 1
@@ -287,13 +303,18 @@ def test_command_center_populates_screens_and_calculates_badges(
 
 
 def test_command_center_error_states_and_xss_escaping(database: Database) -> None:
-    """Verifies that invalid parameters raise typed DashboardErrors and malicious text is escaped."""
-    channel = make_channel(title="<script>alert('xss')</script>", status=ChannelStatus.ACTIVE)
+    """Verifies that invalid parameters raise typed DashboardErrors and malicious text
+    is escaped."""
+    channel = make_channel(
+        title="<script>alert('xss')</script>", status=ChannelStatus.ACTIVE
+    )
     with database.transaction() as conn:
         ChannelRepository(conn).add(channel)
 
     shell_svc = DashboardShellService(database, clock=lambda: FIXED_NOW)
-    home_svc = HomeScreenService(database, shell_service=shell_svc, clock=lambda: FIXED_NOW)
+    home_svc = HomeScreenService(
+        database, shell_service=shell_svc, clock=lambda: FIXED_NOW
+    )
 
     view = home_svc.load(channel.id)
     rendered = home_svc.render_html(view)

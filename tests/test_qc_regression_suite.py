@@ -9,6 +9,8 @@ import dataclasses
 from pathlib import Path
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset_usage import AssetUsage
+from ai_youtube_agent.content.policy_check import PolicyStatus
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.qc_regression import (
     DEFAULT_REGRESSION_TIME,
@@ -23,20 +25,20 @@ from ai_youtube_agent.content.qc_report import (
     TestGate,
 )
 from ai_youtube_agent.content.shorts_metadata import ShortsMetadata
-from ai_youtube_agent.content.policy_check import PolicyStatus
-from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
+from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.content_item import ContentStatus
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.asset import AssetRepository
+from ai_youtube_agent.core.db.repositories.asset import (
+    AssetRepository,
+    AssetUsageRepository,
+)
 from ai_youtube_agent.core.db.repositories.content import ArtifactRepository
 from ai_youtube_agent.core.db.repositories.review import QCResultRepository
 from ai_youtube_agent.core.gates import GateContext, GateOutcome
 
 
-def test_shorts_qc_regression_clean_pass(
-    database: Database, tmp_path: Path
-) -> None:
+def test_shorts_qc_regression_clean_pass(database: Database, tmp_path: Path) -> None:
     storage = LocalFileStorage(tmp_path / "shorts_artifacts")
     fixture = build_shorts_qc_fixture(database, storage)
 
@@ -63,7 +65,7 @@ def test_shorts_qc_regression_clean_pass(
         assert len(stored.artifact_ids) == 5
 
     events = [
-        e for e in fixture.audit_sink.events if e.action == QC_REPORT_AUDIT_ACTION
+        e for e in fixture.audit_sink.events() if e.action == QC_REPORT_AUDIT_ACTION
     ]
     assert len(events) == 1
     assert events[0].metadata["status"] == "pass"
@@ -71,9 +73,7 @@ def test_shorts_qc_regression_clean_pass(
     assert events[0].metadata["fail_count"] == 0
 
 
-def test_longform_qc_regression_clean_pass(
-    database: Database, tmp_path: Path
-) -> None:
+def test_longform_qc_regression_clean_pass(database: Database, tmp_path: Path) -> None:
     storage = LocalFileStorage(tmp_path / "longform_artifacts")
     fixture = build_longform_qc_fixture(database, storage)
 
@@ -107,9 +107,7 @@ def test_shorts_and_longform_ai_disclosure_required_regression(
     database: Database, tmp_path: Path
 ) -> None:
     storage = LocalFileStorage(tmp_path / "disclosure_artifacts")
-    shorts_fixture = build_shorts_qc_fixture(
-        database, storage, realistic_visual=True
-    )
+    shorts_fixture = build_shorts_qc_fixture(database, storage, realistic_visual=True)
     shorts_report = shorts_fixture.report_builder.generate(
         shorts_fixture.item.id,
         actor=REGRESSION_ACTOR,
@@ -179,7 +177,7 @@ def test_regression_detects_resolution_fps_and_black_frame_anomalies(
     fixture = build_longform_qc_fixture(database, storage)
 
     # 1. Warn on moderate black frames (~15% black)
-    warn_lumas = [0.0] * 15 + [0.5] * 85
+    warn_lumas = [0.0] * 15 + [0.3 + 0.005 * i for i in range(85)]
     warn_report = fixture.report_builder.generate(
         fixture.item.id,
         actor=REGRESSION_ACTOR,
@@ -192,8 +190,9 @@ def test_regression_detects_resolution_fps_and_black_frame_anomalies(
     assert not warn_report.blocks
     assert [c.name for c in warn_report.warning_checks] == ["video.black_frames"]
 
-    # 2. Fail on wrong aspect ratio (9:16 for LongForm), wrong FPS (24), and 40% black frames
-    fail_lumas = [0.0] * 40 + [0.5] * 60
+    # 2. Fail on wrong aspect ratio (9:16 for LongForm), wrong FPS (24), and 40% black
+    # frames
+    fail_lumas = [0.0] * 40 + [0.3 + 0.005 * i for i in range(60)]
     fail_report = fixture.report_builder.generate(
         fixture.item.id,
         actor=REGRESSION_ACTOR,
@@ -228,9 +227,7 @@ def test_regression_detects_rights_and_policy_failures_and_gate_staleness(
     )
     assert clean_report.status is QCStatus.PASS
 
-    approved_item = dataclasses.replace(
-        fixture.item, status=ContentStatus.APPROVED
-    )
+    approved_item = dataclasses.replace(fixture.item, status=ContentStatus.APPROVED)
     gate_ctx = GateContext(
         approved_item,
         ContentStatus.PUBLISHING,
@@ -240,16 +237,20 @@ def test_regression_detects_rights_and_policy_failures_and_gate_staleness(
     with database.transaction() as conn:
         qc_repo = QCResultRepository(conn)
         art_repo = ArtifactRepository(conn)
-        assert TestGate(qc_repo, art_repo).evaluate(gate_ctx).outcome is GateOutcome.PASS
+        assert (
+            TestGate(qc_repo, art_repo).evaluate(gate_ctx).outcome is GateOutcome.PASS
+        )
         assert QCGate(qc_repo, art_repo).evaluate(gate_ctx).outcome is GateOutcome.PASS
 
-    # Attach an untracked licensed asset and write a metadata version with a banned phrase
+    # Attach an untracked licensed asset and write a metadata version with a banned
+    # phrase
     untracked_asset = Asset.create(
         fixture.channel.id,
         AssetKind.AUDIO,
         AssetCategory.LICENSED,
-        "untracked.mp3",
-        created_by=REGRESSION_ACTOR,
+        title="untracked.mp3",
+        source="stock-site",
+        license_ref="lic-1",
         clock=lambda: DEFAULT_REGRESSION_TIME,
     )
     bad_policy_meta = ShortsMetadata(
@@ -289,11 +290,13 @@ def test_regression_detects_rights_and_policy_failures_and_gate_staleness(
     with database.transaction() as conn:
         assets_repo = AssetRepository(conn)
         assets_repo.add(untracked_asset)
-        assets_repo.attach(
-            fixture.item.id,
-            untracked_asset.id,
-            attached_by=REGRESSION_ACTOR,
-            attached_at=DEFAULT_REGRESSION_TIME,
+        AssetUsageRepository(conn).add(
+            AssetUsage.create(
+                untracked_asset.id,
+                fixture.item.id,
+                attached_by=REGRESSION_ACTOR,
+                clock=lambda: DEFAULT_REGRESSION_TIME,
+            )
         )
         ArtifactRepository(conn).add(next_meta_art)
 

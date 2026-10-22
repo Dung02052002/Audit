@@ -33,7 +33,6 @@ from zoneinfo import ZoneInfo
 from ai_youtube_agent.content.cost import CostRecord
 from ai_youtube_agent.core.content_item import ContentStatus
 from ai_youtube_agent.core.daily_limit_gate import (
-    StrategySource,
     day_window,
     strategy_time_zone,
 )
@@ -75,7 +74,9 @@ class BudgetGate:
         strategies: Any,
         costs: CostSource | None = None,
     ) -> None:
-        if costs is None and (hasattr(strategies, "connection") or hasattr(strategies, "connect")):
+        if costs is None and (
+            hasattr(strategies, "connection") or hasattr(strategies, "connect")
+        ):
             self._database = strategies
             self._strategies = None
             self._costs = None
@@ -88,8 +89,13 @@ class BudgetGate:
         if context.target_status is not ContentStatus.GENERATING:
             return GateResult.passed(self.name, context.at)
         if self._database is not None:
-            from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
-            from ai_youtube_agent.core.db.repositories.economics import CostRecordRepository
+            from ai_youtube_agent.core.db.repositories.channel import (
+                StrategyProfileRepository,
+            )
+            from ai_youtube_agent.core.db.repositories.economics import (
+                CostRecordRepository,
+            )
+
             with self._database.connection() as conn:
                 self._strategies = StrategyProfileRepository(conn)
                 self._costs = CostRecordRepository(conn)

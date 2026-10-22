@@ -349,9 +349,7 @@ def _merge(
     phrases: list[list[str]], index: int, total: int, rules: CaptionRules
 ) -> list[list[str]]:
     neighbours = [
-        other
-        for other in (index + 1, index - 1)
-        if 0 <= other < len(phrases)
+        other for other in (index + 1, index - 1) if 0 <= other < len(phrases)
     ]
     neighbours.sort(key=lambda other: len(phrases[other]))
     for other in neighbours:

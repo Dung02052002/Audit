@@ -14,19 +14,19 @@ Tests for:
   auditing scalar-only metadata.
 """
 
+import uuid
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from factories import T0, USER, at, make_approval_request
-from test_shorts_scene import Stage
 
 from ai_youtube_agent.content.approval import ApprovalStatus
-from ai_youtube_agent.content.asset import AssetCategory, AssetKind
+from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
+from ai_youtube_agent.content.asset_usage import AssetUsage
 from ai_youtube_agent.content.disclosure import DisclosureDecision
 from ai_youtube_agent.content.disclosure_decider import DisclosureDecider
 from ai_youtube_agent.content.disclosure_rule import (
-     DISCLOSURE_RULES,
+    DISCLOSURE_RULES,
     DisclosureFacts,
 )
 from ai_youtube_agent.content.policy_check import PolicyStatus
@@ -46,9 +46,15 @@ from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.artifact_storage import LocalFileStorage
 from ai_youtube_agent.core.audit import AuditLog, AuditResult, InMemoryAuditSink
 from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.asset import (
+    AssetRepository,
+    AssetUsageRepository,
+)
 from ai_youtube_agent.core.db.repositories.channel import StrategyProfileRepository
 from ai_youtube_agent.core.db.repositories.content import ArtifactRepository
 from ai_youtube_agent.core.db.repositories.review import ApprovalRequestRepository
+from factories import T0, USER, at, make_approval_request
+from test_shorts_scene import Stage
 
 Code = ShortsMetadataErrorCode
 T1 = T0 + timedelta(hours=1)
@@ -113,13 +119,7 @@ class MetadataRig:
         self.stage = Stage(database)
         self.service = self.stage.world.service
         self.item = self.stage.world.item
-        self.bg_asset = self.stage.add_asset(
-            AssetKind.IMAGE,
-            category=AssetCategory.LICENSED,
-            license_ref="CC-BY-4.0",
-            attribution="Photo by Alice (CC BY 4.0)",
-            provenance=True,
-        )
+        self.bg_asset = self._add_attributed_asset()
         self.project = self.stage.save(
             self.stage.timeline(SceneAsset(self.bg_asset.id, AssetRole.BACKGROUND))
         )
@@ -129,10 +129,58 @@ class MetadataRig:
         self.audit = AuditLog(self.sink, clock=at(T1))
         self.decider = DisclosureDecider(self.database, self.audit, clock=at(T0))
 
+    def _add_attributed_asset(self) -> Asset:
+        return self._add_asset(
+            AssetCategory.LICENSED,
+            source="user",
+            license_ref="CC-BY-4.0",
+            attribution="Photo by Alice (CC BY 4.0)",
+            provenance=True,
+        )
+
+    def _add_asset(
+        self,
+        category: AssetCategory,
+        *,
+        source: str,
+        license_ref: str | None = None,
+        attribution: str | None = None,
+        provenance: bool = False,
+    ) -> Asset:
+        key = uuid.uuid4().hex
+        asset = Asset.create(
+            self.stage.world.channel.id,
+            AssetKind.IMAGE,
+            category,
+            title=f"Asset {key}",
+            source=source,
+            license_ref=license_ref,
+            attribution=attribution,
+            clock=at(T0),
+        )
+        with self.database.transaction() as connection:
+            AssetRepository(connection).add(asset, source_key=key, title_key=key)
+            AssetUsageRepository(connection).add(
+                AssetUsage.create(
+                    asset.id, self.item.id, attached_by=USER, clock=at(T0)
+                )
+            )
+        if provenance:
+            self.stage.add_provenance(asset.id)
+        return asset
+
     def decide_disclosure(self, *, realistic_visual: bool = False):
+        if realistic_visual:
+            # The rule needs an attached generated visual next to the fact.
+            self._add_asset(AssetCategory.GENERATED, source="mock-provider")
         return self.decider.decide(
             self.item.id,
-            DisclosureFacts(realistic_visual=realistic_visual),
+            DisclosureFacts(
+                realistic_person=False,
+                realistic_event=False,
+                synthetic_voice_of_real_person=False,
+                realistic_visual=realistic_visual,
+            ),
             rule_set=DISCLOSURE_RULES,
             actor=USER,
         )
@@ -156,7 +204,7 @@ def test_record_stores_metadata_appends_attributions_and_audits_scalars_only(
 ) -> None:
     disclosure = rig.decide_disclosure(realistic_visual=True)
     assert disclosure.decision is DisclosureDecision.REQUIRED
-    rig.sink.events.clear()
+    events_before = len(rig.sink.events())
 
     record = rig.recorder().record(
         rig.project.id,
@@ -180,8 +228,8 @@ def test_record_stores_metadata_appends_attributions_and_audits_scalars_only(
     stored = ShortsMetadata.from_json_bytes(rig.storage.read(record.artifact.uri))
     assert stored == record.metadata
 
-    assert len(rig.sink.events) == 1
-    event = rig.sink.events[0]
+    assert len(rig.sink.events()) - events_before == 1
+    event = rig.sink.events()[-1]
     assert event.action == METADATA_RECORDED
     assert event.result is AuditResult.SUCCESS
     assert event.metadata["contains_synthetic_media"] is True
@@ -209,10 +257,7 @@ def test_record_replays_when_unchanged_and_invalidates_approvals_on_new_version(
     assert replay.created is False
     assert replay.artifact == first.artifact
 
-    approval = make_approval_request(
-        content_item_id=rig.item.id,
-        artifacts=(first.artifact,),
-    )
+    approval = make_approval_request(rig.item, [first.artifact])
     with rig.database.transaction() as connection:
         ApprovalRequestRepository(connection).add(approval)
 
@@ -225,7 +270,7 @@ def test_record_replays_when_unchanged_and_invalidates_approvals_on_new_version(
     assert second.created is True
     assert second.artifact.version == 2
     assert second.invalidation is not None
-    assert second.invalidation.invalidated_ids == (approval.id,)
+    assert [i.approval.id for i in second.invalidation.invalidated] == [approval.id]
     with rig.database.transaction() as connection:
         updated = ApprovalRequestRepository(connection).get(approval.id)
         assert updated is not None
@@ -251,6 +296,7 @@ def test_record_refuses_missing_disclosure_or_policy_block(
         assert current is not None
         updated = current.update(
             brand=Brand(
+                name="Test Brand",
                 tone="Clear",
                 banned_phrases=("guaranteed riches",),
             ),
@@ -290,4 +336,3 @@ def test_record_refuses_version_conflict_and_cleans_up_on_db_error(
         recorder.record(rig.project.id, description="Desc", actor=USER)
 
     assert not rig.root.exists() or list(rig.root.rglob("*.json")) == []
-

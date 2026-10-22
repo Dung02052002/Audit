@@ -442,6 +442,4 @@ def _track(entry: _Planned, pcm: PcmAudio) -> MixTrack:
             label=entry.asset_id,
         )
     except MixInputError as error:
-        raise ShortsMixError(
-            str(error), code=ShortsMixErrorCode.MIX_INVALID
-        ) from None
+        raise ShortsMixError(str(error), code=ShortsMixErrorCode.MIX_INVALID) from None

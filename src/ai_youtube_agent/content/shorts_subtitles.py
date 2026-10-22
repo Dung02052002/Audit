@@ -166,7 +166,9 @@ def render_srt(timeline: Timeline, rules: CaptionRules) -> str:
 
 
 def render_vtt(timeline: Timeline, rules: CaptionRules) -> str:
-    """The WebVTT text of the captions of ``timeline``; ValueError if one cannot wrap."""
+    """The WebVTT text of the captions of ``timeline``; ValueError if one cannot
+    wrap.
+    """
     cues = _cues(timeline, rules, ".")
     return unicodedata.normalize("NFC", "\n\n".join(["WEBVTT", *cues]) + "\n")
 
@@ -294,9 +296,7 @@ def _subtitle_bytes(project: ShortsProject) -> bytes:
 
 def _check_current(connection: sqlite3.Connection, project: ShortsProject) -> None:
     """The bound script and audio must still be the latest of the item."""
-    scripts = ScriptRepository(connection).list_by_content_item(
-        project.content_item_id
-    )
+    scripts = ScriptRepository(connection).list_by_content_item(project.content_item_id)
     audio = ArtifactRepository(connection).latest(
         project.content_item_id, ArtifactKind.AUDIO
     )

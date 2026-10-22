@@ -1,6 +1,7 @@
 """Session Manager for User-Initiated Working Sessions (Prompt Pack v8, task R-209).
 
-Coordinates starting, stopping, tracking, and auditing user-initiated sessions (context C16).
+Coordinates starting, stopping, tracking, and auditing user-initiated sessions
+(context C16).
 Only a human user (ActorKind.USER) may start a session.
 """
 
@@ -17,7 +18,10 @@ from ai_youtube_agent.core.audit import (
     EntityRef,
 )
 from ai_youtube_agent.core.db.database import Database
-from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository, SessionRepository
+from ai_youtube_agent.core.db.repositories.jobs import (
+    AIJobRepository,
+    SessionRepository,
+)
 from ai_youtube_agent.core.errors import DomainError
 from ai_youtube_agent.pipeline.job import (
     AIJob,
@@ -166,9 +170,7 @@ class SessionManager:
                 "reason": reason,
                 "started_at": session.started_at.isoformat(),
                 "stopped_at": (
-                    stopped.stopped_at.isoformat()
-                    if stopped.stopped_at
-                    else None
+                    stopped.stopped_at.isoformat() if stopped.stopped_at else None
                 ),
             },
         )

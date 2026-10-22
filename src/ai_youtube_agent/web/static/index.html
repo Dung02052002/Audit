@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Script-to-Video Studio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/design_system.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body class="cc-body">
+  <a class="skip-link" href="#view">Bỏ qua tới nội dung</a>
+  <header class="app-header">
+    <div class="app-header__inner">
+      <a class="app-brand" href="#/">
+        <span class="app-brand__mark" aria-hidden="true">▶</span>
+        <span>Script-to-Video Studio</span>
+      </a>
+      <nav class="app-nav" aria-label="Điều hướng chính">
+        <a href="#/" data-nav="overview">Tổng quan</a>
+        <a href="#/items" data-nav="items">Nội dung</a>
+        <a href="#/new" data-nav="new">Tạo video</a>
+        <a href="#/settings" data-nav="settings">Cài đặt</a>
+      </nav>
+    </div>
+  </header>
+  <div id="demo-banner" class="demo-banner" hidden></div>
+  <main id="view" class="app-main" tabindex="-1">
+    <noscript>Ứng dụng cần JavaScript để chạy.</noscript>
+  </main>
+  <div id="live-status" class="visually-hidden" role="status" aria-live="polite"></div>
+</body>
+</html>

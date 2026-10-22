@@ -38,13 +38,14 @@ from ai_youtube_agent.core.db.repositories.community import CommentRepository
 from ai_youtube_agent.core.errors import DomainError
 
 REPLY_DUPLICATE_BLOCKED: Final[str] = "comment.reply_duplicate_blocked"
-DEFAULT_GUARD_ACTOR: Final[Actor] = Actor(
-    ActorKind.SYSTEM, "duplicate_reply_guard"
-)
+DEFAULT_GUARD_ACTOR: Final[Actor] = Actor(ActorKind.SYSTEM, "duplicate_reply_guard")
 
 
 def normalize_reply_text(text: str) -> str:
-    """Normalize reply text for duplicate detection (case-insensitive, collapsed whitespace, punctuation stripped)."""
+    """Normalize reply text for duplicate detection.
+
+    Case-insensitive, collapsed whitespace, punctuation stripped.
+    """
     cleaned = re.sub(r"[^\w\s]", " ", text)
     return " ".join(cleaned.strip().lower().split())
 
@@ -116,7 +117,10 @@ class ReplyDuplicateCheck:
 
 
 class DuplicateReplyGuard:
-    """Checks for and blocks duplicate reply posts across comments, threads, and videos."""
+    """Checks for and blocks duplicate reply posts.
+
+    Across comments, threads, and videos.
+    """
 
     def __init__(
         self,
@@ -170,7 +174,8 @@ class DuplicateReplyGuard:
                     ):
                         raise DuplicateReplyError(
                             DuplicateReplyErrorCode.COMMENT_ALREADY_REPLIED,
-                            f"comment {target_comment.id} already has posted reply {sibling.id}",
+                            f"comment {target_comment.id} already has "
+                            f"posted reply {sibling.id}",
                         )
 
                 # 2. Check other comments in the same thread or on the same video
@@ -180,9 +185,7 @@ class DuplicateReplyGuard:
                     else target_comment.youtube_comment_id
                 )
                 norm_text = normalize_reply_text(stored_draft.text)
-                channel_comments = repo.list_by_channel(
-                    target_comment.channel_id
-                )
+                channel_comments = repo.list_by_channel(target_comment.channel_id)
                 for other_comment in channel_comments:
                     if (
                         other_comment.id == target_comment.id
@@ -202,16 +205,18 @@ class DuplicateReplyGuard:
                         if other_root_yt_id == thread_root_yt_id:
                             raise DuplicateReplyError(
                                 DuplicateReplyErrorCode.THREAD_ALREADY_REPLIED,
-                                f"thread {thread_root_yt_id} already has posted reply {other_draft.id}",
+                                f"thread {thread_root_yt_id} already has "
+                                f"posted reply {other_draft.id}",
                             )
                         if (
                             self._block_identical_video
-                            and normalize_reply_text(other_draft.text)
-                            == norm_text
+                            and normalize_reply_text(other_draft.text) == norm_text
                         ):
                             raise DuplicateReplyError(
                                 DuplicateReplyErrorCode.IDENTICAL_TEXT_ON_VIDEO,
-                                f"video {target_comment.youtube_video_id} already has an identical posted reply {other_draft.id}",
+                                f"video {target_comment.youtube_video_id} "
+                                f"already has an identical posted reply "
+                                f"{other_draft.id}",
                             )
             finally:
                 if connection.in_transaction:
@@ -254,14 +259,13 @@ class DuplicateReplyGuard:
             raise
 
 
-def concurrent_reply_post(
-    error: BaseException, draft_id: str
-) -> DuplicateReplyError:
-    """Convert a lost optimistic status update race into ``DuplicateReplyError(CONCURRENT)``."""
+def concurrent_reply_post(error: BaseException, draft_id: str) -> DuplicateReplyError:
+    """Convert a lost optimistic status update race.
+
+    Converted into ``DuplicateReplyError(CONCURRENT)``.
+    """
     if not isinstance(error, sqlite3.IntegrityError | ConcurrencyError):
-        raise TypeError(
-            "only IntegrityError and ConcurrencyError mean a lost race"
-        )
+        raise TypeError("only IntegrityError and ConcurrencyError mean a lost race")
     return DuplicateReplyError(
         DuplicateReplyErrorCode.CONCURRENT,
         f"a concurrent reply post for draft {draft_id} won the race",

@@ -48,11 +48,19 @@ need no provider.
 ``Settings.rights_block_levels`` and the default policy rule set catalog at
 ``Settings.policy_rule_set_version`` (an unknown version fails when it is
 resolved); the kill switch gate joins it later.
+``ScriptToVideoRunner`` (APP-01) runs ``ScriptToVideoService`` in one
+background thread, resolving the service when a run starts; the main app shuts
+it down when the server stops. ``ContentItemViewService`` and
+``SystemSettingsView`` are the read views of the local web app.
 """
 
 from datetime import timedelta
 
 from ai_youtube_agent.content.analytics_freshness import AnalyticsFreshnessService
+from ai_youtube_agent.content.app_views import (
+    ContentItemViewService,
+    SystemSettingsView,
+)
 from ai_youtube_agent.content.approval_audit import ApprovalAuditService
 from ai_youtube_agent.content.approval_service import ApprovalService
 from ai_youtube_agent.content.asset_registry import AssetRegistry
@@ -197,11 +205,12 @@ from ai_youtube_agent.pipeline.pilot_runner import ShortsPilotRunner
 from ai_youtube_agent.pipeline.pipeline_runner import PipelineRunner
 from ai_youtube_agent.pipeline.production_audit import ProductionReadinessAuditor
 from ai_youtube_agent.pipeline.publish_audit import PublishAuditService
-from ai_youtube_agent.pipeline.retry_manager import JobRetryPolicy, RetryManager
 from ai_youtube_agent.pipeline.publish_executor import PublishExecutor
 from ai_youtube_agent.pipeline.publish_metadata_mapper import PublishMetadataMapper
 from ai_youtube_agent.pipeline.publish_result import PublishResultService
+from ai_youtube_agent.pipeline.retry_manager import JobRetryPolicy, RetryManager
 from ai_youtube_agent.pipeline.script_to_video import ScriptToVideoService
+from ai_youtube_agent.pipeline.script_to_video_runner import ScriptToVideoRunner
 from ai_youtube_agent.pipeline.session_manager import SessionManager
 from ai_youtube_agent.pipeline.shorts_publisher import ShortsPublisher
 from ai_youtube_agent.pipeline.upload_retry import UploadRetryPolicy
@@ -228,6 +237,10 @@ from ai_youtube_agent.providers.mock_video_render import MockVideoRenderer
 from ai_youtube_agent.providers.mock_youtube_channel import MockYouTubeChannelProvider
 from ai_youtube_agent.providers.mock_youtube_oauth import MockYouTubeOAuthProvider
 from ai_youtube_agent.providers.mock_youtube_upload import MockYouTubeUploadProvider
+from ai_youtube_agent.providers.registry import (
+    ProviderRegistry,
+    build_default_provider_registry,
+)
 from ai_youtube_agent.providers.research import ResearchProvider
 from ai_youtube_agent.providers.research_cache import ResearchCache
 from ai_youtube_agent.providers.revenue import RevenueProvider
@@ -594,9 +607,7 @@ def build_container(settings: Settings | None = None) -> Container:
             comparison_service=c.resolve(VersionComparisonService),
         ),
     )
-    container.register(
-        ApprovalEmailProvider, lambda _: MockApprovalEmailProvider()
-    )
+    container.register(ApprovalEmailProvider, lambda _: MockApprovalEmailProvider())
     container.register(
         ApprovalEmailService,
         lambda c: ApprovalEmailService(
@@ -623,21 +634,15 @@ def build_container(settings: Settings | None = None) -> Container:
     container.register(
         PublishGate, lambda c: PublishGate(c.resolve(Database), c.resolve(Settings))
     )
-    container.register(
-        YouTubeOAuthProvider, lambda _: MockYouTubeOAuthProvider()
-    )
+    container.register(YouTubeOAuthProvider, lambda _: MockYouTubeOAuthProvider())
     container.register(
         YouTubeChannelProvider,
         lambda c: MockYouTubeChannelProvider(
             oauth_provider=c.resolve(YouTubeOAuthProvider)
         ),
     )
-    container.register(
-        YouTubeUploadProvider, lambda _: MockYouTubeUploadProvider()
-    )
-    container.register(
-        PublishMetadataMapper, lambda _: PublishMetadataMapper()
-    )
+    container.register(YouTubeUploadProvider, lambda _: MockYouTubeUploadProvider())
+    container.register(PublishMetadataMapper, lambda _: PublishMetadataMapper())
     container.register(AnalyticsProvider, lambda _: MockAnalyticsProvider())
     container.register(
         AnalyticsCache,
@@ -1039,8 +1044,12 @@ def build_container(settings: Settings | None = None) -> Container:
             c.resolve(AuditLog),
             policy=JobRetryPolicy(
                 max_attempts=c.resolve(Settings).job_max_attempts,
-                base_delay_seconds=float(c.resolve(Settings).job_retry_base_delay_seconds),
-                max_delay_seconds=float(c.resolve(Settings).job_retry_max_delay_seconds),
+                base_delay_seconds=float(
+                    c.resolve(Settings).job_retry_base_delay_seconds
+                ),
+                max_delay_seconds=float(
+                    c.resolve(Settings).job_retry_max_delay_seconds
+                ),
             ),
             queue=c.resolve(JobQueue),
         ),
@@ -1209,6 +1218,29 @@ def build_container(settings: Settings | None = None) -> Container:
             approval_service=c.resolve(ApprovalService),
         ),
     )
+    container.register(
+        ScriptToVideoRunner,
+        lambda c: ScriptToVideoRunner(
+            lambda: c.resolve(ScriptToVideoService),
+            c.resolve(Database),
+        ),
+    )
+    container.register(
+        ContentItemViewService,
+        lambda c: ContentItemViewService(
+            c.resolve(Database),
+            c.resolve(PreviewArtifactService),
+            c.resolve(ScriptToVideoRunner),
+        ),
+    )
+    container.register(
+        SystemSettingsView,
+        lambda c: SystemSettingsView(c.resolve(Settings)),
+    )
+    container.register(
+        ProviderRegistry,
+        lambda c: build_default_provider_registry(c.resolve(Settings)),
+    )
     return container
 
 
@@ -1259,7 +1291,9 @@ def _build_audit_sink(container: Container) -> AuditSink:
 
 def prepare_database(settings: Settings | Container) -> MigrationReport:
     """Bring the database up to date. Called once when the application starts."""
-    resolved_settings = settings.resolve(Settings) if isinstance(settings, Container) else settings
+    resolved_settings = (
+        settings.resolve(Settings) if isinstance(settings, Container) else settings
+    )
     report = migrate(resolved_settings.database_path)
     logger.info(
         "database ready",

@@ -1,4 +1,5 @@
-"""Backup Restore & Non-Production Verification (Prompt Pack v8, prompt #221), area X4 Security & Recovery.
+"""Backup Restore & Non-Production Verification (Prompt Pack v8, prompt #221), area
+X4 Security & Recovery.
 
 Restores a backup bundle into an isolated target database and artifact directory
 and runs comprehensive integrity, foreign-key, row-count, and SHA-256 checksum
@@ -15,7 +16,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, AuditResult, EntityRef
+from ai_youtube_agent.core.audit import (
+    Actor,
+    ActorKind,
+    AuditLog,
+    AuditResult,
+    EntityRef,
+)
 from ai_youtube_agent.core.backup_plan import (
     ARTIFACTS_SUBDIR,
     BackupManager,
@@ -82,7 +89,9 @@ class RestoreVerificationReport:
 
 
 class RestoreVerifier:
-    """Executes and verifies backup restoration in non-production / recovery environments (#221)."""
+    """Executes and verifies backup restoration in non-production / recovery
+    environments (#221).
+    """
 
     def __init__(
         self,
@@ -94,7 +103,9 @@ class RestoreVerifier:
         self._clock: Clock = clock or (lambda: datetime.now(UTC))
 
     def verify_bundle(self, bundle_dir: Path) -> BackupManifest:
-        """Verify all files in ``bundle_dir`` match ``manifest.json`` SHA-256 digests."""
+        """Verify all files in ``bundle_dir`` match ``manifest.json`` SHA-256
+        digests.
+        """
         bundle_path = Path(bundle_dir)
         manifest = BackupManager.load_manifest(bundle_path)
 
@@ -138,7 +149,9 @@ class RestoreVerifier:
         target_artifact_dir: Path,
         actor: Actor = SYSTEM_RESTORE_ACTOR,
     ) -> RestoreVerificationReport:
-        """Verify bundle, restore DB + artifacts to target paths, and validate restored state."""
+        """Verify bundle, restore DB + artifacts to target paths, and validate
+        restored state.
+        """
         bundle_path = Path(bundle_dir)
         manifest = self.verify_bundle(bundle_path)
         now = self._clock()
@@ -189,7 +202,8 @@ class RestoreVerifier:
 
         if not sqlite_integrity_ok or not foreign_keys_ok:
             raise RestoreVerificationError(
-                "Restored SQLite database failed PRAGMA integrity_check or foreign_key_check.",
+                "Restored SQLite database failed PRAGMA integrity_check or "
+                "foreign_key_check.",
                 code="domain.restore_db_integrity_failed",
             )
 
@@ -213,7 +227,8 @@ class RestoreVerifier:
                 for art in art_repo.list_by_content_item(item_id):
                     if art.sha256 not in manifest_shas:
                         raise RestoreVerificationError(
-                            f"Artifact row {art.id} (sha256={art.sha256}) missing from restored files.",
+                            f"Artifact row {art.id} (sha256={art.sha256}) missing "
+                            "from restored files.",
                             code="domain.restore_artifact_row_unmatched",
                         )
                     verified_db_rows += 1

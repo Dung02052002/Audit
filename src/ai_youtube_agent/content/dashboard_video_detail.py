@@ -1,4 +1,5 @@
-"""Video Detail screen view and service (Prompt Pack v8, prompt Q-195), context X3 Command Center.
+"""Video Detail screen view and service (Prompt Pack v8, prompt Q-195), context X3
+Command Center.
 
 Builds the Command Center Video Detail screen view model and iOS-style HTML
 rendering for a single ``ContentItem``, integrating:
@@ -39,7 +40,6 @@ from ai_youtube_agent.content.preview_artifact import (
     PreviewArtifactDescriptor,
     PreviewArtifactService,
     PreviewError,
-    PreviewErrorCode,
     PreviewSnapshot,
 )
 from ai_youtube_agent.content.preview_metadata import (
@@ -52,17 +52,16 @@ from ai_youtube_agent.content.preview_player import (
     render_preview_player_html,
 )
 from ai_youtube_agent.content.preview_reports import (
-    PreviewReportService,
     PreviewReportsBundle,
+    PreviewReportService,
 )
 from ai_youtube_agent.content.version_comparison import (
     VersionComparisonResult,
     VersionComparisonService,
 )
-from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
+from ai_youtube_agent.core.artifact import ArtifactKind
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage, LocalFileStorage
 from ai_youtube_agent.core.config import Settings
-from ai_youtube_agent.core.content_item import ContentItem
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.content import (
     ArtifactRepository,
@@ -126,9 +125,7 @@ class VideoDetailView:
             ),
             "reports": self.reports.as_dict(),
             "version_comparison": (
-                self.version_comparison.as_dict()
-                if self.version_comparison
-                else None
+                self.version_comparison.as_dict() if self.version_comparison else None
             ),
             "all_artifacts": [art.as_dict() for art in self.all_artifacts],
             "approvals": [req.as_dict() for req in self.approvals],
@@ -286,7 +283,10 @@ class VideoDetailService:
 
     def render_html(self, view: VideoDetailView) -> str:
         if view.player_config is not None:
-            player_html = render_preview_player_html(view.player_config)
+            player_html = (
+                '<div data-testid="preview-player">'
+                f"{render_preview_player_html(view.player_config)}</div>"
+            )
         else:
             reason = html.escape(
                 view.preview_unavailable_reason or "Preview player unavailable."
@@ -318,9 +318,9 @@ class VideoDetailService:
         qc = view.reports.qc
         qc_status = qc.status.value if qc else "missing"
         rights_status = (
-            "Cleared" if view.reports.rights_report.cleared_for_publish else "Blocked"
+            "Blocked" if view.reports.rights_report.gate.blocks else "Cleared"
         )
-        policy_status = view.reports.policy_report.overall_status.value
+        policy_status = view.reports.policy_report.status.value
         ready_badge = (
             '<span class="yt-pill yt-pill--success">Ready for Approval</span>'
             if view.reports.ready_for_approval
@@ -354,10 +354,12 @@ class VideoDetailService:
   <section class="yt-card yt-grid__span-8" data-testid="video-preview-card">
     <div class="yt-card__header">
       <div>
-        <p class="yt-card__subtitle">{html.escape(view.content_type.upper())} · {html.escape(view.content_item_id)}</p>
+        <p class="yt-card__subtitle">{html.escape(view.content_type.upper())} · \
+{html.escape(view.content_item_id)}</p>
         <h2 class="yt-card__title">{html.escape(view.title)}</h2>
       </div>
-      <span class="yt-pill yt-pill--{view.status_tone.value}">{html.escape(view.status_label)}</span>
+      <span class="yt-pill yt-pill--{view.status_tone.value}">\
+{html.escape(view.status_label)}</span>
     </div>
     {player_html}
     {meta_html}
@@ -371,7 +373,9 @@ class VideoDetailService:
       </div>
       {ready_badge}
     </div>
-    <p class="yt-card__subtitle">QC: <strong>{html.escape(qc_status)}</strong> · Rights: <strong>{html.escape(rights_status)}</strong> · Policy: <strong>{html.escape(policy_status)}</strong></p>
+    <p class="yt-card__subtitle">QC: <strong>{html.escape(qc_status)}</strong> · \
+Rights: <strong>{html.escape(rights_status)}</strong> · Policy: <strong>\
+{html.escape(policy_status)}</strong></p>
     {blocking_html}
   </section>
 
@@ -391,4 +395,3 @@ class VideoDetailService:
             body_html=body,
             page_title=f"{view.title} — Video Detail",
         )
-

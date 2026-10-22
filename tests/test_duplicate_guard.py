@@ -123,9 +123,9 @@ def test_a_running_job_blocks_the_request(
 def test_another_approval_cannot_publish_an_item_twice(
     seed: Seed, database: Database
 ) -> None:
-    second = make_approval_request(
-        seed.item, list(seed.artifacts.values())
-    ).approve(USER)
+    second = make_approval_request(seed.item, list(seed.artifacts.values())).approve(
+        USER
+    )
     with database.transaction() as connection:
         ApprovalRequestRepository(connection).add(second)
     other = _job(
@@ -191,7 +191,9 @@ def test_a_failed_job_of_another_item_with_the_same_video_does_not_block(
             clock=at(),
         )
         PublishJobRepository(connection).add(
-            twin_job.start(clock=at()).fail("youtube_upload.invalid_payload", clock=at())
+            twin_job.start(clock=at()).fail(
+                "youtube_upload.invalid_payload", clock=at()
+            )
         )
 
     assert _check(seed, database).decision is DuplicateDecision.PROCEED

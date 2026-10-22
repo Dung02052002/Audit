@@ -20,16 +20,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from factories import (
-    T0,
-    USER,
-    at,
-    make_audio_metadata,
-    make_channel,
-)
-from test_audio_mix import dc, tone
-from test_shorts_scene import Stage
-from test_shorts_project import World
 
 from ai_youtube_agent.content.asset import Asset, AssetCategory, AssetKind
 from ai_youtube_agent.content.asset_usage import AssetUsage
@@ -74,6 +64,16 @@ from ai_youtube_agent.core.db.repositories.content import (
     ScriptRepository,
 )
 from ai_youtube_agent.core.db.repositories.shorts import ShortsProjectRepository
+from factories import (
+    T0,
+    USER,
+    at,
+    make_audio_metadata,
+    make_channel,
+)
+from test_audio_mix import dc, tone
+from test_shorts_project import World
+from test_shorts_scene import Stage
 
 Code = ShortsMixErrorCode
 T1 = T0 + timedelta(hours=1)
@@ -351,7 +351,9 @@ def test_mixing_audits_ids_checksums_and_numbers_only(shop: Shop) -> None:
     assert metadata["peak_dbfs"] == outcome.report.peak_dbfs
     assert metadata["normalisation_gain_db"] == outcome.report.normalisation_gain_db
     assert metadata["ducked_ratio"] == outcome.report.ducked_ratio
-    assert all(isinstance(v, str | int | float | bool | None) for v in metadata.values())
+    assert all(
+        isinstance(v, str | int | float | bool | None) for v in metadata.values()
+    )
     assert not any(isinstance(v, bytes) for v in metadata.values())
 
 
@@ -453,9 +455,7 @@ def test_an_asset_that_is_not_a_wav_is_unsupported(shop: Shop, data) -> None:
 
 def test_a_source_window_that_is_empty_is_an_invalid_mix(shop: Shop) -> None:
     song = shop.sound(AssetKind.MUSIC)
-    shop.force(
-        shop.build(music=(AssetPlacement(song.id, source_in_ms=600_000),))
-    )
+    shop.force(shop.build(music=(AssetPlacement(song.id, source_in_ms=600_000),)))
 
     shop.refuse(Code.MIX_INVALID)
 
@@ -481,9 +481,7 @@ def test_a_changed_voice_file_is_unavailable(shop: Shop) -> None:
 def test_a_silent_voice_fails_the_self_check(
     database: Database, tmp_path: Path
 ) -> None:
-    quiet = Shop(
-        database, tmp_path, voice=dc(DURATION_MS, 0.0, rate=VOICE_RATE)
-    )
+    quiet = Shop(database, tmp_path, voice=dc(DURATION_MS, 0.0, rate=VOICE_RATE))
 
     error = quiet.refuse(Code.MIX_INVALID)
 

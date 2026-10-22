@@ -4,7 +4,6 @@ import pytest
 
 from ai_youtube_agent.content.approval import ApprovalNotAllowedError
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
-from ai_youtube_agent.core.content_item import ContentStatus
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.pipeline.pilot_runner import (
     PILOT_BLOCKED_ACTION,
@@ -45,12 +44,21 @@ def test_shorts_pilot_runner_requires_human_user_and_produces_technical_report(
     assert "pilot.publish_incomplete" in pre_report.blockers
     assert any(e.action == PILOT_BLOCKED_ACTION for e in sink.events())
 
-    # 3. Run pilot with explicit USER reviewer -> publishes and passes all 6 stage checks
+    # 3. Run pilot with explicit USER reviewer -> publishes and passes all 6 stage
+    # checks
     report = runner.run_pilot(seed.item.id, reviewer=USER)
     assert report.passed is True
     assert report.blockers == ()
     assert report.approved_by_user_id == USER.id
-    assert report.video_artifact_id == seed.artifacts[seed.item.content_type.__class__.SHORTS and __import__("ai_youtube_agent.core.artifact", fromlist=["ArtifactKind"]).ArtifactKind.VIDEO].id
+    assert (
+        report.video_artifact_id
+        == seed.artifacts[
+            seed.item.content_type.__class__.SHORTS
+            and __import__(
+                "ai_youtube_agent.core.artifact", fromlist=["ArtifactKind"]
+            ).ArtifactKind.VIDEO
+        ].id
+    )
     assert report.youtube_video_id is not None
     assert len(report.stage_checks) == 6
     assert all(c.passed for c in report.stage_checks)

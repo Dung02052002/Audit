@@ -132,7 +132,8 @@ class TestTTSCostService:
         assert replay_art.created is False
         assert replay_art.cost.id == art_entry.cost.id
 
-        # 2. Record standalone synthesized speech sample -> 1000 * 0.015 / 1000 = 0.015000
+        # 2. Record standalone synthesized speech sample -> 1000 * 0.015 / 1000 =
+        # 0.015000
         speech = synth.synthesize(
             SpeechRequest(text="A" * 1000, voice_id=voice.voice_id, language="en-US")
         )
@@ -145,7 +146,8 @@ class TestTTSCostService:
         assert speech_entry.created is True
         assert speech_entry.cost.amount == Decimal("0.015000")
 
-        # 3. Record rate correction on artifact (0.015 -> 0.020 per 1k chars => +0.010000)
+        # 3. Record rate correction on artifact (0.015 -> 0.020 per 1k chars =>
+        # +0.010000)
         corr_entry = service.record_rate_correction(
             audio_record.artifact.id,
             characters=2000,
@@ -167,10 +169,7 @@ class TestTTSCostService:
                 characters=2000,
                 new_price_per_1k=Decimal("0.010"),
             )
-        assert (
-            exc_invalid.value.tts_cost_code
-            is TTSCostErrorCode.INVALID_CORRECTION
-        )
+        assert exc_invalid.value.tts_cost_code is TTSCostErrorCode.INVALID_CORRECTION
 
         with pytest.raises(TTSCostError) as exc_missing:
             service.record_rate_correction(
@@ -179,6 +178,5 @@ class TestTTSCostService:
                 new_price_per_1k=Decimal("0.020"),
             )
         assert (
-            exc_missing.value.tts_cost_code
-            is TTSCostErrorCode.ARTIFACT_COST_NOT_FOUND
+            exc_missing.value.tts_cost_code is TTSCostErrorCode.ARTIFACT_COST_NOT_FOUND
         )

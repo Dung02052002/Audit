@@ -1,4 +1,6 @@
-"""Publish precondition errors (Prompt Pack v8, prompts #149-#152), context C12 Publishing.
+"""Publish precondition errors.
+
+(Prompt Pack v8, prompts #149-#152), context C12 Publishing.
 
 One typed ``PublishError`` (a ``DomainError``) with a closed ``PublishErrorCode``
 is shared by the Shorts and LongForm publishers and by ``PublishContextLoader``.
@@ -34,14 +36,18 @@ class PublishErrorCode(StrEnum):
 USER_MESSAGES: Final[dict[PublishErrorCode, str]] = {
     PublishErrorCode.SHORTS_DISABLED: "Shorts publishing is currently disabled.",
     PublishErrorCode.PUBLISH_DISABLED: "Publishing to YouTube is currently disabled.",
-    PublishErrorCode.CONTENT_ITEM_NOT_FOUND: "The requested content item does not exist.",
+    PublishErrorCode.CONTENT_ITEM_NOT_FOUND: (
+        "The requested content item does not exist."
+    ),
     PublishErrorCode.WRONG_CONTENT_TYPE: (
         "This publisher cannot publish that type of content item."
     ),
     PublishErrorCode.CHANNEL_NOT_FOUND: (
         "The channel for this content item does not exist."
     ),
-    PublishErrorCode.CHANNEL_NOT_ACTIVE: "The channel must be active before publishing.",
+    PublishErrorCode.CHANNEL_NOT_ACTIVE: (
+        "The channel must be active before publishing."
+    ),
     PublishErrorCode.NO_APPROVAL: "This content item has no approval request.",
     PublishErrorCode.NOT_APPROVED: (
         "The newest approval request for this content item is not approved."

@@ -35,6 +35,9 @@ from ai_youtube_agent.core.db.repositories.content import (
 from ai_youtube_agent.core.db.repositories.longform import LongFormProjectRepository
 from ai_youtube_agent.core.db.repositories.shorts import ShortsProjectRepository
 
+# Metadata does not carry a category: the preview shows the publish default.
+DEFAULT_PREVIEW_CATEGORY_ID = "22"
+
 
 @dataclass(frozen=True)
 class PreviewThumbnailView:
@@ -132,7 +135,10 @@ class PreviewChapterView:
 
 @dataclass(frozen=True)
 class PreviewMetadataView:
-    """Complete preview metadata view (title, description, thumbnail, subtitles, chapters) (#133)."""
+    """Complete preview metadata view.
+
+    (title, description, thumbnail, subtitles, chapters) (#133).
+    """
 
     content_item_id: str
     channel_id: str
@@ -179,8 +185,12 @@ class PreviewMetadataView:
             "project_version": self.project_version,
             "script_id": self.script_id,
             "script_version": self.script_version,
-            "thumbnail": self.thumbnail.as_dict() if self.thumbnail is not None else None,
-            "subtitles": self.subtitles.as_dict() if self.subtitles is not None else None,
+            "thumbnail": self.thumbnail.as_dict()
+            if self.thumbnail is not None
+            else None,
+            "subtitles": self.subtitles.as_dict()
+            if self.subtitles is not None
+            else None,
             "chapters": [c.as_dict() for c in self.chapters],
             "is_current": self.is_current,
         }
@@ -197,7 +207,10 @@ def _format_cue_time(ms: int) -> str:
 
 
 class PreviewMetadataService:
-    """Loads and formats title, description, thumbnail, subtitles and chapters for preview (#133)."""
+    """Loads and formats title, description, thumbnail, subtitles and chapters.
+
+    For preview (#133).
+    """
 
     def __init__(
         self,
@@ -339,9 +352,15 @@ class PreviewMetadataService:
             )
 
         is_current = snapshot.video.is_latest and snapshot.metadata.is_latest
-        if latest_script is not None and parsed_meta.script_version != latest_script.version:
+        if (
+            latest_script is not None
+            and parsed_meta.script_version != latest_script.version
+        ):
             is_current = False
-        if shorts_proj is not None and parsed_meta.project_version != shorts_proj.version:
+        if (
+            shorts_proj is not None
+            and parsed_meta.project_version != shorts_proj.version
+        ):
             is_current = False
         if lf_proj is not None and parsed_meta.project_version != lf_proj.version:
             is_current = False
@@ -356,7 +375,7 @@ class PreviewMetadataService:
             title=parsed_meta.title,
             description=parsed_meta.description,
             tags=parsed_meta.tags,
-            category_id=parsed_meta.category_id,
+            category_id=DEFAULT_PREVIEW_CATEGORY_ID,
             language=parsed_meta.language,
             made_for_kids=parsed_meta.made_for_kids,
             contains_synthetic_media=parsed_meta.contains_synthetic_media,

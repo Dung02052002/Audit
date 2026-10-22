@@ -37,13 +37,13 @@ from ai_youtube_agent.pipeline.idempotency import derive_publish_keys
 from ai_youtube_agent.pipeline.longform_publisher import LongFormPublisher
 from ai_youtube_agent.pipeline.publish import PublishJob, PublishStatus
 from ai_youtube_agent.pipeline.publish_audit import (
+    PUBLISH_AUTHORIZATION_FAILED,
     PUBLISH_BLOCKED,
     PUBLISH_DUPLICATE_BLOCKED,
     PUBLISH_REPLAYED,
     PUBLISH_REQUESTED,
     PUBLISH_TOKEN_RENEWED,
     PUBLISH_UPLOAD_RETRY,
-    PUBLISH_AUTHORIZATION_FAILED,
 )
 from ai_youtube_agent.pipeline.publish_errors import PublishError, PublishErrorCode
 from ai_youtube_agent.pipeline.publish_result import (
@@ -398,7 +398,10 @@ def test_the_same_video_is_not_published_twice_on_a_channel(
                 twin_approval,
                 ContentType.SHORTS,
                 derive_publish_keys(
-                    twin.id, twin_approval.id, seed.channel.youtube.channel_id, video.sha256
+                    twin.id,
+                    twin_approval.id,
+                    seed.channel.youtube.channel_id,
+                    video.sha256,
                 ).job_key,
                 clock=at(),
             )
@@ -418,7 +421,9 @@ def test_the_same_video_is_not_published_twice_on_a_channel(
 
 
 def test_publishing_is_off_unless_the_flag_is_on(seed: Seed, pub: Publishing) -> None:
-    off = ShortsPublisher(seed.database, seed.storage, pub.executor, flags=FeatureFlags())
+    off = ShortsPublisher(
+        seed.database, seed.storage, pub.executor, flags=FeatureFlags()
+    )
 
     with pytest.raises(PublishError) as caught:
         off.publish(seed.item.id, actor=USER)
@@ -429,7 +434,9 @@ def test_publishing_is_off_unless_the_flag_is_on(seed: Seed, pub: Publishing) ->
     assert _jobs(seed) == []
 
 
-def test_longform_is_off_unless_its_flag_is_on(database: Database, tmp_path: Path) -> None:
+def test_longform_is_off_unless_its_flag_is_on(
+    database: Database, tmp_path: Path
+) -> None:
     seed = seed_approved_item(
         database, tmp_path, content_type=ContentType.LONGFORM, duration_ms=600_000
     )

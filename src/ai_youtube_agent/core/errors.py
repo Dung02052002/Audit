@@ -58,12 +58,16 @@ class AppError(Exception):
         code: str | None = None,
         user_message: str | None = None,
         retryable: bool = False,
+        http_status: HTTPStatus | None = None,
     ) -> None:
         super().__init__(detail or self.default_code)
         self.detail = detail
         self.code = code or self.default_code
         self.user_message = user_message or self.default_user_message
         self.retryable = retryable
+        if http_status is not None:
+            # Overrides the class default for this instance only.
+            self.default_http_status = HTTPStatus(http_status)
         if not self.code:
             raise ValueError("error code must not be empty")
 

@@ -84,7 +84,9 @@ class Comment:
         parent_comment_id: str | None = None,
         parent_id: str | None = None,
     ) -> "Comment":
-        resolved_parent = parent_comment_id if parent_comment_id is not None else parent_id
+        resolved_parent = (
+            parent_comment_id if parent_comment_id is not None else parent_id
+        )
         return cls(
             id=_new_id(),
             channel_id=channel_id,

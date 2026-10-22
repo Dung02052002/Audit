@@ -3,12 +3,14 @@ safe checkpoint recovery without duplicate artifact work or duplicate uploads.
 """
 
 from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from ai_youtube_agent.core.audit import AuditLog, InMemoryAuditSink
 from ai_youtube_agent.core.content_item import ContentStatus
 from ai_youtube_agent.core.db.codec import format_datetime
 from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.pipeline.crash_resume import CrashResumeService
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
@@ -92,6 +94,16 @@ def test_crash_recovery_resumes_ai_job_from_last_safe_checkpoint(
     assert "video.rendered" not in inspected.completed_domain_steps
 
 
+def _stored_status(database: Database, item_id: str) -> ContentStatus:
+    connection = database.connect()
+    try:
+        item = ContentItemRepository(connection).get(item_id)
+    finally:
+        connection.close()
+    assert item is not None
+    return item.status
+
+
 def test_interrupted_publish_resumes_safely_without_duplicate_upload(
     database: Database, tmp_path
 ) -> None:
@@ -104,8 +116,8 @@ def test_interrupted_publish_resumes_safely_without_duplicate_upload(
         database, seed.storage, pub.executor, flags=PUBLISH_FLAGS
     )
 
-    # Fail all 3 attempts of the first publish call with a resumable NETWORK_ERROR
-    pub.uploader.fail_next(UploadErrorCode.NETWORK_ERROR, times=3)
+    # Fail all 3 attempts of the first publish call with a retryable UNAVAILABLE error
+    pub.uploader.fail_next(UploadErrorCode.UNAVAILABLE, times=3)
     with pytest.raises(YouTubeUploadError):
         publisher.publish(seed.item.id, actor=SYSTEM)
 
@@ -115,11 +127,14 @@ def test_interrupted_publish_resumes_safely_without_duplicate_upload(
     # PublishExecutor re-evaluates PublishGate, uploads once, and marks item PUBLISHED
     resumed_outcome = publisher.publish(seed.item.id, actor=SYSTEM)
     assert resumed_outcome.replayed is False
-    assert resumed_outcome.item.status is ContentStatus.PUBLISHED
+    assert _stored_status(database, seed.item.id) is ContentStatus.PUBLISHED
     assert len(pub.uploader.uploads) == 1
 
     # Calling publish again replays idempotently without uploading a second time
     replay_outcome = publisher.publish(seed.item.id, actor=SYSTEM)
     assert replay_outcome.replayed is True
-    assert replay_outcome.result.youtube_video_id == resumed_outcome.result.youtube_video_id
+    assert (
+        replay_outcome.job.result.youtube_video_id
+        == resumed_outcome.job.result.youtube_video_id
+    )
     assert len(pub.uploader.uploads) == 1

@@ -17,8 +17,6 @@ import dataclasses
 import sqlite3
 
 import pytest
-from factories import AI, T0, USER, at
-from test_shorts_project import STANDARD, Code, World, entity_args, refusal
 
 from ai_youtube_agent.content.script import Script, ScriptSection, SectionKind
 from ai_youtube_agent.content.shorts_config import ShortsConfig
@@ -39,6 +37,8 @@ from ai_youtube_agent.core.db.repositories.jobs import AIJobRepository
 from ai_youtube_agent.core.db.repositories.shorts import ShortsProjectRepository
 from ai_youtube_agent.pipeline.idempotency import audio_key
 from ai_youtube_agent.pipeline.job import AIJob
+from factories import AI, T0, USER, at
+from test_shorts_project import STANDARD, Code, World, entity_args, refusal
 
 
 @pytest.fixture
@@ -196,7 +196,7 @@ def test_other_chunk_durations_fall_back_to_the_estimate(durations) -> None:
 def test_the_script_must_be_the_one_the_project_is_bound_to() -> None:
     script = make_script([words(2)])
     other = dataclasses.replace(script, id="another")
-    version = dataclasses.replace(script, version=2, parent_id=script.id)
+    version = dataclasses.replace(script, version=2, parent_id="parent-script")
 
     for wrong in (other, version):
         with pytest.raises(ValueError, match="bound to"):
@@ -517,11 +517,13 @@ def test_the_sql_check_accepts_planned_with_scenes_and_refuses_draft_with_them(
     project = world.service.create(world.item.id, actor=USER)
     planned = world.service.plan(project.id, expected_version=1, actor=USER)
 
-    with world.database.transaction() as connection:
-        with pytest.raises(sqlite3.IntegrityError):
-            connection.execute(
-                "UPDATE shorts_projects SET status = 'draft' WHERE id = ?",
-                (project.id,),
-            )
+    with (
+        world.database.transaction() as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute(
+            "UPDATE shorts_projects SET status = 'draft' WHERE id = ?",
+            (project.id,),
+        )
 
     assert world.project_of() == planned

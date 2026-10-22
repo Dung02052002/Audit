@@ -1,16 +1,10 @@
 """Tests for PipelineRunner (Prompt Pack v8, prompt #206), context C16 Orchestration."""
 
-import dataclasses
-from datetime import UTC, datetime
-from decimal import Decimal
 import uuid
-
-import pytest
+from datetime import UTC, datetime
 
 from ai_youtube_agent.content.approval import (
-    ApprovalRequest,
     ApprovalStatus,
-    ArtifactBinding,
 )
 from ai_youtube_agent.content.channel import Channel, ChannelStatus, YouTubeIdentifiers
 from ai_youtube_agent.content.strategy import Cadence, StrategyProfile
@@ -117,7 +111,9 @@ def test_advance_draft_to_generating_evaluates_gates(database: Database) -> None
     assert any(e.action == PIPELINE_ADVANCED_ACTION for e in sink.events())
 
 
-def test_advance_generating_to_testing_requires_video_artifact(database: Database) -> None:
+def test_advance_generating_to_testing_requires_video_artifact(
+    database: Database,
+) -> None:
     channel_id = str(uuid.uuid4())
     _seed_valid_channel(database, channel_id)
 
@@ -320,4 +316,6 @@ def test_run_stops_at_human_approval_gate(database: Database) -> None:
     assert run_res.final_status is ContentStatus.AWAITING_APPROVAL
     assert run_res.waiting_for_approval is True
     assert run_res.completed is False
-    assert len(run_res.steps) == 4  # DRAFT -> GENERATING -> TESTING -> PREVIEW_READY -> AWAITING_APPROVAL
+    assert (
+        len(run_res.steps) == 4
+    )  # DRAFT -> GENERATING -> TESTING -> PREVIEW_READY -> AWAITING_APPROVAL

@@ -92,9 +92,9 @@ def test_content_screen_separates_shorts_and_longform_by_lifecycle_state(
 
     assert view.shorts_column.stage_for(ContentStatus.DRAFT).count == 1
     assert view.shorts_column.stage_for(ContentStatus.AWAITING_APPROVAL).count == 1
-    awaiting_card = view.shorts_column.stage_for(
-        ContentStatus.AWAITING_APPROVAL
-    ).items[0]
+    awaiting_card = view.shorts_column.stage_for(ContentStatus.AWAITING_APPROVAL).items[
+        0
+    ]
     assert awaiting_card.latest_video_version == 1
     assert awaiting_card.detail_href == f"/content/{short_awaiting.id}"
 
@@ -116,4 +116,3 @@ def test_content_screen_separates_shorts_and_longform_by_lifecycle_state(
     assert 'data-testid="content-column-longform"' in html_out
     assert "Short Ready for Approval" in html_out
     assert "LongForm Deep Dive" in html_out
-

@@ -211,7 +211,10 @@ def test_service_normalises_published_longform_and_refuses_shorts(
     assert len(views) == 1
     assert views[0].watch_time_hours == Decimal("5.00")
     assert views[0].average_view_duration_minutes == Decimal("3.00")
-    assert service.latest_for_item(long_item.id) == views[0]
+    assert (
+        service.latest_for_item(long_item.id, video_duration_seconds=Decimal("600"))
+        == views[0]
+    )
 
     by_video = service.normalize_for_video("vid000010ab")
     assert len(by_video) == 1 and by_video[0].content_item_id == long_item.id

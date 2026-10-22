@@ -1,4 +1,5 @@
-"""Critical State & Artifact Backup Plan (Prompt Pack v8, prompt #220), area X4 Security & Recovery.
+"""Critical State & Artifact Backup Plan (Prompt Pack v8, prompt #220), area X4
+Security & Recovery.
 
 Creates atomic, checksummed backups of both the SQLite database (using SQLite's
 online backup API) and the local artifact file tree, accompanied by a verifiable
@@ -17,7 +18,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from ai_youtube_agent.core.audit import Actor, ActorKind, AuditLog, AuditResult, EntityRef
+from ai_youtube_agent.core.audit import (
+    Actor,
+    ActorKind,
+    AuditLog,
+    AuditResult,
+    EntityRef,
+)
 from ai_youtube_agent.core.errors import DomainError
 
 Clock = Callable[[], datetime]
@@ -135,7 +142,9 @@ def _inspect_table_counts(db_path: Path) -> dict[str, int]:
 
 
 class BackupManager:
-    """Creates and verifies full backups of the SQLite database and artifact directory (#220)."""
+    """Creates and verifies full backups of the SQLite database and artifact
+    directory (#220).
+    """
 
     def __init__(
         self,

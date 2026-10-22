@@ -10,7 +10,10 @@ from ai_youtube_agent.pipeline.upload_retry import (
     call_with_retry,
     is_resumable_error_code,
 )
-from ai_youtube_agent.providers.youtube_upload import UploadErrorCode, YouTubeUploadError
+from ai_youtube_agent.providers.youtube_upload import (
+    UploadErrorCode,
+    YouTubeUploadError,
+)
 
 
 def _error(code: UploadErrorCode) -> YouTubeUploadError:
@@ -32,7 +35,9 @@ class Flaky:
 
 
 def test_delays_double_and_are_capped() -> None:
-    policy = UploadRetryPolicy(max_attempts=5, base_delay_seconds=2, max_delay_seconds=10)
+    policy = UploadRetryPolicy(
+        max_attempts=5, base_delay_seconds=2, max_delay_seconds=10
+    )
 
     assert [policy.delay_after(n) for n in (1, 2, 3, 4)] == [2.0, 4.0, 8.0, 10.0]
 
@@ -72,7 +77,9 @@ def test_retryable_errors_are_retried_with_growing_waits() -> None:
         operation,
         UploadRetryPolicy(max_attempts=3, base_delay_seconds=2),
         sleep=waits.append,
-        on_retry=lambda attempt, error, delay: seen.append((attempt, error.code, delay)),
+        on_retry=lambda attempt, error, delay: seen.append(
+            (attempt, error.code, delay)
+        ),
     )
 
     assert result == "ok"
@@ -154,13 +161,13 @@ def test_one_attempt_means_no_retry() -> None:
 
 
 def test_resumable_codes_are_the_retryable_ones_plus_quota_and_authorisation() -> None:
-    assert RESUMABLE_UPLOAD_CODES == {
+    assert {
         UploadErrorCode.UNAVAILABLE.value,
         UploadErrorCode.TIMEOUT.value,
         UploadErrorCode.RATE_LIMITED.value,
         UploadErrorCode.QUOTA_EXCEEDED.value,
         UploadErrorCode.UNAUTHORIZED.value,
-    }
+    } == RESUMABLE_UPLOAD_CODES
     assert is_resumable_error_code(UploadErrorCode.TIMEOUT.value)
     assert not is_resumable_error_code(UploadErrorCode.INVALID_PAYLOAD.value)
     assert not is_resumable_error_code(UploadErrorCode.DUPLICATE_UPLOAD.value)

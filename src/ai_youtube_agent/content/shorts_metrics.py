@@ -79,7 +79,9 @@ class ShortsMetricsErrorCode(StrEnum):
 
 
 USER_MESSAGES: Final[dict[ShortsMetricsErrorCode, str]] = {
-    ShortsMetricsErrorCode.CONTENT_NOT_FOUND: "The requested Shorts content was not found.",
+    ShortsMetricsErrorCode.CONTENT_NOT_FOUND: (
+        "The requested Shorts content was not found."
+    ),
     ShortsMetricsErrorCode.NOT_A_SHORT: (
         "Shorts metrics normalisation only applies to Shorts content."
     ),
@@ -327,7 +329,10 @@ class ShortsMetricsService:
         *,
         video_duration_seconds: Decimal | int | None = None,
     ) -> list[ShortsMetricsView]:
-        """Normalise stored snapshots of one YouTube video id, verifying it is not LongForm."""
+        """Normalise stored snapshots of one YouTube video id.
+
+        Verifies it is not LongForm.
+        """
         if not isinstance(youtube_video_id, str) or not VIDEO_ID_PATTERN.match(
             youtube_video_id
         ):
@@ -356,7 +361,8 @@ class ShortsMetricsService:
             if job.content_type is not ContentType.SHORTS:
                 raise ShortsMetricsError(
                     ShortsMetricsErrorCode.NOT_A_SHORT,
-                    f"video {youtube_video_id} was published as {job.content_type.value}",
+                    f"video {youtube_video_id} was published as "
+                    f"{job.content_type.value}",
                 )
             return job.content_item_id
         finally:
@@ -383,7 +389,8 @@ def _validate_shorts_duration(
     if not value.is_finite() or value <= 0 or value > SHORTS_MAX_DURATION_SECONDS:
         raise ShortsMetricsError(
             ShortsMetricsErrorCode.INVALID_DURATION,
-            f"video_duration_seconds {value} must be in (0, {SHORTS_MAX_DURATION_SECONDS}]",
+            f"video_duration_seconds {value} must be in "
+            f"(0, {SHORTS_MAX_DURATION_SECONDS}]",
         )
     return value
 

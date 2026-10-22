@@ -1,4 +1,5 @@
-"""Durable job queue abstraction (Prompt Pack v8, prompt R-204), context C16 Orchestration.
+"""Durable job queue abstraction (Prompt Pack v8, prompt R-204), context C16
+Orchestration.
 
 Provides the durable, idempotent job queue abstraction for scheduling and executing
 pipeline AI work units:
@@ -20,7 +21,7 @@ pipeline AI work units:
 import threading
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final, Protocol, runtime_checkable
@@ -48,7 +49,7 @@ class JobQueueErrorCode(StrEnum):
 
 class JobQueueError(DomainError):
     def __init__(self, code: JobQueueErrorCode, detail: str) -> None:
-        super().__init__(code.value, detail)
+        super().__init__(detail, code=code.value)
         self.queue_code = code
 
 
@@ -226,10 +227,14 @@ class SqliteJobQueue:
                 expires_at = now + lease_duration
 
                 try:
-                    # If job was running (expired lease), transition to failed then start, or start directly if queued
+                    # If job was running (expired lease), transition to failed then
+                    # start, or start directly if queued
                     if candidate.status is AIJobStatus.RUNNING:
-                        # Mark previous attempt failed due to lease timeout, then restart
-                        step_job = candidate.fail("Worker lease expired, reclaiming job", clock=self._clock)
+                        # Mark previous attempt failed due to lease timeout, then
+                        # restart
+                        step_job = candidate.fail(
+                            "Worker lease expired, reclaiming job", clock=self._clock
+                        )
                         step_job = step_job.start(clock=self._clock)
                     else:
                         step_job = candidate.start(clock=self._clock)
@@ -252,7 +257,8 @@ class SqliteJobQueue:
                         expires_at=expires_at,
                     )
                 except ConcurrencyError:
-                    # Another worker claimed or updated this job concurrently; try next candidate
+                    # Another worker claimed or updated this job concurrently; try next
+                    # candidate
                     continue
 
         return None
@@ -333,7 +339,8 @@ class SqliteJobQueue:
             if current.status is not AIJobStatus.RUNNING:
                 raise JobQueueError(
                     JobQueueErrorCode.INVALID_STATE,
-                    f"Cannot renew lease for job {current.id} in status {current.status.value}.",
+                    f"Cannot renew lease for job {current.id} in status "
+                    f"{current.status.value}.",
                 )
             old_updated_at = current.updated_at
             expires_at = now + lease_duration
@@ -382,7 +389,9 @@ class SqliteJobQueue:
                         if now >= exp_dt:
                             old_updated_at = j.updated_at
                             try:
-                                failed = j.fail("Reclaimed expired worker lease", clock=self._clock)
+                                failed = j.fail(
+                                    "Reclaimed expired worker lease", clock=self._clock
+                                )
                                 repo.update(failed, expected_updated_at=old_updated_at)
                                 reclaimed += 1
                             except ConcurrencyError:

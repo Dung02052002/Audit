@@ -52,14 +52,15 @@ def _publish_video(
     profile: StrategyProfile,
     youtube_video_id: str,
 ) -> None:
-    item = make_content_item(
-        channel, profile, status=ContentStatus.PUBLISHED
-    )
+    item = make_content_item(channel, profile, status=ContentStatus.PUBLISHED)
     video = make_artifact(item, ArtifactKind.VIDEO)
     approval = make_approval_request(item, [video]).approve(USER)
     job = (
         PublishJob.create(
-            approval, ContentType.SHORTS, f"pub:{youtube_video_id}", clock=lambda: PUBLISHED
+            approval,
+            ContentType.SHORTS,
+            f"pub:{youtube_video_id}",
+            clock=lambda: PUBLISHED,
         )
         .start(clock=lambda: PUBLISHED)
         .succeed(youtube_video_id, clock=lambda: PUBLISHED)
@@ -88,9 +89,7 @@ class TestCommentSync:
 
         provider = MockCommentProvider(clock=lambda: NOW)
         oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
-        oauth.seed_token(
-            channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL})
-        )
+        oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}))
         sink = InMemoryAuditSink()
         audit = AuditLog(sink, clock=lambda: NOW)
         sync = CommentSync(
@@ -160,9 +159,7 @@ class TestCommentSync:
 
         provider = MockCommentProvider(clock=lambda: NOW)
         oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
-        oauth.seed_token(
-            channel.id, scopes=frozenset({OAuthScope.YOUTUBE_READONLY})
-        )
+        oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_READONLY}))
         sync = CommentSync(
             database,
             provider,
@@ -175,10 +172,7 @@ class TestCommentSync:
 
         with pytest.raises(CommentSyncError) as exc_unpub:
             sync.sync(channel.id, actor=USER, video_ids=("unpub123456",))
-        assert (
-            exc_unpub.value.sync_code
-            is CommentSyncErrorCode.VIDEO_NOT_PUBLISHED
-        )
+        assert exc_unpub.value.sync_code is CommentSyncErrorCode.VIDEO_NOT_PUBLISHED
 
         # Seed 3 comments with page_size=1 and max_pages_per_video=2 -> TOO_MANY_PAGES
         provider.seed_comments(

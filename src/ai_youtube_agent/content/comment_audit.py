@@ -218,7 +218,9 @@ class CommentAuditTrail:
 
 
 class CommentAuditService:
-    """Queries immutable audit events for comment sync, classification, and replies (#189)."""
+    """Queries immutable audit events for comment sync, classification, and replies
+    (#189).
+    """
 
     def __init__(self, database: Database, audit_sink: AuditSink) -> None:
         self._database = database
@@ -266,7 +268,9 @@ class CommentAuditService:
         )
 
     def trail_for_comment(self, comment_id: str) -> CommentAuditTrail:
-        """Return classification, draft, approval, guard, and post events for a comment."""
+        """Return classification, draft, approval, guard, and post events for a
+        comment.
+        """
         with self._database.transaction() as conn:
             repo = CommentRepository(conn)
             comment = repo.get(comment_id)
@@ -284,9 +288,7 @@ class CommentAuditService:
                 continue
             if event.action == COMMENTS_SYNCED:
                 continue
-            if self._matches_comment(
-                event, comment_id=comment.id, draft_ids=draft_ids
-            ):
+            if self._matches_comment(event, comment_id=comment.id, draft_ids=draft_ids):
                 entries.append(
                     CommentAuditEntry.from_event(
                         event,
@@ -304,7 +306,9 @@ class CommentAuditService:
         )
 
     def trail_for_channel(self, channel_id: str) -> CommentAuditTrail:
-        """Return all comment sync, classification, draft, and reply events for a channel."""
+        """Return all comment sync, classification, draft, and reply events for a
+        channel.
+        """
         with self._database.transaction() as conn:
             if ChannelRepository(conn).get(channel_id) is None:
                 raise CommentAuditError(
@@ -358,33 +362,23 @@ class CommentAuditService:
         )
 
     @staticmethod
-    def _matches_draft(
-        event: AuditEvent, *, draft_id: str, comment_id: str
-    ) -> bool:
-        if (
-            event.entity.type == REPLY_DRAFT_ENTITY_TYPE
-            and event.entity.id == draft_id
-        ):
+    def _matches_draft(event: AuditEvent, *, draft_id: str, comment_id: str) -> bool:
+        if event.entity.type == REPLY_DRAFT_ENTITY_TYPE and event.entity.id == draft_id:
             return True
         if event.metadata.get("reply_draft_id") == draft_id:
             return True
-        if (
+        return bool(
             event.action in {REPLY_DUPLICATE_BLOCKED, AUTO_REPLY_BLOCKED}
             and event.entity.type == COMMENT_ENTITY_TYPE
             and event.entity.id == comment_id
             and event.metadata.get("reply_draft_id") in {None, draft_id}
-        ):
-            return True
-        return False
+        )
 
     @staticmethod
     def _matches_comment(
         event: AuditEvent, *, comment_id: str, draft_ids: set[str]
     ) -> bool:
-        if (
-            event.entity.type == COMMENT_ENTITY_TYPE
-            and event.entity.id == comment_id
-        ):
+        if event.entity.type == COMMENT_ENTITY_TYPE and event.entity.id == comment_id:
             return True
         if event.metadata.get("comment_id") == comment_id:
             return True
@@ -394,16 +388,11 @@ class CommentAuditService:
         ):
             return True
         meta_draft_id = event.metadata.get("reply_draft_id")
-        if isinstance(meta_draft_id, str) and meta_draft_id in draft_ids:
-            return True
-        return False
+        return bool(isinstance(meta_draft_id, str) and meta_draft_id in draft_ids)
 
     @staticmethod
     def _is_channel_level_event(event: AuditEvent, *, channel_id: str) -> bool:
-        if (
-            event.entity.type == CHANNEL_ENTITY_TYPE
-            and event.entity.id == channel_id
-        ):
+        if event.entity.type == CHANNEL_ENTITY_TYPE and event.entity.id == channel_id:
             return True
         return event.metadata.get("channel_id") == channel_id
 
@@ -418,10 +407,7 @@ class CommentAuditService:
         meta_comment_id = event.metadata.get("comment_id")
         if isinstance(meta_comment_id, str) and meta_comment_id in comment_ids:
             return meta_comment_id
-        if (
-            event.entity.type == COMMENT_ENTITY_TYPE
-            and event.entity.id in comment_ids
-        ):
+        if event.entity.type == COMMENT_ENTITY_TYPE and event.entity.id in comment_ids:
             return event.entity.id
         if (
             event.entity.type == REPLY_DRAFT_ENTITY_TYPE

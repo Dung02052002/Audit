@@ -1,6 +1,6 @@
 """Tests for Approval Center UI view and service (Prompt Pack v8, prompt Q-200)."""
 
-from datetime import UTC, datetime
+from datetime import timedelta
 
 from ai_youtube_agent.content.approval import ApprovalStatus
 from ai_youtube_agent.content.channel import ChannelStatus
@@ -22,6 +22,7 @@ from ai_youtube_agent.core.db.repositories.review import (
     QCResultRepository,
 )
 from factories import (
+    T0,
     USER,
     make_approval_request,
     make_artifact,
@@ -31,7 +32,8 @@ from factories import (
     make_strategy_profile,
 )
 
-FIXED_NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+# One hour after the factories' clock, well inside the 72 hour approval TTL.
+FIXED_NOW = T0 + timedelta(hours=1)
 
 
 def test_approval_center_empty_when_no_channels(database: Database) -> None:
@@ -43,7 +45,7 @@ def test_approval_center_empty_when_no_channels(database: Database) -> None:
     assert view.pending_count == 0
 
 
-def test_approval_center_shows_pending_approvals_exact_artifact_version_and_handles_decision(
+def test_approval_center_shows_exact_artifact_versions_and_decisions(
     database: Database,
 ) -> None:
     channel = make_channel(title="Review Studio", status=ChannelStatus.ACTIVE)
@@ -101,4 +103,3 @@ def test_approval_center_shows_pending_approvals_exact_artifact_version_and_hand
     after = service.load(channel.id)
     assert after.pending_count == 0
     assert after.approved_count == 1
-

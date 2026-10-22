@@ -1,7 +1,7 @@
 """Tests for CrashResumeService (Prompt Pack v8, task R-211)."""
 
-from datetime import UTC, datetime, timedelta
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -78,7 +78,11 @@ def test_extract_safe_checkpoint_ignores_administrative_steps(
         .start(clock=_at(T0 + timedelta(seconds=1)))
         .checkpoint(
             LEASE_STEP_NAME,
-            {"worker_id": "w1", "token": "t1", "expires_at": format_datetime(T0 + timedelta(minutes=5))},
+            {
+                "worker_id": "w1",
+                "token": "t1",
+                "expires_at": format_datetime(T0 + timedelta(minutes=5)),
+            },
             clock=_at(T0 + timedelta(seconds=2)),
         )
         .checkpoint(
@@ -88,7 +92,11 @@ def test_extract_safe_checkpoint_ignores_administrative_steps(
         )
         .checkpoint(
             LEASE_STEP_NAME,
-            {"worker_id": "w1", "token": "t1", "expires_at": format_datetime(T0 + timedelta(minutes=10))},
+            {
+                "worker_id": "w1",
+                "token": "t1",
+                "expires_at": format_datetime(T0 + timedelta(minutes=10)),
+            },
             clock=_at(T0 + timedelta(seconds=4)),
         )
     )

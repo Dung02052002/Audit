@@ -1,4 +1,5 @@
-"""TTS voice generation cost ledger bridge (Prompt Pack v8, prompt #176), contexts C7 and C14.
+"""TTS voice generation cost ledger bridge (Prompt Pack v8, prompt #176), contexts C7
+and C14.
 
 Connects voice generation costs (#092 ``AudioCostRecorder``, #086 ``SynthesizedSpeech``,
 #088 ``TtsResult``) to the unified ``CostLedger`` (#174):
@@ -82,7 +83,11 @@ class TTSCostError(DomainError):
 
 def compute_tts_amount(characters: int, price_per_1k: Decimal) -> Decimal:
     """Compute ``characters * price_per_1k / 1000`` rounded half-up to 6 decimals."""
-    if isinstance(characters, bool) or not isinstance(characters, int) or characters < 0:
+    if (
+        isinstance(characters, bool)
+        or not isinstance(characters, int)
+        or characters < 0
+    ):
         raise ValueError("characters must be a non-negative integer")
     if (
         isinstance(price_per_1k, bool)
@@ -113,7 +118,8 @@ class TTSChannelCostSummary:
 
 
 class TTSCostService:
-    """Connects voice generation costs (``AudioCostRecorder`` & ``SynthesizedSpeech``) to ``CostLedger``."""
+    """Connects voice generation costs (``AudioCostRecorder`` & ``SynthesizedSpeech``)
+    to ``CostLedger``."""
 
     def __init__(
         self,
@@ -149,7 +155,8 @@ class TTSCostService:
         result: TtsResult,
         voice: VoiceProfile,
     ) -> CostLedgerEntry:
-        """Record the TTS cost of a stored audio artifact and return a ``CostLedgerEntry``."""
+        """Record the TTS cost of a stored audio artifact and return a
+        ``CostLedgerEntry``."""
         outcome = self._audio_recorder.record(record, result, voice)
         return CostLedgerEntry(cost=outcome.cost, created=outcome.created)
 
@@ -163,7 +170,8 @@ class TTSCostService:
         price_per_1k: Decimal | None = None,
         actor: Actor = AUDIO_COST_ACTOR,
     ) -> CostLedgerEntry:
-        """Record the TTS cost of a ``SynthesizedSpeech`` call directly into ``CostLedger``."""
+        """Record the TTS cost of a ``SynthesizedSpeech`` call directly into
+        ``CostLedger``."""
         if not isinstance(speech, SynthesizedSpeech):
             raise TypeError("speech must be a SynthesizedSpeech")
         effective_price = (
@@ -207,7 +215,8 @@ class TTSCostService:
         if delta <= Decimal("0"):
             raise TTSCostError(
                 TTSCostErrorCode.INVALID_CORRECTION,
-                f"recalculated amount {recalculated} is not above existing cost {existing.amount}",
+                f"recalculated amount {recalculated} is not above existing cost "
+                f"{existing.amount}",
             )
         return self._ledger.record_correction(
             existing.id,
@@ -217,7 +226,8 @@ class TTSCostService:
         )
 
     def for_artifact(self, artifact_id: str) -> CostRecord | None:
-        """Return the primary ``CostCategory.TTS`` record for ``artifact_id``, if any."""
+        """Return the primary ``CostCategory.TTS`` record for ``artifact_id``, if
+        any."""
         return self._ledger.find_by_ref(CostCategory.TTS, artifact_id)
 
     def summarize_channel(

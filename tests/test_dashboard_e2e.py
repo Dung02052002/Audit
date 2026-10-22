@@ -38,11 +38,9 @@ from ai_youtube_agent.core.db.repositories.content import (
     ContentItemRepository,
 )
 from ai_youtube_agent.core.db.repositories.review import QCResultRepository
-from ai_youtube_agent.content.analytics import MetricScope
 from ai_youtube_agent.providers.mock_video_render import stub_mp4
 from factories import (
     SYSTEM,
-    T0,
     USER,
     at,
     make_channel,
@@ -125,7 +123,8 @@ def test_dashboard_e2e_reflects_live_pipeline_economics_and_approvals(
     req = approval_service.request_approval(shorts_item.id, requested_by=SYSTEM)
     assert req.approval.status is ApprovalStatus.PENDING
 
-    # Record revenue and cost to verify RevenueScreenService (R-09 / C14: Contribution Margin, not net profit)
+    # Record revenue and cost to verify RevenueScreenService (R-09 / C14: Contribution
+    # Margin, not net profit)
     from datetime import UTC, datetime, timedelta
 
     now_utc = datetime.now(UTC)
@@ -151,7 +150,8 @@ def test_dashboard_e2e_reflects_live_pipeline_economics_and_approvals(
         content_item_id=shorts_item.id,
     )
 
-    # 1. Home Screen reflects active channel, 2 in-progress items, and 1 pending approval
+    # 1. Home Screen reflects active channel, 2 in-progress items, and 1 pending
+    # approval
     home_svc = container.resolve(HomeScreenService)
     home_view = home_svc.load(channel.id)
     assert home_view.channel_id == channel.id
@@ -197,8 +197,22 @@ def test_dashboard_e2e_reflects_live_pipeline_economics_and_approvals(
     assert "Contribution Margin" in rev_html
 
     # 5. Channel, Analytics, AI Center, Settings, and Alerts screens load cleanly
-    assert container.resolve(ChannelOverviewService).load(channel.id).channel_id == channel.id
-    assert container.resolve(AnalyticsScreenService).load(channel.id).channel_id == channel.id
-    assert container.resolve(AICenterScreenService).load(channel.id).channel_id == channel.id
-    assert container.resolve(SettingsScreenService).load(channel.id).channel_id == channel.id
-    assert container.resolve(AlertsScreenService).load(channel.id).channel_id == channel.id
+    assert (
+        container.resolve(ChannelOverviewService).load(channel.id).channel_id
+        == channel.id
+    )
+    assert (
+        container.resolve(AnalyticsScreenService).load(channel.id).channel_id
+        == channel.id
+    )
+    assert (
+        container.resolve(AICenterScreenService).load(channel.id).channel_id
+        == channel.id
+    )
+    assert (
+        container.resolve(SettingsScreenService).load(channel.id).channel_id
+        == channel.id
+    )
+    assert (
+        container.resolve(AlertsScreenService).load(channel.id).channel_id == channel.id
+    )

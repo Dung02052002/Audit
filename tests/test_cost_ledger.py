@@ -136,9 +136,7 @@ class TestCostLedger:
         assert item_summary.total_amount == Decimal("1.915000")
         assert len(ledger.list_for_content_item(item.id)) == 4
 
-    def test_append_only_correction_and_idempotency(
-        self, database: Database
-    ) -> None:
+    def test_append_only_correction_and_idempotency(self, database: Database) -> None:
         channel = make_channel(status=ChannelStatus.ACTIVE)
         profile = make_strategy_profile(channel)
         with database.transaction() as connection:
@@ -188,9 +186,7 @@ class TestCostLedger:
             StrategyProfileRepository(connection).add(other_profile)
             ContentItemRepository(connection).add(other_item)
 
-        ledger = CostLedger(
-            database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW
-        )
+        ledger = CostLedger(database, AuditLog(InMemoryAuditSink()), clock=lambda: NOW)
 
         with pytest.raises(CostLedgerError) as exc_curr:
             ledger.record(
@@ -214,7 +210,5 @@ class TestCostLedger:
         assert exc_ch.value.ledger_code is CostLedgerErrorCode.CHANNEL_MISMATCH
 
         with pytest.raises(CostLedgerError) as exc_range:
-            ledger.list_for_channel(
-                channel.id, start=NOW, end=NOW - timedelta(hours=1)
-            )
+            ledger.list_for_channel(channel.id, start=NOW, end=NOW - timedelta(hours=1))
         assert exc_range.value.ledger_code is CostLedgerErrorCode.INVALID_RANGE

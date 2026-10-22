@@ -95,7 +95,9 @@ class LocalFileStorage:
             raise ValueError("data must be non-empty bytes")
         content = bytes(data)
         final.parent.mkdir(parents=True, exist_ok=True)
-        temporary = final.with_name(f".{final.name}.{uuid.uuid4().hex}.tmp")
+        # Short on purpose: on Windows the longest accepted item id leaves
+        # little room under MAX_PATH (260), and the final name is only 6 long.
+        temporary = final.with_name(f".{uuid.uuid4().hex[:8]}")
         try:
             with open(temporary, "xb") as handle:
                 handle.write(content)

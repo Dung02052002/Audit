@@ -1,4 +1,5 @@
-"""AI Center screen view and service (Prompt Pack v8, prompt Q-199), context X3 Command Center.
+"""AI Center screen view and service (Prompt Pack v8, prompt Q-199), context X3
+Command Center.
 
 Builds the Command Center AI Center screen view model and iOS-style HTML rendering,
 presenting:
@@ -33,6 +34,7 @@ from ai_youtube_agent.content.dashboard_shell import (
 from ai_youtube_agent.core.audit import AuditLog
 from ai_youtube_agent.core.config import Settings
 from ai_youtube_agent.core.db.database import Database
+from ai_youtube_agent.core.db.repositories.audit import SqliteAuditSink
 from ai_youtube_agent.core.db.repositories.channel import ChannelRepository
 from ai_youtube_agent.core.db.repositories.content import ContentItemRepository
 from ai_youtube_agent.core.db.repositories.jobs import (
@@ -190,7 +192,7 @@ class AICenterScreenService:
         self._database = database
         self._settings = settings or Settings()
         self._cost_ledger = cost_ledger or CostLedger(
-            database, AuditLog(database), clock=clock
+            database, AuditLog(SqliteAuditSink(database), clock=clock), clock=clock
         )
         self._clock = clock
         self._shell_service = shell_service or DashboardShellService(
@@ -265,8 +267,7 @@ class AICenterScreenService:
         completed_jobs = tuple(
             j
             for j in job_items
-            if j.status
-            in (AIJobStatus.SUCCEEDED.value, AIJobStatus.CANCELLED.value)
+            if j.status in (AIJobStatus.SUCCEEDED.value, AIJobStatus.CANCELLED.value)
         )
 
         if selected_channel is not None:
@@ -306,9 +307,7 @@ class AICenterScreenService:
             all_jobs=job_items,
             provider_and_costs=provider_summary,
             empty_message=(
-                "No AI sessions or jobs recorded yet."
-                if not has_activity
-                else None
+                "No AI sessions or jobs recorded yet." if not has_activity else None
             ),
         )
 
@@ -316,7 +315,7 @@ class AICenterScreenService:
         sess = view.active_session
         if sess is not None:
             session_html = (
-                f'<p>Active Session: <code>{html.escape(sess.session_id)}</code> '
+                f"<p>Active Session: <code>{html.escape(sess.session_id)}</code> "
                 f"by <strong>{html.escape(sess.started_by_id)}</strong> "
                 f"({sess.job_count} jobs)</p>"
             )
@@ -329,8 +328,10 @@ class AICenterScreenService:
         job_rows = "".join(
             f"<tr><td><code>{html.escape(j.job_id[:8])}</code></td>"
             f"<td>{html.escape(j.kind)}</td>"
-            f'<td><span class="yt-pill yt-pill--{j.tone.value}">{html.escape(j.status)}</span></td>'
-            f"<td>{html.escape(j.last_checkpoint_step or '—')} ({j.checkpoint_count})</td>"
+            f'<td><span class="yt-pill yt-pill--{j.tone.value}">'
+            f"{html.escape(j.status)}</span></td>"
+            f"<td>{html.escape(j.last_checkpoint_step or '—')} "
+            f"({j.checkpoint_count})</td>"
             f"<td>{j.attempts} (retries: {j.retry_count})</td>"
             f"<td>{html.escape(j.provider_name)}</td>"
             f"<td>{html.escape(j.last_error or '—')}</td></tr>"
@@ -339,7 +340,8 @@ class AICenterScreenService:
         jobs_table = (
             '<table class="yt-table" data-testid="ai-center-jobs-table">'
             "<thead><tr><th>Job</th><th>Kind</th><th>Status</th>"
-            "<th>Progress / Checkpoint</th><th>Attempts</th><th>Provider</th><th>Error</th></tr></thead>"
+            "<th>Progress / Checkpoint</th><th>Attempts</th><th>Provider</th>"
+            "<th>Error</th></tr></thead>"
             f"<tbody>{job_rows}</tbody></table>"
             if job_rows
             else '<p class="yt-empty">No AI jobs recorded.</p>'
@@ -355,7 +357,8 @@ class AICenterScreenService:
       {sess_badge}
     </div>
     {session_html}
-    <p class="yt-card__subtitle">Active jobs: {len(view.active_jobs)} · Failed: {len(view.failed_jobs)} · Completed: {len(view.completed_jobs)}</p>
+    <p class="yt-card__subtitle">Active jobs: {len(view.active_jobs)} · \
+Failed: {len(view.failed_jobs)} · Completed: {len(view.completed_jobs)}</p>
   </section>
 
   <section class="yt-card yt-grid__span-6" data-testid="ai-center-providers-card">
@@ -364,9 +367,14 @@ class AICenterScreenService:
         <p class="yt-card__subtitle">Providers &amp; AI Cost</p>
         <h2 class="yt-card__title">Provider Telemetry</h2>
       </div>
-      <span class="yt-pill yt-pill--info">{html.escape(str(pc.total_cost))} {html.escape(pc.currency)}</span>
+      <span class="yt-pill yt-pill--info">{html.escape(str(pc.total_cost))} \
+{html.escape(pc.currency)}</span>
     </div>
-    <p class="yt-card__subtitle">Research: <code>{html.escape(pc.research_provider)}</code> · LLM: <code>{html.escape(pc.text_provider)}</code> · TTS: <code>{html.escape(pc.voice_provider)}</code> · Render: <code>{html.escape(pc.render_provider)}</code></p>
+    <p class="yt-card__subtitle">Research: \
+<code>{html.escape(pc.research_provider)}</code> · \
+LLM: <code>{html.escape(pc.text_provider)}</code> · \
+TTS: <code>{html.escape(pc.voice_provider)}</code> · \
+Render: <code>{html.escape(pc.render_provider)}</code></p>
   </section>
 
   <section class="yt-card yt-grid__span-12" data-testid="ai-center-jobs-card">
@@ -437,4 +445,3 @@ def _to_job_view(job: AIJob, settings: Settings) -> AIJobViewItem:
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
-

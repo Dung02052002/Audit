@@ -187,7 +187,9 @@ def test_upload_provider_checks_digests_and_gives_a_deterministic_receipt() -> N
     assert corrupt.value.upload_code is UploadErrorCode.INVALID_MEDIA
 
 
-def test_upload_provider_without_duplicate_rejection_returns_the_stored_receipt() -> None:
+def test_upload_provider_without_duplicate_rejection_returns_the_stored_receipt() -> (
+    None
+):
     oauth = MockYouTubeOAuthProvider(clock=_clock)
     token = oauth.get_token("ch-1")
     uploader = MockYouTubeUploadProvider(clock=_clock)

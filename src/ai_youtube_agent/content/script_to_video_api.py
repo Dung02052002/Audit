@@ -2,8 +2,10 @@
 
 Exposes:
 - ``GET /script-to-video/capabilities``: Runtime provider capability inspection.
-- ``POST /script-to-video/analyze``: Parse script and build Story Bible + Scene Breakdown without rendering.
-- ``POST /script-to-video/runs``: Execute full end-to-end Script-to-Video production pipeline.
+- ``POST /script-to-video/analyze``: Parse script and build Story Bible + Scene
+  Breakdown without rendering.
+- ``POST /script-to-video/runs``: Execute full end-to-end Script-to-Video production
+  pipeline.
 """
 
 from __future__ import annotations
@@ -27,9 +29,7 @@ from ai_youtube_agent.pipeline.script_to_video import (
 
 router = APIRouter(prefix="/script-to-video", tags=["script-to-video"])
 
-ScriptToVideoServiceDep = Annotated[
-    ScriptToVideoService, provide(ScriptToVideoService)
-]
+ScriptToVideoServiceDep = Annotated[ScriptToVideoService, provide(ScriptToVideoService)]
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 
 
@@ -56,14 +56,16 @@ class ScriptToVideoPayload(BaseModel):
             ctype = ContentType(self.content_type.strip().lower())
         except ValueError as error:
             raise ScriptToVideoError(
-                f"invalid content_type {self.content_type!r}; expected 'shorts' or 'longform'",
+                f"invalid content_type {self.content_type!r}; "
+                "expected 'shorts' or 'longform'",
                 code=ScriptToVideoErrorCode.INVALID_INPUT,
             ) from error
         try:
             pmode = ProductionMode(self.production_mode.strip().lower())
         except ValueError as error:
             raise ScriptToVideoError(
-                f"invalid production_mode {self.production_mode!r}; expected 'story_video' or 'ai_film'",
+                f"invalid production_mode {self.production_mode!r}; "
+                "expected 'story_video' or 'ai_film'",
                 code=ScriptToVideoErrorCode.INVALID_INPUT,
             ) from error
 
@@ -89,7 +91,10 @@ class ScriptToVideoPayload(BaseModel):
 def get_capabilities(
     service: ScriptToVideoServiceDep,
 ) -> dict[str, Any]:
-    """Return the runtime capabilities of voice, image, video-clip, and render providers."""
+    """Return the runtime capabilities of voice, image, video-clip, and render.
+
+    Providers.
+    """
     return service.check_capabilities().as_dict()
 
 
@@ -113,8 +118,10 @@ def run_script_to_video(
     service: ScriptToVideoServiceDep,
     actor: CurrentActor,
 ) -> dict[str, Any]:
-    """Execute the end-to-end Script-to-Video pipeline and return the project manifest."""
+    """Execute the end-to-end Script-to-Video pipeline.
+
+    Returns the project manifest.
+    """
     request = payload.to_domain_request()
     manifest = service.run(request, actor=actor)
     return manifest.as_dict()
-

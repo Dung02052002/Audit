@@ -8,7 +8,6 @@ really waits.
 """
 
 import pytest
-from test_tts_job import THREE, Flaky, World, chunk_records, steps
 
 from ai_youtube_agent.content.tts_job import (
     BACKOFF_SECONDS,
@@ -27,6 +26,7 @@ from ai_youtube_agent.providers.speech_synthesis import (
     SpeechSynthesisError,
     VoiceErrorCode,
 )
+from test_tts_job import THREE, Flaky, World, chunk_records, steps
 
 
 class Sleeps:
@@ -178,9 +178,7 @@ def test_a_custom_budget_and_backoff_are_used(world: World) -> None:
     sleeps = Sleeps()
 
     with pytest.raises(SpeechSynthesisError):
-        runner(world, sleeps, max_attempts=2, backoff=(0.5,)).run(
-            script, world.voice
-        )
+        runner(world, sleeps, max_attempts=2, backoff=(0.5,)).run(script, world.voice)
 
     assert sleeps.values == [0.5]
     assert len(world.mock.calls) == 2

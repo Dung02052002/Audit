@@ -58,9 +58,7 @@ def test_converts_watch_time_across_seconds_minutes_and_hours() -> None:
         Decimal("1.5"), from_unit=WatchTimeUnit.HOURS, to_unit=WatchTimeUnit.SECONDS
     ) == Decimal("5400.00")
 
-    measurement = WatchTimeMeasurement.from_unit(
-        Decimal("90"), WatchTimeUnit.MINUTES
-    )
+    measurement = WatchTimeMeasurement.from_unit(Decimal("90"), WatchTimeUnit.MINUTES)
     assert measurement.seconds == Decimal("5400.00")
     assert measurement.minutes == Decimal("90.00")
     assert measurement.hours == Decimal("1.50")

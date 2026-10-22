@@ -14,7 +14,8 @@ Transforms a ``StoryBible`` and ``ScriptAnalysisOutput`` into a structured
   - ``required_asset_kinds``, ``assigned_asset_ids``, ``provenance_ids``,
     ``rights_record_ids``, ``continuity_notes``, and ``status``
 - Enforces visual continuity by injecting the exact character appearance/wardrobe
-  and location setting/lighting from ``StoryBible`` into each ``ShotPlan.visual_prompt``.
+  and location setting/lighting from ``StoryBible`` into each
+  ``ShotPlan.visual_prompt``.
 """
 
 from __future__ import annotations
@@ -105,7 +106,7 @@ class ShotPlan:
         if self.duration_ms != self.end_ms - self.start_ms:
             raise ValueError("duration_ms must equal end_ms - start_ms")
 
-    def with_asset(self, asset_id: str) -> "ShotPlan":
+    def with_asset(self, asset_id: str) -> ShotPlan:
         return replace(self, assigned_asset_id=asset_id)
 
     def as_dict(self) -> dict[str, Any]:
@@ -174,7 +175,7 @@ class ScenePlan:
         provenance_ids: Sequence[str],
         rights_record_ids: Sequence[str],
         status: SceneStatus = SceneStatus.ASSETS_READY,
-    ) -> "ScenePlan":
+    ) -> ScenePlan:
         asset_tuple = tuple(asset_ids)
         primary_asset = asset_tuple[0] if asset_tuple else None
         updated_shots = tuple(
@@ -196,8 +197,21 @@ class ScenePlan:
             status=status,
         )
 
-    def with_status(self, status: SceneStatus) -> "ScenePlan":
+    def with_status(self, status: SceneStatus) -> ScenePlan:
         return replace(self, status=status)
+
+    @property
+    def duration_ms(self) -> int:
+        return self.target_duration_ms
+
+    @property
+    def visual_prompt(self) -> str:
+        """The scene's image prompt: its first shot's prompt plus the
+        continuity notes that keep characters and places consistent."""
+        prompt = self.shots[0].visual_prompt
+        if self.continuity_notes:
+            prompt += " Continuity: " + "; ".join(self.continuity_notes)
+        return prompt
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -245,7 +259,11 @@ class SceneBreakdownPlan:
         if not self.scenes:
             raise ValueError("SceneBreakdownPlan must contain at least one scene")
 
-    def with_scenes(self, scenes: Sequence[ScenePlan]) -> "SceneBreakdownPlan":
+    @property
+    def canvas_size(self) -> tuple[int, int]:
+        return self.canvas_width, self.canvas_height
+
+    def with_scenes(self, scenes: Sequence[ScenePlan]) -> SceneBreakdownPlan:
         scenes_tuple = tuple(scenes)
         total = scenes_tuple[-1].end_ms if scenes_tuple else self.total_duration_ms
         return replace(self, scenes=scenes_tuple, total_duration_ms=total)
@@ -269,7 +287,9 @@ def _framing_for_shot(
     canvas_width: int,
     canvas_height: int,
 ) -> PixelRect:
-    """Compute a valid framing ``PixelRect`` within ``(canvas_width, canvas_height)``."""
+    """Compute a valid framing ``PixelRect``
+    within ``(canvas_width, canvas_height)``.
+    """
     # Full canvas background/shot rect is standard so background layer covers 100%,
     # while B-roll / inset shots can use framed rects. We return full canvas rect
     # so BACKGROUND role validation in Shorts/LongForm always covers the frame cleanly.
@@ -281,15 +301,17 @@ def _narrative_purpose(index: int, total: int, kind: SectionKind) -> str:
         return "Establish setting, central character, and opening narrative hook"
     if kind in (SectionKind.CTA, SectionKind.OUTRO) or index == total - 1:
         return "Deliver final resolution and closing call-to-action"
-    if kind is SectionKind.CONCLUSION or index == total - 2:
+    if index == total - 2:
         return "Climax payoff and emotional resolution of the central arc"
     if index == 1:
         return "Inciting development and rising narrative tension"
-    return f"Story progression beat ({ index + 1 } of { total })"
+    return f"Story progression beat ({index + 1} of {total})"
 
 
 class SceneBreakdownPlanner:
-    """Builds a ``SceneBreakdownPlan`` from a ``ScriptAnalysisOutput`` and optional timeline windows."""
+    """Builds a ``SceneBreakdownPlan`` from a ``ScriptAnalysisOutput`` and optional
+    timeline windows.
+    """
 
     def plan(
         self,
@@ -336,17 +358,14 @@ class SceneBreakdownPlanner:
             duration_ms = end_ms - start_ms
             scene_id = f"scene_{idx + 1:02d}"
 
-            location = (
-                bible.location_by_id(beat.location_hint)
-                or (bible.locations[0] if bible.locations else None)
+            location = bible.location_by_id(beat.location_hint) or (
+                bible.locations[0] if bible.locations else None
             )
             loc_id = location.location_id if location else "loc_default_1"
             loc_name = location.name if location else "Primary Stage"
             time_of_day = location.time_of_day if location else beat.time_of_day
             lighting_mood = (
-                location.lighting_mood
-                if location
-                else "Balanced cinematic lighting"
+                location.lighting_mood if location else "Balanced cinematic lighting"
             )
 
             active_chars: list[CharacterSpec] = []
@@ -375,7 +394,8 @@ class SceneBreakdownPlanner:
             for char in active_chars:
                 if char.role != "narrator":
                     continuity_notes.append(
-                        f"Character {char.name} ({char.character_id}): {char.appearance}; wardrobe: {char.wardrobe}"
+                        f"Character {char.name} ({char.character_id}): "
+                        f"{char.appearance}; wardrobe: {char.wardrobe}"
                     )
             continuity_notes.append(
                 f"Location {loc_name} ({loc_id}): {time_of_day}, {lighting_mood}"
@@ -447,12 +467,15 @@ class SceneBreakdownPlanner:
         else:
             shot_count = 3
 
-        visible_chars = [c for c in characters if c.role != "narrator"] or list(characters)
+        visible_chars = [c for c in characters if c.role != "narrator"] or list(
+            characters
+        )
         char_summary = "; ".join(
             f"{c.name} ({c.appearance}, wearing {c.wardrobe})" for c in visible_chars
         )
         loc_summary = (
-            f"{location.name} ({location.setting_description}, {location.time_of_day}, {location.lighting_mood})"
+            f"{location.name} ({location.setting_description}, {location.time_of_day}, "
+            f"{location.lighting_mood})"
             if location is not None
             else "Primary story setting with balanced cinematic lighting"
         )
@@ -510,7 +533,9 @@ class SceneBreakdownPlanner:
                     start_ms=shot_start,
                     end_ms=shot_end,
                     duration_ms=this_dur,
-                    framing_rect=_framing_for_shot(shot_type, canvas_width, canvas_height),
+                    framing_rect=_framing_for_shot(
+                        shot_type, canvas_width, canvas_height
+                    ),
                 )
             )
 

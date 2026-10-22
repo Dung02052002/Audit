@@ -11,9 +11,9 @@ Runs ``PolicyReporter`` (#083) as a blocking QC dependency for a content item:
   ``description``/``tags`` arguments are omitted.
 """
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-import json
 from typing import Any, Final
 
 from ai_youtube_agent.content.policy_check import (
@@ -91,7 +91,8 @@ def evaluate_policy_qc(report: PolicyReport) -> QCCheck:
             name=POLICY_QC_CHECK_NAME,
             status=QCStatus.WARN,
             detail=(
-                f"Policy report passed with warning(s) ({report.rule_set.stored_version}, "
+                f"Policy report passed with warning(s) "
+                f"({report.rule_set.stored_version}, "
                 f"{len(report.findings)} finding(s)): {summary}"
             ),
         )
@@ -145,11 +146,7 @@ class PolicyQCChecker:
         resolved_tags: tuple[str, ...] | list[str] = (
             list(tags) if tags is not None else ()
         )
-        if (
-            description is None
-            and tags is None
-            and self._storage is not None
-        ):
+        if description is None and tags is None and self._storage is not None:
             meta_desc, meta_tags = self._load_metadata_text(content_item_id)
             if meta_desc is not None:
                 resolved_description = meta_desc
@@ -195,9 +192,7 @@ class PolicyQCChecker:
         if not artifacts:
             return None, None
         latest = artifacts[-1]
-        if not self._storage.exists(latest.uri):
-            return None, None
-        try:
+        try:  # a missing or unreadable file counts as no metadata
             payload = json.loads(self._storage.read(latest.uri).decode("utf-8"))
         except Exception:
             return None, None

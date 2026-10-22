@@ -1,4 +1,6 @@
-"""Tests for the Dashboard Shell and shared iOS-style design system (Q-191, prompt #191)."""
+"""Tests for the Dashboard Shell and shared iOS-style design system (Q-191, prompt
+#191).
+"""
 
 from datetime import UTC, datetime
 
@@ -76,7 +78,10 @@ def test_build_navigation_marks_active_screen_and_populates_badges() -> None:
     assert by_id[DashboardScreenId.APPROVALS].active is True
     assert by_id[DashboardScreenId.APPROVALS].badge_count == 3
     assert by_id[DashboardScreenId.APPROVALS].badge_tone is BadgeTone.WARNING
-    assert by_id[DashboardScreenId.APPROVALS].href == "/dashboard/approvals?channel_id=ch-1"
+    assert (
+        by_id[DashboardScreenId.APPROVALS].href
+        == "/dashboard/approvals?channel_id=ch-1"
+    )
     assert by_id[DashboardScreenId.COMMENTS].badge_count == 5
     assert by_id[DashboardScreenId.AI_CENTER].badge_count == 2
     assert by_id[DashboardScreenId.ALERTS].badge_count == 1
@@ -102,19 +107,15 @@ def test_shell_service_handles_empty_state_when_no_channels_exist(
     assert shell.pending_approvals_badge == 0
     html_text = render_dashboard_shell_html(shell)
     assert 'data-load-state="empty"' in html_text
-    assert "No Channels Configured" in html_text
+    assert "No channels configured" in html_text
 
 
 def test_shell_service_computes_live_badges_and_escapes_html(
     database: Database,
 ) -> None:
-    channel = make_channel(
-        title='Studio <Alpha> & "Beta"', status=ChannelStatus.ACTIVE
-    )
+    channel = make_channel(title='Studio <Alpha> & "Beta"', status=ChannelStatus.ACTIVE)
     profile = make_strategy_profile(channel)
-    item = make_content_item(
-        channel, profile, status=ContentStatus.AWAITING_APPROVAL
-    )
+    item = make_content_item(channel, profile, status=ContentStatus.AWAITING_APPROVAL)
     video = make_artifact(item, ArtifactKind.VIDEO)
     approval = make_approval_request(item, [video])
     comment = Comment(
@@ -130,12 +131,12 @@ def test_shell_service_computes_live_badges_and_escapes_html(
     classification = CommentClassification.create(
         comment.id,
         CommentLabel.NEEDS_ATTENTION,
-        USER,
+        classified_by=USER,
         rationale="Creator question",
         clock=lambda: NOW,
     )
     draft = ReplyDraft.create(
-        comment.id, "Thanks for watching!", USER, clock=lambda: NOW
+        comment.id, "Thanks for watching!", created_by=USER, clock=lambda: NOW
     )
     running_job = AIJob.create(
         "video.render",
@@ -177,4 +178,3 @@ def test_shell_service_computes_live_badges_and_escapes_html(
     with pytest.raises(DashboardError) as caught:
         service.build_shell(channel_id="missing-channel")
     assert caught.value.dashboard_code is DashboardErrorCode.CHANNEL_NOT_FOUND
-

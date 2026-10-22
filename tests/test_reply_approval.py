@@ -9,8 +9,8 @@ from ai_youtube_agent.content.comment import Comment, ReplyDraft, ReplyStatus
 from ai_youtube_agent.content.reply_approval import (
     REPLY_APPROVED,
     REPLY_DISCARDED,
-    REPLY_POSTED,
     REPLY_POST_FAILED,
+    REPLY_POSTED,
     ReplyApprovalError,
     ReplyApprovalErrorCode,
     ReplyApprovalService,
@@ -79,9 +79,7 @@ class TestReplyApprovalService:
             ),
         )
         oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
-        oauth.seed_token(
-            channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL})
-        )
+        oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}))
         sink = InMemoryAuditSink()
         service = ReplyApprovalService(
             database,
@@ -95,17 +93,12 @@ class TestReplyApprovalService:
         # 1. AI actor cannot approve or post
         with pytest.raises(ReplyApprovalError) as exc_ai:
             service.approve(draft.id, actor=AI)
-        assert (
-            exc_ai.value.approval_code
-            is ReplyApprovalErrorCode.USER_ACTOR_REQUIRED
-        )
+        assert exc_ai.value.approval_code is ReplyApprovalErrorCode.USER_ACTOR_REQUIRED
 
         # 2. Cannot post an unapproved DRAFT
         with pytest.raises(ReplyApprovalError) as exc_unapp:
             service.post_approved(draft.id, actor=USER)
-        assert (
-            exc_unapp.value.approval_code is ReplyApprovalErrorCode.NOT_APPROVED
-        )
+        assert exc_unapp.value.approval_code is ReplyApprovalErrorCode.NOT_APPROVED
 
         # 3. Human user approves with edited text
         approved_out = service.approve(
@@ -117,14 +110,16 @@ class TestReplyApprovalService:
         assert approved_out.draft.status is ReplyStatus.APPROVED
         assert sink.entries[-1].action == REPLY_APPROVED
 
-        # 4. Human user posts the approved draft -> transitions to POSTED with youtube_reply_id
+        # 4. Human user posts the approved draft -> transitions to POSTED with
+        # youtube_reply_id
         post_out = service.post_approved(draft.id, actor=USER)
         assert post_out.replayed is False
         assert post_out.draft.status is ReplyStatus.POSTED
         assert post_out.draft.youtube_reply_id is not None
         assert sink.entries[-1].action == REPLY_POSTED
 
-        # 5. Re-posting the same draft replays idempotently without calling provider again
+        # 5. Re-posting the same draft replays idempotently without calling provider
+        # again
         replay = service.post_approved(draft.id, actor=USER)
         assert replay.replayed is True
         assert provider.post_calls == 1
@@ -142,12 +137,8 @@ class TestReplyApprovalService:
             text="Question?",
             published_at=NOW - timedelta(minutes=20),
         )
-        d1 = ReplyDraft.create(
-            comment.id, "Reply 1", created_by=AI, clock=lambda: NOW
-        )
-        d2 = ReplyDraft.create(
-            comment.id, "Reply 2", created_by=AI, clock=lambda: NOW
-        )
+        d1 = ReplyDraft.create(comment.id, "Reply 1", created_by=AI, clock=lambda: NOW)
+        d2 = ReplyDraft.create(comment.id, "Reply 2", created_by=AI, clock=lambda: NOW)
         with database.transaction() as connection:
             ChannelRepository(connection).add(channel)
             StrategyProfileRepository(connection).add(profile)
@@ -171,9 +162,7 @@ class TestReplyApprovalService:
             ),
         )
         oauth = MockYouTubeOAuthProvider(clock=lambda: NOW)
-        oauth.seed_token(
-            channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL})
-        )
+        oauth.seed_token(channel.id, scopes=frozenset({OAuthScope.YOUTUBE_FORCE_SSL}))
         sink = InMemoryAuditSink()
         service = ReplyApprovalService(
             database,

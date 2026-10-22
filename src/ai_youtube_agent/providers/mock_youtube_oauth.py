@@ -1,4 +1,6 @@
-"""Deterministic in-memory mock YouTube OAuth provider (Prompt Pack v8, prompt #145), context C12 Publishing."""
+"""Deterministic in-memory mock YouTube OAuth provider (Prompt Pack v8, prompt #145),
+context C12 Publishing.
+"""
 
 import hashlib
 import threading
@@ -85,9 +87,7 @@ class MockYouTubeOAuthProvider:
             channel_id = token_or_channel_id
             now = self._now()
             resolved_scopes = (
-                frozenset(scopes)
-                if scopes is not None
-                else self._default_scopes
+                frozenset(scopes) if scopes is not None else self._default_scopes
             )
             raw_acc = (
                 access_token.get_secret_value()
@@ -158,9 +158,7 @@ class MockYouTubeOAuthProvider:
                         provider=self._name,
                     )
                 token = self._mint_token_locked(channel_id, now, self._default_scopes)
-            token.require_valid(
-                now, required_scopes=req_scopes, provider=self._name
-            )
+            token.require_valid(now, required_scopes=req_scopes, provider=self._name)
             return token
 
     def refresh_token(self, channel_id: str) -> OAuthToken:
@@ -233,5 +231,5 @@ class MockYouTubeOAuthProvider:
 
     @staticmethod
     def _digest(prefix: str, channel_id: str, seq: int) -> str:
-        raw = f"{prefix}:{channel_id}:{seq}".encode("utf-8")
+        raw = f"{prefix}:{channel_id}:{seq}".encode()
         return f"yt_{prefix}_{hashlib.sha256(raw).hexdigest()[:32]}"

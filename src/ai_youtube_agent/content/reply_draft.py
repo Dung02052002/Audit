@@ -62,9 +62,7 @@ Clock = Callable[[], datetime]
 
 REPLY_DRAFTED: Final[str] = "comment.reply_drafted"
 REPLY_DRAFT_ENTITY: Final[str] = "reply_draft"
-DEFAULT_REPLY_DRAFTER_ACTOR: Final[Actor] = Actor(
-    ActorKind.AI, "reply_drafter"
-)
+DEFAULT_REPLY_DRAFTER_ACTOR: Final[Actor] = Actor(ActorKind.AI, "reply_drafter")
 
 
 class ReplyDraftErrorCode(StrEnum):
@@ -170,9 +168,7 @@ class ReplyDraftService:
         _ensure_not_already_replied(comment.id, existing_drafts)
 
         language = (
-            strategy.languages.primary
-            if strategy and strategy.languages
-            else None
+            strategy.languages.primary if strategy and strategy.languages else None
         )
         request = _build_reply_text_request(
             comment, strategy, instructions=instructions, language=language
@@ -180,9 +176,7 @@ class ReplyDraftService:
         generated = self._text.generate(request)
         reply_text = generated.texts[0].strip()
         banned_phrases = (
-            strategy.brand.banned_phrases
-            if strategy and strategy.brand
-            else ()
+            strategy.brand.banned_phrases if strategy and strategy.brand else ()
         )
         _validate_reply_text(reply_text, banned_phrases=banned_phrases)
 
@@ -210,9 +204,7 @@ class ReplyDraftService:
         )
         _ensure_not_already_replied(comment.id, existing_drafts)
         banned_phrases = (
-            strategy.brand.banned_phrases
-            if strategy and strategy.brand
-            else ()
+            strategy.brand.banned_phrases if strategy and strategy.brand else ()
         )
         cleaned = text.strip() if isinstance(text, str) else ""
         _validate_reply_text(cleaned, banned_phrases=banned_phrases)
@@ -231,7 +223,8 @@ class ReplyDraftService:
         actor: Actor = DEFAULT_REPLY_DRAFTER_ACTOR,
         youtube_video_id: str | None = None,
     ) -> tuple[ReplyDraftOutcome, ...]:
-        """Generate draft replies for all ``REPLY_CANDIDATE`` comments on ``channel_id``."""
+        """Generate draft replies for all ``REPLY_CANDIDATE`` comments on
+        ``channel_id``."""
         connection = self._database.connect()
         try:
             if ChannelRepository(connection).get(channel_id) is None:
@@ -251,8 +244,7 @@ class ReplyDraftService:
                 classifications = repo.list_classifications(comment.id)
                 if (
                     not classifications
-                    or classifications[-1].label
-                    is not CommentLabel.REPLY_CANDIDATE
+                    or classifications[-1].label is not CommentLabel.REPLY_CANDIDATE
                 ):
                     continue
                 drafts = repo.list_reply_drafts(comment.id)
@@ -352,9 +344,7 @@ class ReplyDraftService:
         )
         if latest_label is None:
             banned = (
-                strategy.brand.banned_phrases
-                if strategy and strategy.brand
-                else ()
+                strategy.brand.banned_phrases if strategy and strategy.brand else ()
             )
             latest_label = evaluate_comment_rules(
                 comment.text, banned_phrases=banned
@@ -417,9 +407,7 @@ class ReplyDraftService:
         return self._clock() if self._clock else datetime.now(UTC)
 
 
-def _ensure_not_already_replied(
-    comment_id: str, drafts: Sequence[ReplyDraft]
-) -> None:
+def _ensure_not_already_replied(comment_id: str, drafts: Sequence[ReplyDraft]) -> None:
     if any(d.status is ReplyStatus.POSTED for d in drafts):
         raise ReplyDraftError(
             ReplyDraftErrorCode.ALREADY_REPLIED,
@@ -427,9 +415,7 @@ def _ensure_not_already_replied(
         )
 
 
-def _validate_reply_text(
-    text: str, *, banned_phrases: Sequence[str] = ()
-) -> None:
+def _validate_reply_text(text: str, *, banned_phrases: Sequence[str] = ()) -> None:
     if not text or len(text) > MAX_REPLY_TEXT_LENGTH:
         raise ReplyDraftError(
             ReplyDraftErrorCode.INVALID_TEXT,
@@ -452,17 +438,14 @@ def _build_reply_text_request(
     instructions: str | None,
     language: str | None,
 ) -> TextRequest:
-    tone = (
-        strategy.brand.tone
-        if strategy and strategy.brand
-        else "helpful and concise"
-    )
+    tone = strategy.brand.tone if strategy and strategy.brand else "helpful and concise"
     system = (
         f"You are drafting a helpful YouTube creator reply in a {tone} tone. "
         "Keep the reply concise, polite, and directly responsive to the viewer."
     )
     prompt = (
-        f"Viewer ({comment.author_display_name}) wrote on video {comment.youtube_video_id}:\n"
+        f"Viewer ({comment.author_display_name}) wrote on video "
+        f"{comment.youtube_video_id}:\n"
         f"{comment.text}\n"
     )
     if instructions and instructions.strip():

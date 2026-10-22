@@ -47,7 +47,11 @@ from ai_youtube_agent.providers.analytics import (
     AnalyticsProvider,
     AnalyticsQuery,
 )
-from ai_youtube_agent.providers.youtube_oauth import OAuthScope, YouTubeOAuthProvider
+from ai_youtube_agent.providers.youtube_oauth import (
+    OAuthScope,
+    YouTubeOAuthProvider,
+    get_or_renew_token,
+)
 
 Clock = Callable[[], datetime]
 
@@ -132,7 +136,9 @@ class ChannelMetricsResult:
             "requested": list(self.requested),
             "missing": list(self.missing),
             "created": self.created,
-            "data_through": self.data_through.isoformat() if self.data_through else None,
+            "data_through": self.data_through.isoformat()
+            if self.data_through
+            else None,
             "complete": self.complete,
         }
 
@@ -177,8 +183,8 @@ class ChannelMetricsSync:
             period_end=period_end,
             metrics=requested,
         )
-        token = self._oauth.get_token(
-            channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
+        token = get_or_renew_token(
+            self._oauth, channel.id, required_scopes=(OAuthScope.YT_ANALYTICS_READONLY,)
         )
         page = call_with_retry(
             lambda: self._provider.query(query, token=token),
@@ -206,7 +212,9 @@ class ChannelMetricsSync:
                 "metric_count": len(values),
                 "missing_count": len(missing),
                 "complete": complete,
-                "data_through": page.data_through.isoformat() if page.data_through else None,
+                "data_through": page.data_through.isoformat()
+                if page.data_through
+                else None,
             },
         )
         return ChannelMetricsResult(
@@ -241,7 +249,9 @@ class ChannelMetricsSync:
             repository = MetricSnapshotRepository(connection)
             same_period = [
                 stored
-                for stored in repository.list_by_subject(MetricScope.CHANNEL, channel.id)
+                for stored in repository.list_by_subject(
+                    MetricScope.CHANNEL, channel.id
+                )
                 if stored.source == page.source
                 and stored.period_start == page.period_start
                 and stored.period_end == page.period_end

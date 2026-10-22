@@ -145,7 +145,8 @@ class LongFormConfig:
         if (self.width, self.height) != HORIZONTAL_SIZES[self.resolution]:
             width, height = HORIZONTAL_SIZES[self.resolution]
             raise ValueError(
-                f"a LongForm canvas is 16:9 ({width}x{height} for {self.resolution.value})"
+                "a LongForm canvas is 16:9 "
+                f"({width}x{height} for {self.resolution.value})"
             )
         _whole("fps", self.fps, 1, MAX_FPS)
         if not isinstance(self.captions, bool):
@@ -250,4 +251,3 @@ class LongFormConfig:
                 else DEFAULT_LONGFORM_CAPTION_RULES
             ),
         )
-

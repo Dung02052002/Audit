@@ -470,6 +470,9 @@ class VideoRenderer(Protocol):
 class Mp4Info:
     brands: tuple[str, ...]
     duration_ms: int
+    # mvhd units per second; not part of equality (two files of the same
+    # brands and duration are the same for every check that compares them).
+    timescale: int = field(default=1000, compare=False)
 
 
 def _boxes(data: bytes, start: int, end: int):
@@ -501,7 +504,8 @@ def _brands(data: bytes, start: int, end: int) -> tuple[str, ...]:
     return tuple(brand.decode("latin-1") for brand in (major, *compatible))
 
 
-def _duration_ms(data: bytes, start: int, end: int) -> int:
+def _movie_header(data: bytes, start: int, end: int) -> tuple[int, int]:
+    """The duration in ms and the timescale of an ``mvhd`` payload."""
     if end - start < 4:
         raise ValueError("the MP4 mvhd box is cut off")
     version = data[start]
@@ -516,7 +520,7 @@ def _duration_ms(data: bytes, start: int, end: int) -> int:
     timescale, duration = struct.unpack_from(layout, data, offset)
     if timescale == 0:
         raise ValueError("the MP4 mvhd timescale is 0")
-    return (duration * 1000 + timescale // 2) // timescale
+    return (duration * 1000 + timescale // 2) // timescale, timescale
 
 
 def probe_mp4(data: bytes) -> Mp4Info:
@@ -533,6 +537,7 @@ def probe_mp4(data: bytes) -> Mp4Info:
             continue
         for inner, inner_start, inner_end in _boxes(content, start, end):
             if inner == b"mvhd":
-                return Mp4Info(brands, _duration_ms(content, inner_start, inner_end))
+                duration_ms, timescale = _movie_header(content, inner_start, inner_end)
+                return Mp4Info(brands, duration_ms, timescale)
         raise ValueError("the MP4 moov box has no mvhd box")
     raise ValueError("the MP4 file has no moov box")

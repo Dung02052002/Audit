@@ -64,11 +64,17 @@ def test_a_valid_short_maps_to_a_private_payload_bound_to_its_artifacts(
 
 
 def test_the_payload_key_is_the_one_given_or_the_job_key(seed: Seed) -> None:
-    keys = PublishContextLoader(
-        seed.database, seed.storage, content_type=ContentType.SHORTS
-    ).load(seed.item.id).keys
+    keys = (
+        PublishContextLoader(
+            seed.database, seed.storage, content_type=ContentType.SHORTS
+        )
+        .load(seed.item.id)
+        .keys
+    )
 
-    assert _map(seed, idempotency_key=keys.upload_key).idempotency_key == keys.upload_key
+    assert (
+        _map(seed, idempotency_key=keys.upload_key).idempotency_key == keys.upload_key
+    )
     assert _map(seed).idempotency_key == keys.job_key
     assert is_upload_key(keys.upload_key)
 

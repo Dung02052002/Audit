@@ -41,7 +41,8 @@ def _snapshot(
 
 
 def test_classifies_fresh_lagging_and_stale_snapshots() -> None:
-    # Retrieved 3 days after period_end (past the 2-day data lag) -> complete & settled (24h max_age).
+    # Retrieved 3 days after period_end (past the 2-day data lag) -> complete & settled
+    # (24h max_age).
     settled_read = END + timedelta(days=3)
     snap = _snapshot("s-settled", retrieved_at=settled_read)
 
@@ -58,9 +59,7 @@ def test_classifies_fresh_lagging_and_stale_snapshots() -> None:
     # Retrieved 12 hours after period_end (within the 2-day data lag) -> LAGGING.
     early_read = END + timedelta(hours=12)
     early_snap = _snapshot("s-early", retrieved_at=early_read)
-    lagging = evaluate_freshness(
-        early_snap, now=early_read + timedelta(hours=1)
-    )
+    lagging = evaluate_freshness(early_snap, now=early_read + timedelta(hours=1))
     assert lagging.status is FreshnessStatus.LAGGING
     assert lagging.is_complete is False
     assert lagging.is_fresh is False and lagging.is_stale is False

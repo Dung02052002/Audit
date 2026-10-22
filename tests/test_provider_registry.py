@@ -8,7 +8,11 @@ and FastAPI endpoint integrations.
 from __future__ import annotations
 
 import json
+import urllib.error
+import urllib.request
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,8 +21,13 @@ from ai_youtube_agent.bootstrap import build_container
 from ai_youtube_agent.core.config import Environment, Settings
 from ai_youtube_agent.main import create_app
 from ai_youtube_agent.providers.image_generation import (
+    ImageGenerationError,
     ImageGenerationRequest,
     ImageGenerator,
+    ImageGeneratorErrorCode,
+)
+from ai_youtube_agent.providers.mock_image_generation import (
+    DeterministicSceneImageGenerator,
 )
 from ai_youtube_agent.providers.registry import (
     CapCutAdapter,
@@ -43,6 +52,7 @@ from ai_youtube_agent.providers.video_generation import (
     VideoClipGenerator,
 )
 from ai_youtube_agent.providers.video_render import VideoRenderer
+from media_fixtures import make_mp3
 
 
 @pytest.fixture
@@ -86,9 +96,30 @@ def test_comfyui_adapter_connection_check_offline() -> None:
     )
 
 
-def test_comfyui_adapter_generates_image_with_fallback() -> None:
+def test_comfyui_adapter_offline_raises_without_fallback() -> None:
     adapter = ComfyUIAdapter(base_url="http://127.0.0.1:59999", timeout_seconds=0.2)
     assert isinstance(adapter, ImageGenerator)
+    assert adapter.fallback_enabled is False
+
+    req = ImageGenerationRequest(
+        scene_id="scene_01",
+        shot_id="shot_01",
+        prompt="A peaceful teahouse in the evening rain",
+        width=1080,
+        height=1920,
+    )
+    with pytest.raises(ImageGenerationError) as info:
+        adapter.generate(req)
+    assert info.value.error_code is ImageGeneratorErrorCode.UNAVAILABLE
+
+
+def test_comfyui_adapter_explicit_fallback_keeps_its_own_provider_name() -> None:
+    adapter = ComfyUIAdapter(
+        base_url="http://127.0.0.1:59999",
+        timeout_seconds=0.2,
+        fallback_generator=DeterministicSceneImageGenerator(),
+    )
+    assert adapter.fallback_enabled is True
 
     req = ImageGenerationRequest(
         scene_id="scene_01",
@@ -98,10 +129,9 @@ def test_comfyui_adapter_generates_image_with_fallback() -> None:
         height=1920,
     )
     result = adapter.generate(req)
-    assert len(result.data) > 0
+    assert result.provider != "comfyui"
     assert result.media_type == "image/png"
-    assert result.width == 1080
-    assert result.height == 1920
+    assert (result.width, result.height) == (1080, 1920)
 
 
 # -----------------------------------------------------------------------------
@@ -110,7 +140,18 @@ def test_comfyui_adapter_generates_image_with_fallback() -> None:
 
 
 def test_edge_tts_adapter_vietnamese_priority() -> None:
-    adapter = EdgeTTSAdapter(default_voice="vi-VN-HoaiMyNeural")
+    mp3 = make_mp3(40)
+
+    class FakeCommunicate:
+        async def stream(self) -> AsyncIterator[dict[str, Any]]:
+            yield {"type": "audio", "data": mp3}
+
+    def factory(text: str, voice: str, **kwargs: Any) -> FakeCommunicate:
+        return FakeCommunicate()
+
+    adapter = EdgeTTSAdapter(
+        default_voice="vi-VN-HoaiMyNeural", communicate_factory=factory
+    )
     assert isinstance(adapter, SpeechSynthesizer)
 
     caps = adapter.capabilities()
@@ -126,7 +167,10 @@ def test_edge_tts_adapter_vietnamese_priority() -> None:
         language="vi-VN",
     )
     speech = adapter.synthesize(req)
-    assert len(speech.audio) > 0
+    assert speech.audio == mp3
+    assert speech.provider == "edge_tts"
+    assert speech.media_type == "audio/mpeg"
+    assert speech.duration_ms == 960
     assert speech.characters == len(req.text)
     assert speech.voice_id == "vi-VN-HoaiMyNeural"
 
@@ -350,12 +394,47 @@ def test_provider_registry_lifecycle_and_diagnostics(test_settings: Settings) ->
     assert "providers" in summary
 
 
+def test_default_registry_has_no_silent_fallbacks(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("COMFYUI_CHECKPOINT", raising=False)
+    registry = build_default_provider_registry(test_settings)
+
+    comfy = registry.get("comfyui")
+    edge = registry.get("edge_tts")
+    assert isinstance(comfy, ComfyUIAdapter)
+    assert isinstance(edge, EdgeTTSAdapter)
+    assert comfy.fallback_enabled is False
+    assert edge.fallback_enabled is False
+    assert comfy.default_model == "sd_xl_base_1.0.safetensors"
+
+
+def test_default_registry_takes_the_comfyui_checkpoint(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COMFYUI_CHECKPOINT", "from_env.safetensors")
+    from_env = build_default_provider_registry(test_settings).get("comfyui")
+    assert from_env.default_model == "from_env.safetensors"
+
+    explicit = build_default_provider_registry(
+        test_settings, comfyui_checkpoint="explicit.safetensors"
+    ).get("comfyui")
+    assert explicit.default_model == "explicit.safetensors"
+
+
 # -----------------------------------------------------------------------------
 # 8. HTTP API Endpoints Integration Tests
 # -----------------------------------------------------------------------------
 
 
-def test_providers_http_api(test_settings: Settings) -> None:
+def test_providers_http_api(
+    test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def offline(*args: Any, **kwargs: Any) -> None:
+        raise urllib.error.URLError("network disabled in tests")
+
+    # The Edge TTS connection probe must not reach the internet from a test.
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
     container = build_container(test_settings)
     app = create_app(container)
     client = TestClient(app)

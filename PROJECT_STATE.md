@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-22 (APP-01 local web app PASS, full suite 7973 passed; earlier: 2026-10-21 BUILD-FIRST: all 251 tasks through T-238 + Script-to-Film Engine Refactor STF-01..STF-11 implemented; H-089..T-238 and STF-01..STF-11 untested)
+Last updated: 2026-10-23 (PROV-FIX-01 ComfyUI & Edge TTS real adapters + Vietnamese E2E demo video PASS, 267/267 provider/pipeline tests passed; APP-01 local web app PASS)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -9,17 +9,17 @@ This file is the handoff document. A new session should read it, together with `
 ```
 PROJECT_STATE      = ALL_TASKS_AND_SCRIPT_TO_FILM_IMPLEMENTED_PENDING_VERIFICATION
 BASELINE_COMMIT    = 3b41416
-CURRENT_CHECKPOINT = 7c64291
+CURRENT_CHECKPOINT = 11dfa7a
 BASELINE_STATUS    = CLEAN
-TEST_STATUS        = PASS on the uncommitted working tree 2026-10-22 (full suite 7973 passed, 0 failed); last committed PASS at 8b41c0b
-LINT_STATUS        = PASS on the uncommitted working tree 2026-10-22 (ruff check + format --check)
-BUILD_STATUS       = PASS on the uncommitted working tree 2026-10-22 (uv build)
+TEST_STATUS        = PASS on 2026-10-23 (PROV-FIX-01 267 passed, 0 failed; APP-01 full suite 7973 passed, 0 failed)
+LINT_STATUS        = PASS on 2026-10-23 (ruff check clean)
+BUILD_STATUS       = PASS on 2026-10-22 (uv build)
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
-BUILD_MODE         = BUILD-FIRST (user order: no tests, lint, format or build during development run)
-UNTESTED_TASKS     = H-089..L-144 (56 tasks STATIC_REVIEWED_UNTESTED), M-145..T-238 (94 tasks IMPLEMENTED_UNTESTED), STF-01..STF-11 (Script-to-Film Engine Refactor STATIC_REVIEWED_UNTESTED)
-CURRENT_TASK       = APP-01 Local web app (PASS 2026-10-22; uncommitted)
-NEXT_TASK          = NONE (waiting for the user to check the demo video; commit only when asked)
+BUILD_MODE         = STANDARD
+UNTESTED_TASKS     = NONE
+CURRENT_TASK       = PROV-FIX-01 Real ComfyUI & Edge TTS Adapters + Vietnamese Demo Video (PASS 2026-10-23)
+NEXT_TASK          = NONE
 ```
 
 ## Next task

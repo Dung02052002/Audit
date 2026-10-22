@@ -189,18 +189,26 @@ def build_default_provider_registry(
     settings: Any = None,
     *,
     comfyui_base_url: str | None = None,
+    comfyui_checkpoint: str | None = None,
     elevenlabs_api_key: str | None = None,
     edge_tts_voice: str | None = None,
     capcut_draft_dir: Any = None,
     video_gen_enabled: bool = False,
 ) -> ProviderRegistry:
-    """Build and populate the standard ProviderRegistry with all tools."""
+    """Build and populate the standard ProviderRegistry with all tools.
+
+    No adapter gets a silent fallback: ComfyUI and Edge TTS raise a structured
+    error when their service is down or not installed.
+    """
     import os
     from pathlib import Path
 
     from ai_youtube_agent.core.config import RenderProviderKind
     from ai_youtube_agent.providers.registry.capcut_adapter import CapCutAdapter
-    from ai_youtube_agent.providers.registry.comfyui_adapter import ComfyUIAdapter
+    from ai_youtube_agent.providers.registry.comfyui_adapter import (
+        DEFAULT_COMFYUI_CHECKPOINT,
+        ComfyUIAdapter,
+    )
     from ai_youtube_agent.providers.registry.ffmpeg_adapter import FFmpegAdapter
     from ai_youtube_agent.providers.registry.playwright_adapter import PlaywrightAdapter
     from ai_youtube_agent.providers.registry.tts_adapters import (
@@ -216,7 +224,12 @@ def build_default_provider_registry(
     c_url = comfyui_base_url or os.environ.get(
         "COMFYUI_BASE_URL", "http://127.0.0.1:8188"
     )
-    comfy = ComfyUIAdapter(base_url=c_url)
+    c_checkpoint = (
+        comfyui_checkpoint
+        or os.environ.get("COMFYUI_CHECKPOINT")
+        or DEFAULT_COMFYUI_CHECKPOINT
+    )
+    comfy = ComfyUIAdapter(base_url=c_url, default_model=c_checkpoint)
     registry.register(comfy, is_active=True)
 
     # 2. TTS Providers (Local/Free Vietnamese Priority: EdgeTTS, ElevenLabs, Mock)

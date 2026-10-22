@@ -28,3 +28,8 @@ data/
 *.p12
 *client_secret*.json
 *.tokens.enc
+
+# Local verification and demo media outputs (preserved on disk, not tracked in git)
+artifacts/background_video_test/
+artifacts/provider_verification/
+artifacts/comfyui_demo_run/*/

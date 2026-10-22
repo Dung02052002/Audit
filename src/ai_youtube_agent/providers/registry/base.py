@@ -141,10 +141,14 @@ class BaseProviderAdapter(ABC):
     def check(self) -> None:
         """Health probe implementation conforming to HealthRegistry convention."""
         diagnostic = self.diagnose()
-        if diagnostic.status in (
-            ProviderStatus.UNAVAILABLE,
-            ProviderStatus.NOT_CONFIGURED,
-            ProviderStatus.MISCONFIGURED,
+        if (
+            diagnostic.status
+            in (
+                ProviderStatus.UNAVAILABLE,
+                ProviderStatus.NOT_CONFIGURED,
+                ProviderStatus.MISCONFIGURED,
+            )
+            or not diagnostic.models.valid
         ):
             msg = f"Provider '{self.provider_id}' is unavailable: {diagnostic.summary}"
             raise ProviderError(

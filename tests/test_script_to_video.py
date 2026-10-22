@@ -365,3 +365,37 @@ def test_rerun_after_restart_reuses_recorded_audio(tmp_path: Path) -> None:
     assert second.audio_artifact_id == first.audio_artifact_id
     assert second.video_sha256 == first.video_sha256
     assert Path(second.video_file_path).exists()
+
+
+def test_pipeline_with_comfyui_adapter_refuses_when_comfyui_offline(
+    tmp_path: Path,
+) -> None:
+    """9. When ComfyUIAdapter is configured without fallback and ComfyUI is offline,
+    ScriptToVideoService honestly refuses STORY_VIDEO and never returns mock images."""
+    from ai_youtube_agent.providers.image_generation import ImageGenerator
+    from ai_youtube_agent.providers.registry.comfyui_adapter import ComfyUIAdapter
+
+    settings = _make_settings(tmp_path)
+    container = build_container(settings)
+    prepare_database(container)
+
+    offline_comfy = ComfyUIAdapter(
+        base_url="http://127.0.0.1:59998",
+        timeout_seconds=0.2,
+    )
+    with container.override(ImageGenerator, lambda _c: offline_comfy):
+        service = container.resolve(ScriptToVideoService)
+
+        caps = service.check_capabilities()
+        assert caps.image_provider == "comfyui"
+        assert caps.image_available is False
+        assert ProductionMode.STORY_VIDEO not in caps.supported_modes
+
+        with pytest.raises(ScriptToVideoError) as exc_info:
+            service.run(
+                ScriptToVideoRequest(
+                    script_text=SAMPLE_SHORTS_SCRIPT,
+                    title="Offline ComfyUI Run",
+                )
+            )
+        assert exc_info.value.code == ScriptToVideoErrorCode.MODE_UNAVAILABLE.value

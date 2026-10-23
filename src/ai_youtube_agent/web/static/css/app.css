@@ -530,6 +530,62 @@ a:hover {
   accent-color: var(--cc-color-accent-blue);
 }
 
+/* Radio choices (BUDGET-01 paid-API mode) */
+
+.choices {
+  display: grid;
+  gap: var(--cc-space-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.choices legend {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: var(--cc-space-sm);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cc-space-sm);
+  padding: 12px;
+  border: 1px solid var(--cc-color-separator);
+  border-radius: var(--cc-radius-sm);
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--cc-color-accent-blue);
+  background: var(--app-color-blue-soft);
+}
+
+.choice input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: none;
+  accent-color: var(--cc-color-accent-blue);
+}
+
+.choice__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.choice__title {
+  font-weight: 600;
+}
+
+.choice__body {
+  color: var(--cc-color-text-secondary);
+  font-size: 13px;
+}
+
 .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -692,6 +748,16 @@ a:hover {
 .stepper__dot--skipped {
   background: transparent;
   border: 1px dashed var(--cc-color-separator);
+}
+
+.stepper__dot--waiting {
+  background: var(--app-color-amber-soft);
+  color: var(--app-color-amber-text);
+}
+
+.stepper__dot--blocked {
+  background: var(--cc-color-semantic-red);
+  color: #FFFFFF;
 }
 
 .stepper__label--pending,

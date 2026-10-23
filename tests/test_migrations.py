@@ -35,6 +35,11 @@ from ai_youtube_agent.content.originality import (
     MAX_WORDS,
     OriginalityStatus,
 )
+from ai_youtube_agent.content.paid_api_budget import (
+    PaidApiMode,
+    PaidQuoteStatus,
+    PaidTaskType,
+)
 from ai_youtube_agent.content.qc import QCStatus
 from ai_youtube_agent.content.research_report import Uncertainty
 from ai_youtube_agent.content.research_request import ResearchStatus
@@ -86,8 +91,8 @@ SHA = "a" * 64
 # 0022 script revisions (F-073), 0023 asset registry (G-076),
 # 0024 asset provenance (G-077), 0025 rights assessments (G-078),
 # 0026 disclosure decisions (G-081), 0027 shorts projects (I-094),
-# 0028 longform projects (J-105)
-LATEST = 28
+# 0028 longform projects (J-105), 0029 paid API budget (BUDGET-01)
+LATEST = 29
 
 ENTITY_TABLES = {
     "channels",
@@ -150,6 +155,8 @@ ENTITY_TABLES = {
     "disclosure_decisions",  # G-081
     "shorts_projects",  # I-094
     "longform_projects",  # J-105
+    "paid_api_policy",  # BUDGET-01
+    "paid_api_quotes",  # BUDGET-01
 }
 
 ENUM_COLUMNS = {
@@ -207,6 +214,9 @@ ENUM_COLUMNS = {
     ("longform_projects", "status"): LongFormProjectStatus,  # J-105
     ("longform_projects", "created_by_kind"): ActorKind,  # J-105
     ("longform_projects", "updated_by_kind"): ActorKind,  # J-105
+    ("paid_api_policy", "mode"): PaidApiMode,  # BUDGET-01
+    ("paid_api_quotes", "status"): PaidQuoteStatus,  # BUDGET-01
+    ("paid_api_quotes", "task_type"): PaidTaskType,  # BUDGET-01
     ("ai_jobs", "status"): AIJobStatus,
     ("experiments", "type"): ExperimentType,
     ("experiments", "status"): ExperimentStatus,
@@ -313,6 +323,7 @@ def test_default_migrations_are_packaged() -> None:
         "disclosure_decisions",
         "shorts_projects",
         "longform_projects",
+        "paid_api_budget",
     ]
     lf_text = path.read_bytes().replace(b"\r\n", b"\n")
     assert migrations[0].checksum == hashlib.sha256(lf_text).hexdigest()
@@ -1775,3 +1786,209 @@ def test_importing_the_app_does_not_create_a_database(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert not (tmp_path / "data").exists()
+
+
+# Paid API budget (BUDGET-01)
+
+QUOTE_TS = format_datetime(T0)
+QUOTE_EXPIRES = format_datetime(T1)
+
+
+def policy_row(**overrides) -> dict:
+    row = {
+        "id": 1,
+        "mode": "free_only",
+        "version": 1,
+        "updated_by_kind": "user",
+        "updated_by_id": "local-user",
+        "updated_at": QUOTE_TS,
+    }
+    row.update(overrides)
+    return row
+
+
+def quote_row(**overrides) -> dict:
+    row = {
+        "id": "pq1",
+        "status": "pending",
+        "task_type": "video_clip_generation",
+        "provider": "priced_video",
+        "model": "clip-v1",
+        "request_hash": SHA,
+        "unit": "second",
+        "unit_count": "4",
+        "duration_ms": 4000,
+        "scene_id": "scene_1",
+        "unit_price": "0.05",
+        "estimated_amount": "0.200000",
+        "currency": "USD",
+        "price_source": "price sheet",
+        "conditions_json": "[]",
+        "unknowns_json": "[]",
+        "blocked_reason": None,
+        "content_item_id": None,
+        "job_id": None,
+        "created_at": QUOTE_TS,
+        "expires_at": QUOTE_EXPIRES,
+        "decided_by_kind": None,
+        "decided_by_id": None,
+        "decided_at": None,
+        "consumed_at": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def insert_row(connection: sqlite3.Connection, table: str, row: dict) -> None:
+    connection.execute(
+        f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+        tuple(row.values()),
+    )
+
+
+def count_rows(connection: sqlite3.Connection, table: str) -> int:
+    return connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+
+
+DECIDED = {"decided_by_kind": "user", "decided_by_id": "u1", "decided_at": QUOTE_TS}
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {"mode": "paid_with_per_request_approval", "version": 7},
+    ],
+)
+def test_a_valid_policy_row_is_accepted(conn, overrides) -> None:
+    insert_row(conn, "paid_api_policy", policy_row(**overrides))
+
+    assert count_rows(conn, "paid_api_policy") == 1
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"id": 2},
+        {"mode": "paid"},
+        {"mode": None},
+        {"version": 0},
+        {"updated_by_kind": "ai"},
+        {"updated_by_kind": "system"},
+        {"updated_by_id": " "},
+        {"updated_at": "2026-10-23T08:00:00Z"},
+    ],
+)
+def test_policy_rules_are_enforced_in_sql(conn, overrides) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_row(conn, "paid_api_policy", policy_row(**overrides))
+
+    assert count_rows(conn, "paid_api_policy") == 0
+
+
+def test_there_is_only_one_policy_row(conn) -> None:
+    insert_row(conn, "paid_api_policy", policy_row())
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_row(conn, "paid_api_policy", policy_row())
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {"status": "approved", **DECIDED},
+        {"status": "consumed", "consumed_at": QUOTE_EXPIRES, **DECIDED},
+        {"status": "rejected", **DECIDED},
+        {"status": "expired"},
+        {
+            "status": "blocked",
+            "blocked_reason": "budget.price_unknown",
+            "unit_price": None,
+            "estimated_amount": None,
+            "currency": None,
+        },
+        {"conditions_json": '["a", "b"]', "unknowns_json": '["giá chưa xác minh"]'},
+        {"duration_ms": None, "scene_id": None, "task_type": "speech_synthesis"},
+    ],
+)
+def test_valid_quote_rows_are_accepted(conn, overrides) -> None:
+    insert_row(conn, "paid_api_quotes", quote_row(**overrides))
+
+    assert count_rows(conn, "paid_api_quotes") == 1
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"status": "maybe"},
+        {"task_type": "music_generation"},
+        {"provider": " "},
+        {"provider": "p" * 81},
+        {"model": ""},
+        {"model": "m" * 121},
+        {"request_hash": "A" * 64},
+        {"request_hash": "a" * 63},
+        {"unit": ""},
+        {"duration_ms": 0},
+        {"currency": "usd"},
+        {"currency": None},
+        {"estimated_amount": None},
+        {"conditions_json": "{}"},
+        {"unknowns_json": "not json"},
+        {"created_at": "2026-10-23T08:00:00Z"},
+        {"expires_at": QUOTE_TS},
+        {"decided_by_kind": "ai", "decided_by_id": "a1", "decided_at": QUOTE_TS},
+        {"decided_by_kind": "user", "decided_by_id": "u1"},
+        {"status": "blocked"},
+        {"status": "approved"},
+        {"status": "consumed", **DECIDED},
+        {"consumed_at": QUOTE_EXPIRES},
+        {"content_item_id": "nope"},
+        {"job_id": "nope"},
+    ],
+)
+def test_quote_rules_are_enforced_in_sql(conn, overrides) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_row(conn, "paid_api_quotes", quote_row(**overrides))
+
+    assert count_rows(conn, "paid_api_quotes") == 0
+
+
+def test_only_one_quote_per_request_is_open(conn) -> None:
+    insert_row(conn, "paid_api_quotes", quote_row())
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_row(
+            conn, "paid_api_quotes", quote_row(id="pq2", status="approved", **DECIDED)
+        )
+    insert_row(conn, "paid_api_quotes", quote_row(id="pq3", status="expired"))
+    insert_row(
+        conn,
+        "paid_api_quotes",
+        quote_row(
+            id="pq4",
+            status="blocked",
+            blocked_reason="budget.price_unknown",
+            unit_price=None,
+            estimated_amount=None,
+            currency=None,
+        ),
+    )
+
+    assert count_rows(conn, "paid_api_quotes") == 3
+
+
+def test_the_quote_indexes(conn) -> None:
+    indexes = {
+        name: [row[2] for row in conn.execute(f"PRAGMA index_info({name})")]
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'paid_api_quotes' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+
+    assert indexes == {
+        "paid_api_quotes_one_open_per_hash": ["request_hash"],
+        "paid_api_quotes_by_item": ["content_item_id", "created_at"],
+        "paid_api_quotes_by_job": ["job_id", "created_at"],
+    }

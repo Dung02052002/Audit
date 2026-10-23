@@ -125,7 +125,9 @@ def test_a_background_run_is_accepted_and_succeeds(client: TestClient) -> None:
     assert run["request"]["script_chars"] == len(SAMPLE_SHORTS_SCRIPT)
     assert run["result"]["video_size_bytes"] > 0
     assert run["result"]["item_status"] == "preview_ready"
-    assert run["progress"]["total"] == 13
+    assert run["progress"]["total"] == 14  # 13 stages + budget.checked (BUDGET-01)
+    stages = {stage["id"]: stage["state"] for stage in run["progress"]["stages"]}
+    assert stages["budget.checked"] == "done"
     listed = client.get("/script-to-video/background-runs").json()["runs"]
     assert [entry["run_id"] for entry in listed] == [run["run_id"]]
 

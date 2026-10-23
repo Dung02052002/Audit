@@ -223,7 +223,11 @@ def test_a_failing_render_fails_the_run_with_safe_fields(
         "stage",
         "cause_code",
         "retryable",
+        "quote_ids",
+        "budget_status",
     }
+    assert done.error.quote_ids == ()
+    assert done.error.budget_status is None
 
     view = runner.describe(done)
     assert _states(view)[ScriptToVideoStage.AUDIO_MIXED.value] == "failed"
@@ -269,6 +273,9 @@ class _VanishingModeService:
             unavailable_reasons: dict[str, str] = {}
 
             def supports_mode(self, _mode: ProductionMode) -> bool:
+                return True
+
+            def accepts_mode(self, _mode: ProductionMode) -> bool:
                 return True
 
         return _Capabilities()
@@ -498,9 +505,10 @@ def test_progress_follows_only_the_latest_attempt() -> None:
 
 
 def test_progress_skips_an_optional_stage_that_was_passed() -> None:
+    last = PIPELINE_STAGE_ORDER.index(ScriptToVideoStage.THUMBNAIL_GENERATED)
     stages = [
         stage
-        for stage in PIPELINE_STAGE_ORDER[:8]
+        for stage in PIPELINE_STAGE_ORDER[: last + 1]
         if stage is not ScriptToVideoStage.SUBTITLES_GENERATED
     ]
     job = _job_with([(stage.value, NOW) for stage in stages], AIJobStatus.FAILED)

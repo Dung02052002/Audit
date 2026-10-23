@@ -5,9 +5,16 @@ Implements the end-to-end production pipeline from a user-supplied script
 synchronized voice audio, scene visuals, timed captions/subtitles, thumbnail,
 metadata, QC report, preview snapshot, and optional human approval request:
 
-``Input Script → Script Analysis → Story Bible → Scene Breakdown → Shot Planning
-  → Asset Generation/Selection → Voice & Dialogue → Timeline → Audio Mixing
-  → Video Rendering → QC → Preview → Approval``
+``Input Script → Script Analysis → Story Bible → Budget Check → Scene Breakdown
+  → Shot Planning → Asset Generation/Selection → Voice & Dialogue → Timeline
+  → Audio Mixing → Video Rendering → QC → Preview → Approval``
+
+Every voice, image and video-clip call goes through the ``PaidRequestGuard``
+(BUDGET-01): the service keeps only the guarded wrappers of its providers. The
+``budget.checked`` stage checks the providers of the run against the paid-API
+policy; a budget stop fails the job with the budget code and raises
+``ScriptToVideoError`` with ``pipeline.script_to_video_awaiting_paid_approval``
+(the quote ids to approve) or ``pipeline.script_to_video_budget_blocked``.
 """
 
 from __future__ import annotations
@@ -47,6 +54,11 @@ from ai_youtube_agent.content.longform_render import LongFormRenderService
 from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
+from ai_youtube_agent.content.paid_api_budget import (
+    PaidRequestContext,
+    PaidRequestDecisionError,
+    PaidRequestStatus,
+)
 from ai_youtube_agent.content.policy_report import PolicyReporter
 from ai_youtube_agent.content.preview_artifact import (
     PreviewArtifactService,
@@ -98,7 +110,11 @@ from ai_youtube_agent.content.strategy import (
     StrategyProfile,
     canonical_language_tag,
 )
-from ai_youtube_agent.content.tts_job import InMemoryChunkStore, TtsJobRunner
+from ai_youtube_agent.content.tts_job import (
+    InMemoryChunkStore,
+    TtsJobRunner,
+    plan_chunks,
+)
 from ai_youtube_agent.content.voice import VoiceProfile
 from ai_youtube_agent.core.artifact import Artifact, ArtifactKind
 from ai_youtube_agent.core.artifact_storage import ArtifactStorage
@@ -131,6 +147,7 @@ from ai_youtube_agent.core.flags import FeatureFlags
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.core.production import start_production
 from ai_youtube_agent.pipeline.job import AIJob, AIJobStatus
+from ai_youtube_agent.pipeline.paid_request_guard import PaidRequestGuard
 from ai_youtube_agent.providers.image_generation import (
     ImageGenerationError,
     ImageGenerationRequest,
@@ -157,6 +174,7 @@ class ScriptToVideoStage(StrEnum):
 
     SCRIPT_PARSED = "script.parsed"
     STORY_BIBLE_BUILT = "story_bible.built"
+    BUDGET_CHECKED = "budget.checked"
     SCENES_PLANNED = "scenes.planned"
     ASSETS_READY = "assets.ready"
     VOICE_GENERATED = "voice.generated"
@@ -177,6 +195,8 @@ class ScriptToVideoErrorCode(StrEnum):
     CHANNEL_NOT_FOUND = "pipeline.script_to_video_channel_not_found"
     MODE_UNAVAILABLE = "pipeline.script_to_video_mode_unavailable"
     STAGE_FAILED = "pipeline.script_to_video_stage_failed"
+    AWAITING_PAID_APPROVAL = "pipeline.script_to_video_awaiting_paid_approval"
+    BUDGET_BLOCKED = "pipeline.script_to_video_budget_blocked"
 
 
 USER_MESSAGES: dict[ScriptToVideoErrorCode, str] = {
@@ -193,6 +213,14 @@ USER_MESSAGES: dict[ScriptToVideoErrorCode, str] = {
     ScriptToVideoErrorCode.STAGE_FAILED: (
         "A production stage failed while building the video."
     ),
+    ScriptToVideoErrorCode.AWAITING_PAID_APPROVAL: (
+        "Lượt chạy dừng trước một yêu cầu API có thể tính phí. Hãy xem báo giá, "
+        "duyệt chi phí rồi chạy lại. Chưa có khoản phí nào phát sinh."
+    ),
+    ScriptToVideoErrorCode.BUDGET_BLOCKED: (
+        "Lượt chạy bị chặn bởi chính sách ngân sách: không gọi API trả phí. Hãy "
+        "dùng công cụ cục bộ/miễn phí (ComfyUI, Edge TTS, chế độ Story video)."
+    ),
 }
 
 _HTTP_STATUS: dict[ScriptToVideoErrorCode, HTTPStatus] = {
@@ -202,6 +230,8 @@ _HTTP_STATUS: dict[ScriptToVideoErrorCode, HTTPStatus] = {
     ScriptToVideoErrorCode.CHANNEL_NOT_FOUND: HTTPStatus.NOT_FOUND,
     ScriptToVideoErrorCode.MODE_UNAVAILABLE: HTTPStatus.CONFLICT,
     ScriptToVideoErrorCode.STAGE_FAILED: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ScriptToVideoErrorCode.AWAITING_PAID_APPROVAL: HTTPStatus.CONFLICT,
+    ScriptToVideoErrorCode.BUDGET_BLOCKED: HTTPStatus.CONFLICT,
 }
 
 
@@ -218,13 +248,19 @@ class ScriptToVideoError(DomainError):
         *,
         code: ScriptToVideoErrorCode = ScriptToVideoErrorCode.FAILED,
         stage: ScriptToVideoStage | None = None,
+        quote_ids: tuple[str, ...] = (),
+        budget_status: PaidRequestStatus | None = None,
+        user_message: str | None = None,
     ) -> None:
         super().__init__(
             detail,
             code=code.value,
-            user_message=USER_MESSAGES[code],
+            user_message=user_message or USER_MESSAGES[code],
         )
         self.stage = stage
+        # BUDGET-01: the quotes a budget stop waits on (or stored as blocked).
+        self.quote_ids = tuple(quote_ids)
+        self.budget_status = budget_status
         self.default_http_status = _HTTP_STATUS.get(
             code, HTTPStatus.UNPROCESSABLE_ENTITY
         )
@@ -245,9 +281,19 @@ class ProviderCapabilityReport:
     render_available: bool
     supported_modes: tuple[ProductionMode, ...]
     unavailable_reasons: Mapping[str, str]
+    # BUDGET-01: modes unavailable only because the budget policy blocks a
+    # paid provider (a run is still accepted, so the stop is recorded on its
+    # job), and the cost class of each provider.
+    budget_blocked_modes: tuple[ProductionMode, ...] = ()
+    cost_classes: Mapping[str, str] | None = None
 
     def supports_mode(self, mode: ProductionMode) -> bool:
         return mode in self.supported_modes
+
+    def accepts_mode(self, mode: ProductionMode) -> bool:
+        """Whether a run of ``mode`` may start: supported, or stopped only by
+        the budget policy (the run then fails with the budget code)."""
+        return mode in self.supported_modes or mode in self.budget_blocked_modes
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -261,6 +307,8 @@ class ProviderCapabilityReport:
             "render_available": self.render_available,
             "supported_modes": [m.value for m in self.supported_modes],
             "unavailable_reasons": dict(self.unavailable_reasons),
+            "budget_blocked_modes": [m.value for m in self.budget_blocked_modes],
+            "cost_classes": dict(self.cost_classes or {}),
         }
 
 
@@ -349,6 +397,9 @@ class VideoProjectManifest:
     approval_id: str | None
     completed_stages: tuple[ScriptToVideoStage, ...]
     capabilities: ProviderCapabilityReport
+    # BUDGET-01: free, or paid_approved with the quotes this run consumed.
+    budget_status: PaidRequestStatus = PaidRequestStatus.FREE
+    paid_quote_ids: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -397,6 +448,8 @@ class VideoProjectManifest:
             "approval_id": self.approval_id,
             "completed_stages": [st.value for st in self.completed_stages],
             "capabilities": self.capabilities.as_dict(),
+            "budget_status": self.budget_status.value,
+            "paid_quote_ids": list(self.paid_quote_ids),
         }
 
 
@@ -426,6 +479,64 @@ def _idempotency_key(
     return f"s2v:{digest}"
 
 
+def _scene_source(story_bible: StoryBible, scene: ScenePlan) -> str:
+    return (
+        f"script_to_video:{story_bible.story_id}:{scene.scene_id}:"
+        f"{story_bible.production_mode.value}"
+    )
+
+
+def _scene_title(scene: ScenePlan) -> str:
+    return f"Scene {scene.section_index + 1} - {scene.title[:48]}"
+
+
+def _clip_request(
+    scene: ScenePlan, width: int, height: int
+) -> VideoClipGenerationRequest:
+    primary_shot = scene.shots[0]
+    return VideoClipGenerationRequest(
+        scene_id=scene.scene_id,
+        shot_id=primary_shot.shot_id,
+        prompt=scene.visual_prompt,
+        duration_ms=scene.duration_ms,
+        width=width,
+        height=height,
+        fps=30,
+        camera_motion=primary_shot.camera_motion.value,
+        character_ids=scene.character_ids,
+        location_id=scene.location_id,
+    )
+
+
+def _image_request(
+    scene: ScenePlan, story_bible: StoryBible, width: int, height: int
+) -> ImageGenerationRequest:
+    location = story_bible.location_by_id(scene.location_id)
+    palette = (
+        location.palette_rgb
+        if location is not None
+        else ((28, 44, 76), (68, 108, 158), (235, 185, 92))
+    )
+    return ImageGenerationRequest(
+        prompt=scene.visual_prompt,
+        width=width,
+        height=height,
+        scene_id=scene.scene_id,
+        shot_id=scene.shots[0].shot_id,
+        style=story_bible.visual_style,
+        seed_key=f"{story_bible.story_id}:{scene.scene_id}",
+        palette_rgb=palette,
+    )
+
+
+def _only_budget_blocked(*providers: tuple[bool, str | None]) -> bool:
+    """Whether at least one provider is blocked by the budget policy and every
+    other one is usable (each entry is ``(usable, budget block reason)``)."""
+    return any(block is not None for _, block in providers) and all(
+        usable or block is not None for usable, block in providers
+    )
+
+
 class ScriptToVideoService:
     """End-to-end orchestrator transforming an input script into a rendered MP4
     video."""
@@ -440,6 +551,7 @@ class ScriptToVideoService:
         image_generator: ImageGenerator,
         video_clip_generator: VideoClipGenerator,
         video_renderer: VideoRenderer,
+        paid_request_guard: PaidRequestGuard,
         script_analyzer: ScriptAnalyzer | None = None,
         scene_planner: SceneBreakdownPlanner | None = None,
         asset_registry: AssetRegistry | None = None,
@@ -473,11 +585,13 @@ class ScriptToVideoService:
             hasattr(speech_synthesizer, "with_wav_output")
             and getattr(speech_synthesizer, "output_format", None) == "audio/mpeg"
         ):
-            self._speech = speech_synthesizer.with_wav_output()
-        else:
-            self._speech = speech_synthesizer
-        self._image_gen = image_generator
-        self._video_clip_gen = video_clip_generator
+            speech_synthesizer = speech_synthesizer.with_wav_output()
+        # BUDGET-01: only the guarded wrappers are kept, so no AI provider call
+        # of this service bypasses the paid-API policy.
+        self._guard = paid_request_guard
+        self._speech = paid_request_guard.wrap_speech(speech_synthesizer)
+        self._image_gen = paid_request_guard.wrap_image(image_generator)
+        self._video_clip_gen = paid_request_guard.wrap_video(video_clip_generator)
         self._renderer = video_renderer
         self._clock = clock
         # One chunk store per service, so a rerun of a succeeded TTS job in
@@ -593,18 +707,24 @@ class ScriptToVideoService:
         return self._clock() if self._clock else datetime.now(UTC)
 
     def check_capabilities(self) -> ProviderCapabilityReport:
-        """Inspect configured voice, image, video-clip, and render providers."""
-        voice_ok = True
-        try:
-            self._speech.check()
-        except Exception:
-            voice_ok = False
+        """Inspect configured voice, image, video-clip, and render providers.
 
-        img_caps = (
-            self._image_gen.capabilities_image_gen()
-            if hasattr(self._image_gen, "capabilities_image_gen")
-            else self._image_gen.capabilities()
-        )
+        A provider the budget policy blocks (BUDGET-01) is reported unavailable
+        with that reason and is not called; a mode that is unavailable only for
+        that reason is listed in ``budget_blocked_modes``.
+        """
+        voice_block = self._speech.budget_blocked_reason()
+        image_block = self._image_gen.budget_blocked_reason()
+        clip_block = self._video_clip_gen.budget_blocked_reason()
+
+        voice_ok = voice_block is None
+        if voice_ok:
+            try:
+                self._speech.check()
+            except Exception:
+                voice_ok = False
+
+        img_caps = self._image_gen.capabilities_image_gen()
         img_ok = img_caps.available
         if img_ok:
             try:
@@ -612,11 +732,7 @@ class ScriptToVideoService:
             except Exception:
                 img_ok = False
 
-        clip_caps = (
-            self._video_clip_gen.capabilities_video_clip()
-            if hasattr(self._video_clip_gen, "capabilities_video_clip")
-            else self._video_clip_gen.capabilities()
-        )
+        clip_caps = self._video_clip_gen.capabilities_video_clip()
         clip_ok = clip_caps.available
         if clip_ok:
             try:
@@ -631,34 +747,51 @@ class ScriptToVideoService:
             render_ok = False
 
         supported: list[ProductionMode] = []
+        budget_blocked: list[ProductionMode] = []
         unavailable: dict[str, str] = {}
 
         if voice_ok and render_ok and img_ok:
             supported.append(ProductionMode.STORY_VIDEO)
         else:
             reasons: list[str] = []
-            if not voice_ok:
+            if voice_block is not None:
+                reasons.append(f"voice provider '{self._speech.name}' {voice_block}")
+            elif not voice_ok:
                 reasons.append(f"voice provider '{self._speech.name}' is unhealthy")
-            if not img_ok:
+            if image_block is not None:
+                reasons.append(f"image provider '{self._image_gen.name}' {image_block}")
+            elif not img_ok:
                 reasons.append(
                     f"image provider '{self._image_gen.name}' is unavailable"
                 )
             if not render_ok:
                 reasons.append(f"video renderer '{self._renderer.name}' is unhealthy")
             unavailable[ProductionMode.STORY_VIDEO.value] = "; ".join(reasons)
+            if _only_budget_blocked(
+                (voice_ok, voice_block), (img_ok, image_block), (render_ok, None)
+            ):
+                budget_blocked.append(ProductionMode.STORY_VIDEO)
 
         if voice_ok and render_ok and clip_ok:
             supported.append(ProductionMode.AI_FILM)
         else:
             clip_reasons: list[str] = []
-            if not clip_ok:
+            if clip_block is not None:
+                clip_reasons.append(
+                    f"video clip generator '{self._video_clip_gen.name}' {clip_block}"
+                )
+            elif not clip_ok:
                 clip_reasons.append(
                     f"video clip generator '{self._video_clip_gen.name}' is not "
                     f"configured "
                     "for motion video synthesis (use story_video mode or configure a "
                     "video clip provider)"
                 )
-            if not voice_ok:
+            if voice_block is not None:
+                clip_reasons.append(
+                    f"voice provider '{self._speech.name}' {voice_block}"
+                )
+            elif not voice_ok:
                 clip_reasons.append(
                     f"voice provider '{self._speech.name}' is unhealthy"
                 )
@@ -667,6 +800,10 @@ class ScriptToVideoService:
                     f"video renderer '{self._renderer.name}' is unhealthy"
                 )
             unavailable[ProductionMode.AI_FILM.value] = "; ".join(clip_reasons)
+            if _only_budget_blocked(
+                (voice_ok, voice_block), (clip_ok, clip_block), (render_ok, None)
+            ):
+                budget_blocked.append(ProductionMode.AI_FILM)
 
         return ProviderCapabilityReport(
             voice_provider=self._speech.name,
@@ -679,6 +816,12 @@ class ScriptToVideoService:
             render_available=render_ok,
             supported_modes=tuple(supported),
             unavailable_reasons=unavailable,
+            budget_blocked_modes=tuple(budget_blocked),
+            cost_classes={
+                "voice": self._speech.cost_declaration().cost_class.value,
+                "image": self._image_gen.cost_declaration().cost_class.value,
+                "video_clip": self._video_clip_gen.cost_declaration().cost_class.value,
+            },
         )
 
     def analyze_only(
@@ -705,6 +848,9 @@ class ScriptToVideoService:
         ``on_job_started`` (APP-01) is called with the job id and the content
         item id once the job is started or resumed, so a background runner can
         follow its checkpoints; an error in it is logged and ignored.
+
+        Every AI provider call of the run is decided by the ``PaidRequestGuard``
+        (BUDGET-01) within the content item and job of the run.
         """
         active_actor = actor or DEFAULT_SYSTEM_ACTOR
         capabilities = self.check_capabilities()
@@ -714,8 +860,9 @@ class ScriptToVideoService:
         analysis = self._analyze_script(request)
         story_bible = analysis.story_bible
 
-        # 2. Honest capability check for the requested production mode
-        if not capabilities.supports_mode(request.production_mode):
+        # 2. Honest capability check for the requested production mode; a mode
+        # stopped only by the budget policy starts, so the stop is on its job.
+        if not capabilities.accepts_mode(request.production_mode):
             reason = capabilities.unavailable_reasons.get(
                 request.production_mode.value,
                 f"production mode {request.production_mode.value!r} is unavailable",
@@ -746,6 +893,7 @@ class ScriptToVideoService:
             except Exception:
                 logger.exception("on_job_started hook failed")
         completed_stages: list[ScriptToVideoStage] = []
+        budget_session = self._guard.start(PaidRequestContext(item.id, job.id))
 
         try:
             job = self._checkpoint(
@@ -764,6 +912,27 @@ class ScriptToVideoService:
                     "story_id": story_bible.story_id,
                     "character_count": len(story_bible.characters),
                     "location_count": len(story_bible.locations),
+                },
+                completed_stages,
+            )
+
+            # 4b. Budget check (BUDGET-01) of the providers this mode calls:
+            # free_only stops here before any paid provider is called.
+            preflight = self._guard.preflight(
+                (
+                    self._speech,
+                    self._video_clip_gen
+                    if request.production_mode is ProductionMode.AI_FILM
+                    else self._image_gen,
+                )
+            )
+            job = self._checkpoint(
+                job,
+                ScriptToVideoStage.BUDGET_CHECKED,
+                {
+                    "mode": preflight.mode.value,
+                    "status": preflight.status,
+                    "paid_providers": ",".join(preflight.paid_providers),
                 },
                 completed_stages,
             )
@@ -789,6 +958,18 @@ class ScriptToVideoService:
             audio_record = self._recorded_audio(item.id, script, voice_profile)
             chunk_count = 0
             if audio_record is None:
+                # A paid voice: every chunk still to be made is quoted in one
+                # pass before the first call (D1(b)); chunks a resumed TTS job
+                # reuses are not quoted, a repeated text is quoted once per
+                # occurrence, and each call then consumes its own approval.
+                if self._speech.is_paid:
+                    self._speech.authorize_batch(
+                        (
+                            voice_profile.speech_request(chunk.text)
+                            for chunk in plan_chunks(script)
+                        ),
+                        reused=tts_runner.stored_chunks(script, voice_profile),
+                    )
                 tts_result = tts_runner.run(script, voice_profile, take_over=True)
                 chunk_count = tts_result.chunks
                 audio_record = self._audio_recorder.record(
@@ -993,6 +1174,7 @@ class ScriptToVideoService:
                     "video_artifact_id": video_art.id,
                     "qc_status": qc_report.status.value,
                     "approval_requested": approval_id is not None,
+                    "budget_status": budget_session.status.value,
                 },
             )
 
@@ -1028,10 +1210,29 @@ class ScriptToVideoService:
                 approval_id=approval_id,
                 completed_stages=tuple(completed_stages),
                 capabilities=capabilities,
+                budget_status=budget_session.status,
+                paid_quote_ids=tuple(budget_session.consumed_quote_ids),
             )
         except ScriptToVideoError:
             self._fail_job_safely(job.id, ScriptToVideoErrorCode.STAGE_FAILED.value)
             raise
+        except PaidRequestDecisionError as error:
+            # BUDGET-01 (D3(a)): the job fails with the budget code; nothing was
+            # charged and no other provider was called.
+            self._fail_job_safely(job.id, error.code)
+            last_stage = completed_stages[-1] if completed_stages else None
+            raise ScriptToVideoError(
+                f"{error.code}: {error.detail}",
+                code=(
+                    ScriptToVideoErrorCode.AWAITING_PAID_APPROVAL
+                    if error.status is PaidRequestStatus.AWAITING_APPROVAL
+                    else ScriptToVideoErrorCode.BUDGET_BLOCKED
+                ),
+                stage=last_stage,
+                quote_ids=error.quote_ids,
+                budget_status=error.status,
+                user_message=error.user_message,
+            ) from error
         except DomainError as error:
             self._fail_job_safely(job.id, error.code)
             last_stage = completed_stages[-1] if completed_stages else None
@@ -1048,6 +1249,8 @@ class ScriptToVideoService:
                 code=ScriptToVideoErrorCode.STAGE_FAILED,
                 stage=last_stage,
             ) from error
+        finally:
+            budget_session.close()
 
     def _analyze_script(self, request: ScriptToVideoRequest) -> ScriptAnalysisOutput:
         try:
@@ -1457,49 +1660,48 @@ class ScriptToVideoService:
         width, height = breakdown.canvas_size
         records: list[SceneAssetRecord] = []
         updated_scenes: list[ScenePlan] = []
+        ai_film = story_bible.production_mode is ProductionMode.AI_FILM
 
-        for scene in breakdown.scenes:
-            source_id = (
-                f"script_to_video:{story_bible.story_id}:{scene.scene_id}:"
-                f"{story_bible.production_mode.value}"
-            )
-            title = f"Scene {scene.section_index + 1} - {scene.title[:48]}"
-            reused_rec = self._try_reuse_scene_asset(
+        reusable = [
+            self._try_reuse_scene_asset(
                 item=item,
                 scene=scene,
-                source=source_id,
-                title=title,
+                source=_scene_source(story_bible, scene),
+                title=_scene_title(scene),
                 width=width,
                 height=height,
             )
+            for scene in breakdown.scenes
+        ]
+        # BUDGET-01 (D1(b)): a paid provider gets every new scene of the stage
+        # quoted in one pass before the first call.
+        to_generate = [
+            scene
+            for scene, reused in zip(breakdown.scenes, reusable, strict=True)
+            if reused is None
+        ]
+        if ai_film and self._video_clip_gen.is_paid:
+            self._video_clip_gen.authorize_batch(
+                _clip_request(scene, width, height) for scene in to_generate
+            )
+        elif not ai_film and self._image_gen.is_paid:
+            self._image_gen.authorize_batch(
+                _image_request(scene, story_bible, width, height)
+                for scene in to_generate
+            )
+
+        for scene, reused_rec in zip(breakdown.scenes, reusable, strict=True):
+            source_id = _scene_source(story_bible, scene)
+            title = _scene_title(scene)
             if reused_rec is not None:
                 records.append(reused_rec)
                 updated_scenes.append(replace(scene, status=SceneStatus.ASSETS_READY))
                 continue
 
-            location = story_bible.location_by_id(scene.location_id)
-            palette = (
-                location.palette_rgb
-                if location is not None
-                else ((28, 44, 76), (68, 108, 158), (235, 185, 92))
-            )
-            primary_shot = scene.shots[0]
-
-            if story_bible.production_mode is ProductionMode.AI_FILM:
+            if ai_film:
                 try:
                     clip = self._video_clip_gen.generate_clip(
-                        VideoClipGenerationRequest(
-                            scene_id=scene.scene_id,
-                            shot_id=primary_shot.shot_id,
-                            prompt=scene.visual_prompt,
-                            duration_ms=scene.duration_ms,
-                            width=width,
-                            height=height,
-                            fps=30,
-                            camera_motion=primary_shot.camera_motion.value,
-                            character_ids=scene.character_ids,
-                            location_id=scene.location_id,
-                        )
+                        _clip_request(scene, width, height)
                     )
                 except VideoClipGenerationError as error:
                     raise ScriptToVideoError(
@@ -1514,16 +1716,7 @@ class ScriptToVideoService:
             else:
                 try:
                     img = self._image_gen.generate(
-                        ImageGenerationRequest(
-                            prompt=scene.visual_prompt,
-                            width=width,
-                            height=height,
-                            scene_id=scene.scene_id,
-                            shot_id=primary_shot.shot_id,
-                            style=story_bible.visual_style,
-                            seed_key=f"{story_bible.story_id}:{scene.scene_id}",
-                            palette_rgb=palette,
-                        )
+                        _image_request(scene, story_bible, width, height)
                     )
                 except ImageGenerationError as error:
                     raise ScriptToVideoError(
@@ -1703,10 +1896,7 @@ class ScriptToVideoService:
                 media_type=media_type,
             )
             read_back = self._storage.read(written.uri)
-            if (
-                not read_back
-                or hashlib.sha256(read_back).hexdigest() != written.sha256
-            ):
+            if not read_back or hashlib.sha256(read_back).hexdigest() != written.sha256:
                 raise ScriptToVideoError(
                     "stored scene visual artifact is empty or failed checksum check",
                     code=ScriptToVideoErrorCode.STAGE_FAILED,

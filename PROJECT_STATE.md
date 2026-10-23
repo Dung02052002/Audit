@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-23 (PROV-FIX-01 ComfyUI & Edge TTS real adapters + Vietnamese E2E demo video PASS, 267/267 provider/pipeline tests passed; APP-01 local web app PASS)
+Last updated: 2026-10-23 (BUDGET-01 AI video budget settings + free AI film demo PASS; full suite 8323 passed)
 
 This file is the handoff document. A new session should read it, together with `TASK_STATUS.md`, before doing anything else. There is no need to audit the repository again from the start.
 
@@ -11,18 +11,20 @@ PROJECT_STATE      = ALL_TASKS_AND_SCRIPT_TO_FILM_IMPLEMENTED_PENDING_VERIFICATI
 BASELINE_COMMIT    = 3b41416
 CURRENT_CHECKPOINT = 11dfa7a
 BASELINE_STATUS    = CLEAN
-TEST_STATUS        = PASS on 2026-10-23 (PROV-FIX-01 267 passed, 0 failed; APP-01 full suite 7973 passed, 0 failed)
-LINT_STATUS        = PASS on 2026-10-23 (ruff check clean)
-BUILD_STATUS       = PASS on 2026-10-22 (uv build)
+TEST_STATUS        = PASS on 2026-10-23 (BUDGET-01 full suite 8323 passed, 0 failed)
+LINT_STATUS        = PASS on 2026-10-23 (ruff check + format clean on src/tests/tools; pre-existing failures only in artifacts/comfyui_demo_run/run_demo.py)
+BUILD_STATUS       = PASS on 2026-10-23 (uv build)
 KNOWN_FAILURES     = NONE
 UNKNOWN_BLOCKERS   = NONE
 BUILD_MODE         = STANDARD
 UNTESTED_TASKS     = NONE
-CURRENT_TASK       = PROV-FIX-01 Real ComfyUI & Edge TTS Adapters + Vietnamese Demo Video (PASS 2026-10-23)
+CURRENT_TASK       = BUDGET-01 AI Video Budget Settings + Free AI Film Demo (PASS 2026-10-23, committed)
 NEXT_TASK          = NONE
 ```
 
 ## Next task
+
+**BUDGET-01** is PASS (2026-10-23, committed with APP-01). See TASK_STATUS.md. Open follow-ups: a real price source (D2), linking paid quotes to CostLedger/BudgetGuard (D5), real paid HTTP adapters. Paid path proven only with priced test doubles.
 
 **APP-01 Local web app** is PASS (2026-10-22). Gate 2026-10-22 (main session, uncommitted working tree): opus/high review PASS with 3 should-fix + nits, fixed in one fix round; full suite 7973 passed, 0 failed; ruff check and ruff format --check clean; uv build OK (web/static in the wheel); E2E smoke with ffmpeg: UI create-video flow in Edge (0 console errors), real H.264/AAC MP4 with burned-in Vietnamese captions, copied to the Desktop. Windows needs AI_YOUTUBE_AGENT_RENDER_FONT_FILE (ffmpeg drawtext crashed without fontconfig). Local web app and background Script-to-Video runner (user-approved plan, 2026-10-22). Q4 resolved: a web app served by FastAPI (static HTML, vanilla JavaScript ES modules and CSS in `src/ai_youtube_agent/web/static/`, mounted at `/app`, `/` redirects there, Vietnamese labels in `js/strings.js`, design tokens copied from `dashboard/design_system.css`). `pipeline/script_to_video_runner.py` (`ScriptToVideoRunner`: one daemon worker thread over a FIFO queue, in-memory registry of at most 100 runs, preflight in the request thread (blank script 422, unavailable mode 409, D6 item status 409 `domain.content_item_not_editable`), equal active run returned with 200, progress read from `AIJob` checkpoints, RUNNING untracked job reads `interrupted`, `shutdown` cancels queued runs with `pipeline.run_cancelled`), `pipeline/script_to_video_runs_api.py` (`POST/GET /script-to-video/background-runs`, `GET /script-to-video/background-runs/{run_id}`, `GET /script-to-video/jobs/{job_id}`), `content/app_views.py` + `content/app_api.py` (`GET /content-items`, `/content-items/{id}`, `/script`, `/scenes` (run manifest or persisted timeline + `scene:{id}:background` assets), `/video/download` (verified MP4, latin-1 safe `Content-Disposition` with `filename*`), `GET /system/settings` whitelist), `web/__init__.py` (`install_web_app`, `.js`/`.css` MIME types). APP-01's only change to `pipeline/script_to_video.py` is the optional `on_job_started` hook of `ScriptToVideoService.run` (the rest of that file's uncommitted diff is earlier verification work, not APP-01). No migration; render default stays `mock`. Tests: `tests/test_script_to_video_runner.py` (21), `tests/test_app_api.py` (19), `tests/test_web_app.py` (21) new; affected script_to_video, bootstrap, preview_api, channel_settings, health, health_check, folder_structure pass (149 passed in total). Open question Q4 (Command Center platform) is resolved in `docs/ARCHITECTURE.md`. Known limits: runs live in memory (lost on restart, items stay); the stored script is the analyzer's processed text, so editing starts from it, not from the original paste; the mock MP4 has no track and does not play in browsers (the app says so); no login, so the server must stay on 127.0.0.1.
 

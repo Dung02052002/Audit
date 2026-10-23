@@ -34,6 +34,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostClass,
+    ProviderCostDeclaration,
+    free_declaration,
+)
 from ai_youtube_agent.providers.speech_synthesis import (
     SpeechRequest,
     SpeechSynthesisError,
@@ -126,6 +131,14 @@ class MockSpeechSynthesizer:
             raise SpeechSynthesisError(
                 VoiceErrorCode.UNAVAILABLE, "mock set unhealthy", provider=self.name
             )
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return free_declaration(
+            self.name,
+            "mock-sine-tone",
+            ProviderCostClass.MOCK,
+            "Giọng mock trong bộ nhớ.",
+        )
 
 
 def _canonical(request: SpeechRequest) -> bytes:

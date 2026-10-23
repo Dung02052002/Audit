@@ -17,6 +17,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from ai_youtube_agent.providers.mock_video_render import stub_mp4
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostClass,
+    ProviderCostDeclaration,
+    free_declaration,
+)
 from ai_youtube_agent.providers.video_generation import (
     MP4_CLIP_MEDIA_TYPE,
     GeneratedVideoClip,
@@ -60,6 +65,14 @@ class UnconfiguredVideoClipGenerator:
             VideoClipErrorCode.NOT_CONFIGURED,
             "No AI video-clip generation provider is configured.",
             provider=self.name,
+        )
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return free_declaration(
+            self.name,
+            "none",
+            ProviderCostClass.MOCK,
+            "Không có nhà cung cấp clip; không gọi API nào.",
         )
 
 
@@ -131,3 +144,11 @@ class MockVideoClipGenerator:
                 "mock video clip generator is unhealthy",
                 provider=self.name,
             )
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return free_declaration(
+            self.name,
+            self.model_name,
+            ProviderCostClass.MOCK,
+            "Clip mock trong bộ nhớ.",
+        )

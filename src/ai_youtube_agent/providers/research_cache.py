@@ -28,6 +28,10 @@ from typing import Any, TypeVar
 from ai_youtube_agent.content.source import normalize_url
 from ai_youtube_agent.core.db.database import Database
 from ai_youtube_agent.core.db.repositories.research import ResearchCacheRepository
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostDeclaration,
+    classify_provider,
+)
 from ai_youtube_agent.providers.research import (
     CacheInfo,
     CacheOutcome,
@@ -170,6 +174,10 @@ class ResearchCache:
 
     def check(self) -> None:
         self.inner.check()
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        # A cache miss calls the wrapped provider, so it costs what that costs.
+        return classify_provider(self.inner)
 
     def _serve(
         self,

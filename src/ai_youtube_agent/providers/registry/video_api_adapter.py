@@ -4,18 +4,23 @@ Implements opt-in adapter for external video generation models (e.g. Runway,
 Luma, Kling, Wan2.1, CogVideo). Adheres strictly to the requirement that
 video generation APIs are only integrated when explicitly requested and
 permitted, honestly refusing otherwise.
+
+There is no real HTTP integration with any video API yet (BUDGET-01): the
+adapter never answers with a mock clip, also when it is enabled.
+``capabilities_video_clip`` reports it unavailable and ``generate_clip``
+always raises ``VideoClipGenerationError``. Its cost declaration is ``paid``
+without a verified price, so the budget guard blocks it before any call.
 """
 
 from __future__ import annotations
 
 import time
 import urllib.request
-from typing import Any
 
 from ai_youtube_agent.core.log import get_logger
-from ai_youtube_agent.providers.mock_video_generation import (
-    MockVideoClipGenerator,
-    UnconfiguredVideoClipGenerator,
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostDeclaration,
+    paid_declaration,
 )
 from ai_youtube_agent.providers.registry.base import BaseProviderAdapter
 from ai_youtube_agent.providers.registry.models import (
@@ -38,6 +43,8 @@ from ai_youtube_agent.providers.video_generation import (
 
 logger = get_logger(__name__)
 
+NOT_INTEGRATED_REASON = "Chưa có tích hợp HTTP thật cho API video; không tạo clip giả"
+
 
 class VideoGenApiAdapter(BaseProviderAdapter, VideoClipGenerator):
     """Adapter for external motion video clip generation APIs."""
@@ -50,7 +57,6 @@ class VideoGenApiAdapter(BaseProviderAdapter, VideoClipGenerator):
         api_endpoint: str = "https://api.runwayml.com/v1",
         default_model: str = "gen3a_turbo",
         timeout_seconds: float = 10.0,
-        fallback_mock: VideoClipGenerator | None = None,
     ) -> None:
         super().__init__(
             provider_id="video_api",
@@ -62,8 +68,12 @@ class VideoGenApiAdapter(BaseProviderAdapter, VideoClipGenerator):
         self.default_model = default_model
         self.timeout_seconds = timeout_seconds
         self.name = "video_api"
-        self._mock = fallback_mock or (
-            MockVideoClipGenerator() if is_enabled else UnconfiguredVideoClipGenerator()
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return paid_declaration(
+            self.name,
+            self.default_model,
+            "API tạo video tính phí theo giây clip; chưa có nguồn giá đã xác minh.",
         )
 
     def capabilities(self) -> ProviderCapability:
@@ -164,19 +174,16 @@ class VideoGenApiAdapter(BaseProviderAdapter, VideoClipGenerator):
     # -------------------------------------------------------------------------
 
     def capabilities_video_clip(self) -> VideoClipGeneratorCapabilities:
-        if not self.is_enabled:
-            return VideoClipGeneratorCapabilities(
-                provider_name=self.name,
-                model_name=self.default_model,
-                available=False,
-                is_mock=False,
-                reason="Video generation API is disabled or not configured.",
-            )
         return VideoClipGeneratorCapabilities(
             provider_name=self.name,
             model_name=self.default_model,
-            available=True,
-            is_mock=True,
+            available=False,
+            is_mock=False,
+            reason=(
+                NOT_INTEGRATED_REASON
+                if self.is_enabled
+                else "Video generation API is disabled or not configured."
+            ),
         )
 
     def generate_clip(self, request: VideoClipGenerationRequest) -> GeneratedVideoClip:
@@ -186,11 +193,8 @@ class VideoGenApiAdapter(BaseProviderAdapter, VideoClipGenerator):
                 "Video generation API is not configured or enabled.",
                 provider=self.name,
             )
-        return self._mock.generate_clip(request)
-
-    def __getattr__(self, name: str) -> Any:
-        if name == "capabilities" and hasattr(self, "capabilities_video_clip"):
-            return self.capabilities_video_clip
-        raise AttributeError(
-            f"'{type(self).__name__}' object has no attribute '{name}'"
+        raise VideoClipGenerationError(
+            VideoClipErrorCode.NOT_CONFIGURED,
+            f"{NOT_INTEGRATED_REASON}.",
+            provider=self.name,
         )

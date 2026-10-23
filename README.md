@@ -38,6 +38,14 @@ Open http://127.0.0.1:8000/app/ (`/` redirects there) for the local web app (APP
 
 - Edge TTS (the `edge_tts` provider) calls the real Microsoft Edge online service, so it needs internet access and the optional `tts` extra: `uv sync --extra tts`. ComfyUI (the `comfyui` provider) needs a running ComfyUI server (`COMFYUI_BASE_URL`, `COMFYUI_CHECKPOINT`). Neither provider silently falls back to a mock: when the service or library is missing, the call fails with a structured error.
 
+Free AI film demo (BUDGET-01, development tool, not part of the package): with ComfyUI running locally (Stable Diffusion 1.5 checkpoint, default `v1-5-pruned-emaonly.safetensors`, or `--checkpoint` / `COMFYUI_CHECKPOINT`), internet access for Edge TTS and ffmpeg on the `PATH` (or `AI_YOUTUBE_AGENT_FFMPEG_BINARY`), run
+
+```sh
+uv run --extra tts --extra demo python tools/free_ai_film_demo.py [--out-root artifacts/free_ai_film_demo] [--comfy-url http://127.0.0.1:8188] [--voice vi-VN-HoaiMyNeural] [--size 720x1280] [--fps 24]
+```
+
+It checks the paid-API budget (every provider must be free), makes one AI background with ComfyUI, a Vietnamese voice with Edge TTS (a free online service, not local), animates a cartoon character over the background with Pillow frame by frame (software 2D animation, not an AI video model), streams the frames to ffmpeg and checks the MP4. Each step prints PENDING/RUNNING/SUCCESS/FAILED/BLOCKED; the run directory `artifacts/free_ai_film_demo/<YYYYmmdd-HHMMSS>/` (git-ignored) holds the MP4, `manifest.json` (methods, cost 0, budget status, steps) and `run.log`. When ComfyUI or Edge TTS is unreachable the step fails; there is never a placeholder. Subtitles need a Vietnamese TrueType font: `AI_YOUTUBE_AGENT_RENDER_FONT_FILE`, else `C:/Windows/Fonts/arial.ttf` or `segoeui.ttf`.
+
 Health check: `GET /health` returns `status` (`ok`, `degraded` or `down`), `version` and one entry per check in `checks`. It answers 503 only when an application check fails. A failing provider check gives `degraded` with 200.
 
 ## Test and lint

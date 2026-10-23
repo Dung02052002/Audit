@@ -81,6 +81,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import NamedTuple, Protocol, runtime_checkable
 
+from ai_youtube_agent.content.paid_api_budget import PaidRequestDecisionError
 from ai_youtube_agent.content.script import Script
 from ai_youtube_agent.content.voice import VoiceProfile
 from ai_youtube_agent.core.audit import MetadataValue
@@ -350,9 +351,29 @@ class TtsJobRunner:
         attempt.save(attempt.job.start(clock=self._after(attempt.job)))
         try:
             return self._produce(attempt, plan, script, voice)
-        except (SpeechSynthesisError, TtsJobError) as error:
+        except (
+            SpeechSynthesisError,
+            TtsJobError,
+            # A paid voice stopped by the budget policy (BUDGET-01): the attempt
+            # fails with the budget code; a re-run needs a new approval.
+            PaidRequestDecisionError,
+        ) as error:
             attempt.save(attempt.job.fail(error.code, clock=self._after(attempt.job)))
             raise
+
+    def stored_chunks(self, script: Script, voice: VoiceProfile) -> frozenset[int]:
+        """The indexes of the chunks of ``script`` a run reuses from the store
+        instead of calling the provider again; read only (no job is created)."""
+        key = audio_key(script.id, voice.id, voice.version)
+        with self._database.transaction() as connection:
+            job = AIJobRepository(connection).get_by_idempotency_key(key)
+        if job is None:
+            return frozenset()
+        return frozenset(
+            chunk.index
+            for chunk in plan_chunks(script)
+            if self._stored(job, chunk, None) is not None
+        )
 
     def _job(
         self, script: Script, voice: VoiceProfile, session_id: str | None

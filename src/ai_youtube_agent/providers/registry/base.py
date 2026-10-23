@@ -12,6 +12,12 @@ from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from ai_youtube_agent.core.errors import ProviderError
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostClass,
+    ProviderCostDeclaration,
+    free_declaration,
+    paid_declaration,
+)
 from ai_youtube_agent.providers.registry.models import (
     ConnectionCheckResult,
     CredentialCheckResult,
@@ -86,6 +92,35 @@ class BaseProviderAdapter(ABC):
     @abstractmethod
     def check_resources(self) -> ResourceCheckResult:
         """Check hardware and binary resources."""
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        """The cost class from the static capability declaration (BUDGET-01).
+
+        Free and local is ``local_free``, free and online ``free_service``, and
+        anything else ``paid`` without a verified price. No network call.
+        """
+        capability = self.capabilities()
+        name = getattr(self, "name", None) or self.provider_id
+        model = (
+            getattr(self, "default_model", None)
+            or next(iter(capability.supported_models), None)
+            or self.provider_id
+        )
+        if capability.is_free and capability.is_local:
+            return free_declaration(
+                name,
+                model,
+                ProviderCostClass.LOCAL_FREE,
+                "Miễn phí, chạy trên máy này.",
+            )
+        if capability.is_free:
+            return free_declaration(
+                name,
+                model,
+                ProviderCostClass.FREE_SERVICE,
+                "Dịch vụ trực tuyến miễn phí, không cần API key.",
+            )
+        return paid_declaration(name, model, "API trả phí theo yêu cầu.")
 
     def diagnose(self) -> ProviderDiagnostic:
         """Run all verification probes and synthesize a unified diagnostic record."""

@@ -11,9 +11,16 @@ Input Script (raw text or file path)
   │  - Extracts StoryBible: CharacterSpec, LocationSpec, StoryArc, ContinuityConstraint
   │  - Builds ScriptSection tuple & RawSceneBeat tuple aligned with target format
   ▼
+[Stage 1b: PaidRequestGuard.preflight (BUDGET-01)] ──► Checkpoint: budget.checked
+  │  - Classifies the voice and the image (STORY_VIDEO) or clip (AI_FILM) provider
+  │  - free_only + a paid/unknown provider: request stored blocked, job FAILED
+  │    (budget.paid_provider_blocked_free_only), no provider called
+  │  - Checkpoint data: mode, status (free | paid_approval_required), paid_providers
+  ▼
 [Stage 2: Domain Script + TtsJobRunner + AudioArtifactRecorder + AudioValidator]
   │  - Persists versioned Script entity (ContentStatus: IDEA -> SCRIPTING -> SCRIPTED)
-  │  - Synthesizes WAV voiceover via SpeechSynthesizer
+  │  - A paid voice gets every TTS chunk (plan_chunks) quoted in one pass first
+  │  - Synthesizes WAV voiceover via SpeechSynthesizer (guarded wrapper)
   │  - Stores ArtifactKind.AUDIO + AudioMetadata + AudioValidator QC check
   │  - Checkpoint: voice.generated (ContentStatus -> VOICED)
   ▼
@@ -27,6 +34,9 @@ Input Script (raw text or file path)
   │  - STORY_VIDEO mode: ImageGenerator (DeterministicSceneImageGenerator / external provider)
   │  - AI_FILM mode: VideoClipGenerator (honestly refuses when unconfigured; never fakes film)
   │  - Reuses existing attached scene assets on resume (idempotent per scene)
+  │  - A paid image/clip provider gets every new scene quoted in one pass before
+  │    the first call (PaidRequestGuard.authorize_batch); each call then consumes
+  │    its own approved quote just before it runs
   │  - Registers Asset + Provenance + AssetUsage, runs RightsRiskEngine.assess & DisclosureDecider.decide
   │  - Checkpoint: assets.ready
   ▼
@@ -49,8 +59,17 @@ Input Script (raw text or file path)
   │  - If request_approval=True and QC passed, calls ApprovalService.request_approval
   │  - Checkpoint: approval.requested (ContentStatus -> AWAITING_APPROVAL)
   ▼
-VideoProjectManifest (with real MP4 file path, SHA-256, StoryBible, SceneBreakdownPlan, QC & Preview)
+VideoProjectManifest (with real MP4 file path, SHA-256, StoryBible, SceneBreakdownPlan, QC & Preview,
+                      budget_status free | paid_approved and the consumed paid_quote_ids)
 ```
+
+A budget stop (BUDGET-01) at any stage fails the job with the budget code as
+`last_error` and raises `ScriptToVideoError` (HTTP 409):
+`pipeline.script_to_video_awaiting_paid_approval` with the `quote_ids` to
+approve, or `pipeline.script_to_video_budget_blocked`. The background runner
+shows the run as `awaiting_approval` or `blocked`; after the approval,
+`POST /script-to-video/background-runs/{run_id}/retry` runs it again and each
+approved quote is consumed exactly once.
 
 ---
 
@@ -59,7 +78,23 @@ VideoProjectManifest (with real MP4 file path, SHA-256, StoryBible, SceneBreakdo
 | Mode | Visual Provider | Asset Kind | Behavior |
 |------|----------------|------------|----------|
 | `STORY_VIDEO` (`story_video`) | `ImageGenerator` (`providers/image_generation.py`) | `AssetKind.IMAGE` (`image/png`) | Default mode. Generates scene-consistent 8-bit RGB illustrations (using location color palettes, character continuity sheets, and shot composition) and renders them with timed voiceover, captions, and camera framing into a playable MP4. |
-| `AI_FILM` (`ai_film`) | `VideoClipGenerator` (`providers/video_generation.py`) | `AssetKind.VIDEO_CLIP` (`video/mp4`) | Motion video mode. Requires an active `VideoClipGenerator` (`capabilities().available == True`). By default, `UnconfiguredVideoClipGenerator` reports `available=False` and `ScriptToVideoService` raises `ScriptToVideoErrorCode.MODE_UNAVAILABLE` (HTTP 409) with a clear diagnostic message rather than faking an AI film from static images. |
+| `AI_FILM` (`ai_film`) | `VideoClipGenerator` (`providers/video_generation.py`) | `AssetKind.VIDEO_CLIP` (`video/mp4`) | Motion video mode. Requires an active `VideoClipGenerator` (`capabilities().available == True`). By default, `UnconfiguredVideoClipGenerator` reports `available=False` and `ScriptToVideoService` raises `ScriptToVideoErrorCode.MODE_UNAVAILABLE` (HTTP 409) with a clear diagnostic message rather than faking an AI film from static images. A mode unavailable only because the budget policy blocks a paid provider (`ProviderCapabilityReport.budget_blocked_modes`) is still accepted, so the stop is recorded on its job. |
+
+### Provider cost classes (BUDGET-01)
+
+| Provider | Cost class | Notes |
+|----------|-----------|-------|
+| `MockSpeechSynthesizer`, `MockTTSAdapter`, `MockVideoClipGenerator`, `UnconfiguredVideoClipGenerator`, `MockTextGenerator`, `MockResearchProvider` | `mock` | In memory, no network. `ResearchCache` costs what its provider costs. |
+| `DeterministicSceneImageGenerator`, `ComfyUIAdapter`, `FFmpegAdapter`, `CapCutAdapter`, `PlaywrightAdapter` | `local_free` | Runs on this machine. |
+| `EdgeTTSAdapter` | `free_service` | Free online service without an API key (not local). |
+| `ElevenLabsTTSAdapter`, `VideoGenApiAdapter` | `paid`, price unknown | No real HTTP integration and no verified price: always blocked ("chưa rõ giá"); they never answer with mock audio or clips. |
+| A provider without `cost_declaration()` | `unknown` | Treated as paid with an unknown price (`budget.provider_cost_unknown`). |
+
+A free provider whose explicit fallback is not free takes the fallback's class
+without a price. Every call goes through `PaidRequestGuard`: `free_only` (the
+default) never calls a paid API, also not after a free quota runs out;
+`paid_with_per_request_approval` runs a paid call only by consuming the
+approved quote of exactly that request.
 
 ---
 
@@ -77,6 +112,10 @@ VideoProjectManifest (with real MP4 file path, SHA-256, StoryBible, SceneBreakdo
    - `VideoClipGenerator` protocol, `UnconfiguredVideoClipGenerator` (honest default when no motion-video model is configured), and `MockVideoClipGenerator` (for deterministic testing).
 5. **`src/ai_youtube_agent/pipeline/script_to_video.py`**:
    - `ScriptToVideoService`, `ScriptToVideoRequest`, `VideoProjectManifest`, `ProviderCapabilityReport`, `ScriptToVideoStage`, `ScriptToVideoError`.
+   - Requires `paid_request_guard` and keeps only the guarded wrappers of its voice, image and clip providers.
+5b. **`src/ai_youtube_agent/pipeline/paid_request_guard.py`, `content/paid_api_budget*.py`, `providers/provider_cost.py`** (BUDGET-01):
+   - `PaidRequestGuard` (`preflight`, `authorize_batch`, `authorize_call`, `wrap_speech` / `wrap_image` / `wrap_video`), `PaidApiBudgetService` (policy and quotes, migration 0029), `ProviderCostClass` / `classify_provider`.
+   - HTTP: `GET`/`PUT /budget/paid-api-policy`, `GET /budget/paid-api-quotes[/{id}]`, `POST /budget/paid-api-quotes/{id}/approve|reject`.
 6. **`src/ai_youtube_agent/content/script_to_video_api.py`**:
    - `GET /script-to-video/capabilities`
    - `POST /script-to-video/analyze`
@@ -131,5 +170,6 @@ print("QC status:", manifest.qc_report.overall_status)
 
 - `GET /script-to-video/capabilities`: Inspect active providers and supported modes.
 - `POST /script-to-video/analyze`: Generate `story_bible` and `scene_breakdown` JSON without rendering.
-- `POST /script-to-video/runs`: Execute full pipeline and receive `VideoProjectManifest` JSON including `video.file_path`, `qc_report`, and `preview_snapshot`.
+- `POST /script-to-video/runs`: Execute full pipeline and receive `VideoProjectManifest` JSON including `video.file_path`, `qc_report`, and `preview_snapshot`. A budget stop answers 409 (`pipeline.script_to_video_awaiting_paid_approval` or `pipeline.script_to_video_budget_blocked`).
+- `POST /script-to-video/background-runs/{run_id}/retry`: run a stopped background run again (after approving its quotes under `/budget/paid-api-quotes`).
 

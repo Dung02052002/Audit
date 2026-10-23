@@ -9,6 +9,11 @@ Exposes:
   progress of its job (404 ``domain.run_not_found``).
 - ``GET /script-to-video/jobs/{job_id}``: one job with its checkpoints; a
   running job that no run of this process follows is ``interrupted``.
+- ``POST /script-to-video/background-runs/{run_id}/retry`` (BUDGET-01): queue
+  the kept request of a stopped run (awaiting approval, blocked or failed)
+  again, 202 with a ``Location`` header (200 when an equal run is already
+  active); 404 ``domain.run_not_found``, 409 ``domain.run_not_retryable`` for
+  an active or succeeded run, 409 ``domain.content_item_not_editable``.
 
 The synchronous ``POST /script-to-video/runs`` is unchanged.
 """
@@ -83,6 +88,21 @@ def list_background_runs(runner: RunnerDep) -> dict[str, Any]:
 @router.get("/background-runs/{run_id}")
 def get_background_run(run_id: str, runner: RunnerDep) -> dict[str, Any]:
     return runner.describe(runner.require(run_id))
+
+
+@router.post("/background-runs/{run_id}/retry", status_code=HTTPStatus.ACCEPTED)
+def retry_background_run(
+    run_id: str,
+    runner: RunnerDep,
+    actor: CurrentActor,
+    response: Response,
+) -> dict[str, Any]:
+    """Run a stopped run again; it consumes each approved quote once."""
+    snapshot, created = runner.retry(run_id, actor=actor)
+    response.headers["Location"] = _run_location(snapshot.run_id)
+    if not created:
+        response.status_code = HTTPStatus.OK
+    return runner.describe(snapshot)
 
 
 @router.get("/jobs/{job_id}")

@@ -46,6 +46,10 @@ from ai_youtube_agent.providers.image_generation import (
     ImageGeneratorErrorCode,
 )
 from ai_youtube_agent.providers.media_probe import MediaProbeError, probe_image_bytes
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostDeclaration,
+    with_fallback,
+)
 from ai_youtube_agent.providers.registry.base import BaseProviderAdapter
 from ai_youtube_agent.providers.registry.models import (
     ConnectionCheckResult,
@@ -279,6 +283,10 @@ class ComfyUIAdapter(BaseProviderAdapter, ImageGenerator):
     def last_job(self) -> ComfyJobRecord | None:
         with self._job_lock:
             return self._last_job
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        """Local and free; a non-free explicit fallback makes it paid."""
+        return with_fallback(super().cost_declaration(), self._fallback)
 
     def capabilities(self) -> ProviderCapability:
         modalities = ["image", "workflow_api", "text2image", "img2img"]

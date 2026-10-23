@@ -20,6 +20,11 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostClass,
+    ProviderCostDeclaration,
+    free_declaration,
+)
 from ai_youtube_agent.providers.text_generation import (
     GeneratedText,
     TextErrorCode,
@@ -92,3 +97,8 @@ class MockTextGenerator:
             raise TextGenerationError(
                 TextErrorCode.UNAVAILABLE, "mock set unhealthy", provider=self.name
             )
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return free_declaration(
+            self.name, MODEL, ProviderCostClass.MOCK, "Văn bản mock trong bộ nhớ."
+        )

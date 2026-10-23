@@ -21,6 +21,7 @@ from datetime import timedelta
 
 import pytest
 
+from ai_youtube_agent.content.paid_api_budget import PaidRequestAwaitingApprovalError
 from ai_youtube_agent.content.script import Script, ScriptSection, SectionKind
 from ai_youtube_agent.content.tts_job import (
     CHUNK_DONE,
@@ -469,6 +470,44 @@ def test_a_failed_job_resumes_with_only_the_missing_chunks(world: World) -> None
     assert job.status is AIJobStatus.SUCCEEDED and job.last_error is None
     assert steps(job).count(PLANNED) == 1
     assert steps(job).count(CHUNK_DONE) == 3
+
+
+class BudgetStop(Flaky):
+    """Stops the given call numbers as the paid-API guard does (BUDGET-01)."""
+
+    def synthesize(self, request: SpeechRequest) -> SynthesizedSpeech:
+        self.count += 1
+        if self.count in self.fail_on:
+            raise PaidRequestAwaitingApprovalError(
+                provider=self.name, quote_ids=("pq_test",)
+            )
+        return self.inner.synthesize(request)
+
+
+def test_a_budget_stop_fails_the_attempt_and_is_never_retried(world: World) -> None:
+    script = world.script(*THREE)
+    stopping = BudgetStop(world.mock, {2})
+
+    with pytest.raises(PaidRequestAwaitingApprovalError):
+        world.runner(stopping).run(script, world.voice)
+
+    assert stopping.count == 2
+    job = world.job(script)
+    assert job.status is AIJobStatus.FAILED and job.attempts == 1
+    assert job.last_error == "budget.paid_request_awaiting_approval"
+    assert [record["index"] for record in chunk_records(job)] == [0]
+
+
+def test_stored_chunks_names_the_chunks_a_run_reuses(world: World) -> None:
+    script = world.script(*THREE)
+    runner = world.runner()
+
+    assert runner.stored_chunks(script, world.voice) == frozenset()
+    assert world.job_count() == 0
+    fail_at_third(world, script)
+    assert runner.stored_chunks(script, world.voice) == frozenset({0, 1})
+    world.store.clear(world.job(script).id)
+    assert runner.stored_chunks(script, world.voice) == frozenset()
 
 
 def test_a_resumed_result_equals_a_clean_run(world: World) -> None:

@@ -135,6 +135,9 @@ class Settings(BaseSettings):
     tts_cost_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
     # Approval expiry TTL in hours (#142): 1 to 720 hours (default 72 hours = 3 days).
     approval_ttl_hours: int = Field(default=72, ge=1, le=720)
+    # Paid AI API quotes (BUDGET-01): minutes a quote stays open for approval
+    # and an approval stays usable (1 to 1440, default 30, not a bool).
+    paid_quote_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     # YouTube upload retries (#153): attempts per publish call (1 means no retry) and
     # the base of the exponential wait in seconds (0 means no wait).
     upload_max_attempts: int = Field(default=3, ge=1, le=5)
@@ -149,6 +152,13 @@ class Settings(BaseSettings):
     def _refuse_bool_approval_ttl_hours(cls, value: Any) -> Any:
         if isinstance(value, bool):
             raise ValueError("approval_ttl_hours must be an integer, not a bool")
+        return value
+
+    @field_validator("paid_quote_ttl_minutes", mode="before")
+    @classmethod
+    def _refuse_bool_paid_quote_ttl(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("paid_quote_ttl_minutes must be an integer, not a bool")
         return value
 
     @field_validator(

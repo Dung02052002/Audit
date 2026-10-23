@@ -157,6 +157,8 @@ const RUN_TONES = {
   interrupted: "amber",
   waiting: "amber",
   cancelled: "",
+  awaiting_approval: "amber",
+  blocked: "red",
 };
 
 export function badge(text, tone = "") {
@@ -180,7 +182,7 @@ export function qcBadge(status) {
 
 export function stepper(progress) {
   const percent = progress.total ? Math.round((progress.completed / progress.total) * 100) : 0;
-  const marks = { done: "✓", active: "•", failed: "!", skipped: "", pending: "" };
+  const marks = { done: "✓", active: "•", failed: "!", skipped: "", pending: "", waiting: "…", blocked: "×" };
   return el(
     "div",
     { class: "stack" },

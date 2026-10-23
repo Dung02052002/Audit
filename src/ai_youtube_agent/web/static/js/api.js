@@ -110,6 +110,21 @@ export const api = {
     request("POST", "/script-to-video/analyze", { ...options, body: payload }).then((r) => r.data),
   submitRun: (payload, options) =>
     request("POST", "/script-to-video/background-runs", { ...options, body: payload }),
+  // BUDGET-01: the paid-API policy is read fresh every time (never cached).
+  retryRun: (runId, options) =>
+    request("POST", `/script-to-video/background-runs/${id(runId)}/retry`, { ...options, body: {} }),
+  budgetPolicy: (options) => get("/budget/paid-api-policy", options),
+  saveBudgetPolicy: ({ mode, expected_version }, options) =>
+    request("PUT", "/budget/paid-api-policy", { ...options, body: { mode, expected_version } }).then((r) => r.data),
+  paidQuotes: (params, options) => get(`/budget/paid-api-quotes${query(params)}`, options),
+  paidQuote: (quoteId, options) => get(`/budget/paid-api-quotes/${id(quoteId)}`, options),
+  approvePaidQuote: (quoteId, { request_hash, estimated_amount, currency }, options) =>
+    request("POST", `/budget/paid-api-quotes/${id(quoteId)}/approve`, {
+      ...options,
+      body: { request_hash, estimated_amount, currency },
+    }).then((r) => r.data),
+  rejectPaidQuote: (quoteId, options) =>
+    request("POST", `/budget/paid-api-quotes/${id(quoteId)}/reject`, { ...options, body: {} }).then((r) => r.data),
 };
 
 export const links = {

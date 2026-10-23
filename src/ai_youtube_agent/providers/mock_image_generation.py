@@ -29,6 +29,11 @@ from ai_youtube_agent.providers.image_generation import (
     ImageGeneratorCapabilities,
     ImageGeneratorErrorCode,
 )
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostClass,
+    ProviderCostDeclaration,
+    free_declaration,
+)
 
 Clock = Callable[[], datetime]
 _PNG_SIGNATURE: Final[bytes] = b"\x89PNG\r\n\x1a\n"
@@ -195,3 +200,11 @@ class DeterministicSceneImageGenerator:
                 "scene image generator is unhealthy",
                 provider=self.name,
             )
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return free_declaration(
+            self.name,
+            self.model_name,
+            ProviderCostClass.LOCAL_FREE,
+            "Ảnh PNG tạo cục bộ bằng Python, không gọi mạng.",
+        )

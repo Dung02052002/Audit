@@ -4,7 +4,9 @@ Implements unified adapters for:
 1. EdgeTTSAdapter: Free, high-fidelity Vietnamese neural voices. Calls the real
    Edge online service (optional ``edge-tts`` extra, internet required); there is
    no silent mock fallback.
-2. ElevenLabsTTSAdapter: Optional premium cloud speech synthesis.
+2. ElevenLabsTTSAdapter: Optional premium cloud speech synthesis (paid). There
+   is no real HTTP integration yet: it refuses to synthesize and never returns
+   mock audio in place of ElevenLabs audio (BUDGET-01).
 3. MockTTSAdapter: Fast, offline, deterministic fallback generator.
 """
 
@@ -29,6 +31,13 @@ from typing import Any
 from ai_youtube_agent.core.log import get_logger
 from ai_youtube_agent.providers.media_probe import MediaProbeError, probe_mp3_bytes
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
+from ai_youtube_agent.providers.provider_cost import (
+    ProviderCostClass,
+    ProviderCostDeclaration,
+    free_declaration,
+    paid_declaration,
+    with_fallback,
+)
 from ai_youtube_agent.providers.registry.base import BaseProviderAdapter
 from ai_youtube_agent.providers.registry.models import (
     ConnectionCheckResult,
@@ -132,6 +141,19 @@ class EdgeTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
     @property
     def fallback_enabled(self) -> bool:
         return self._fallback is not None
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        """A free online service; a non-free explicit fallback makes it paid."""
+        return with_fallback(
+            free_declaration(
+                self.name,
+                self.default_voice,
+                ProviderCostClass.FREE_SERVICE,
+                "Dịch vụ Microsoft Edge TTS trực tuyến miễn phí, không cần API key "
+                "(không phải cục bộ).",
+            ),
+            self._fallback,
+        )
 
     def capabilities(self) -> ProviderCapability:
         return ProviderCapability(
@@ -531,7 +553,13 @@ def _classify(exc: BaseException) -> tuple[VoiceErrorCode, str]:
 
 
 class ElevenLabsTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
-    """Optional premium cloud voice provider."""
+    """Optional premium cloud voice provider (paid).
+
+    There is no real ElevenLabs HTTP integration yet, so ``synthesize`` always
+    raises ``SpeechSynthesisError`` and never answers with mock audio. Its cost
+    declaration is ``paid`` without a verified price, so the budget guard blocks
+    it before any call (BUDGET-01).
+    """
 
     def __init__(
         self,
@@ -540,7 +568,6 @@ class ElevenLabsTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
         default_voice_id: str = "21m00Tcm4TlvDq8ikWAM",  # Rachel
         model_id: str = "eleven_multilingual_v2",
         timeout_seconds: float = 10.0,
-        fallback: SpeechSynthesizer | None = None,
     ) -> None:
         super().__init__(
             provider_id="elevenlabs",
@@ -551,7 +578,13 @@ class ElevenLabsTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
         self.model_id = model_id
         self.timeout_seconds = timeout_seconds
         self.name = "elevenlabs"
-        self._fallback = fallback or MockSpeechSynthesizer()
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return paid_declaration(
+            self.name,
+            self.model_id,
+            "API ElevenLabs tính phí theo số ký tự; chưa có nguồn giá đã xác minh.",
+        )
 
     def capabilities(self) -> ProviderCapability:
         return ProviderCapability(
@@ -633,16 +666,16 @@ class ElevenLabsTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
 
     def synthesize(self, request: SpeechRequest) -> SynthesizedSpeech:
         if not self.api_key:
-            if self._fallback:
-                return self._fallback.synthesize(request)
             raise SpeechSynthesisError(
                 VoiceErrorCode.UNAVAILABLE,
                 "ElevenLabs is not configured with an API key.",
                 provider=self.name,
             )
-
-        # In testing/offline environment:
-        return self._fallback.synthesize(request)
+        raise SpeechSynthesisError(
+            VoiceErrorCode.UNAVAILABLE,
+            "ElevenLabs chưa có tích hợp HTTP thật; không tạo giọng giả.",
+            provider=self.name,
+        )
 
 
 class MockTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
@@ -655,6 +688,14 @@ class MockTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
         )
         self._synth = synthesizer or MockSpeechSynthesizer()
         self.name = "mock"
+
+    def cost_declaration(self) -> ProviderCostDeclaration:
+        return free_declaration(
+            self.name,
+            "mock-vietnamese-1",
+            ProviderCostClass.MOCK,
+            "Giọng mock trong bộ nhớ.",
+        )
 
     def capabilities(self) -> ProviderCapability:
         return ProviderCapability(

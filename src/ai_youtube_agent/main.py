@@ -11,6 +11,7 @@ from ai_youtube_agent.content.app_api import router as content_items_router
 from ai_youtube_agent.content.app_api import system_router
 from ai_youtube_agent.content.approval_api import router as approval_router
 from ai_youtube_agent.content.channel_api import router as channel_router
+from ai_youtube_agent.content.paid_api_budget_api import router as budget_router
 from ai_youtube_agent.content.preview_api import router as preview_router
 from ai_youtube_agent.content.providers_api import router as providers_router
 from ai_youtube_agent.content.script_to_video_api import (
@@ -66,6 +67,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(content_items_router)
     app.include_router(system_router)
     app.include_router(providers_router)
+    app.include_router(budget_router)
     install_web_app(app)
     return app
 

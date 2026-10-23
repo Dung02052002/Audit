@@ -24,6 +24,15 @@ As the user approved for APP-01:
 - Errors keep only safe fields: the code, the user message, the stage and the
   code of the cause. Any other exception is ``application.internal`` with a
   generic message, and its detail goes to the log only.
+
+BUDGET-01 (D3(a)): a run stopped by the paid-API budget ends
+``awaiting_approval`` (with the quote ids to approve) or ``blocked``; neither
+is active, and no thread waits for the approval. Its job is FAILED with the
+budget code as ``last_error``, which ``job_status`` maps to the same statuses
+for a job no run follows. The next stage of such a run is ``waiting`` or
+``blocked``. ``retry`` submits the kept request of a stopped run again
+(awaiting approval, blocked or failed), with the same checks as ``submit``;
+the re-run consumes each approved quote once.
 """
 
 from __future__ import annotations
@@ -40,6 +49,10 @@ from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, Final
 
+from ai_youtube_agent.content.paid_api_budget import (
+    BLOCKING_CODES,
+    PaidBudgetErrorCode,
+)
 from ai_youtube_agent.core.audit import Actor
 from ai_youtube_agent.core.content_item import ContentStatus
 from ai_youtube_agent.core.db.database import Database
@@ -68,6 +81,7 @@ LISTED_FINISHED_RUNS: Final = 50
 PIPELINE_STAGE_ORDER: Final[tuple[ScriptToVideoStage, ...]] = (
     ScriptToVideoStage.SCRIPT_PARSED,
     ScriptToVideoStage.STORY_BIBLE_BUILT,
+    ScriptToVideoStage.BUDGET_CHECKED,
     ScriptToVideoStage.VOICE_GENERATED,
     ScriptToVideoStage.SCENES_PLANNED,
     ScriptToVideoStage.ASSETS_READY,
@@ -106,9 +120,14 @@ class RunStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     INTERRUPTED = "interrupted"
+    AWAITING_APPROVAL = "awaiting_approval"
+    BLOCKED = "blocked"
 
 
 ACTIVE_RUN_STATUSES: Final = frozenset({RunStatus.QUEUED, RunStatus.RUNNING})
+RETRYABLE_RUN_STATUSES: Final = frozenset(
+    {RunStatus.AWAITING_APPROVAL, RunStatus.BLOCKED, RunStatus.FAILED}
+)
 
 
 class StageState(StrEnum):
@@ -117,6 +136,8 @@ class StageState(StrEnum):
     PENDING = "pending"
     FAILED = "failed"
     SKIPPED = "skipped"
+    WAITING = "waiting"
+    BLOCKED = "blocked"
 
 
 class RunnerErrorCode(StrEnum):
@@ -125,6 +146,7 @@ class RunnerErrorCode(StrEnum):
     ITEM_NOT_EDITABLE = "domain.content_item_not_editable"
     RUNNER_STOPPED = "pipeline.runner_stopped"
     RUN_CANCELLED = "pipeline.run_cancelled"
+    RUN_NOT_RETRYABLE = "domain.run_not_retryable"
 
 
 USER_MESSAGES: Final[dict[RunnerErrorCode, str]] = {
@@ -139,6 +161,10 @@ USER_MESSAGES: Final[dict[RunnerErrorCode, str]] = {
     RunnerErrorCode.RUN_CANCELLED: (
         "The run was cancelled because the server stopped before it started."
     ),
+    RunnerErrorCode.RUN_NOT_RETRYABLE: (
+        "Only a run that stopped (awaiting approval, blocked or failed) can be "
+        "run again; this run is still active or has succeeded."
+    ),
 }
 
 _HTTP_STATUS: Final[dict[RunnerErrorCode, HTTPStatus]] = {
@@ -147,6 +173,7 @@ _HTTP_STATUS: Final[dict[RunnerErrorCode, HTTPStatus]] = {
     RunnerErrorCode.ITEM_NOT_EDITABLE: HTTPStatus.CONFLICT,
     RunnerErrorCode.RUNNER_STOPPED: HTTPStatus.SERVICE_UNAVAILABLE,
     RunnerErrorCode.RUN_CANCELLED: HTTPStatus.CONFLICT,
+    RunnerErrorCode.RUN_NOT_RETRYABLE: HTTPStatus.CONFLICT,
 }
 
 
@@ -195,6 +222,9 @@ class RunError:
     stage: str | None
     cause_code: str | None
     retryable: bool
+    # BUDGET-01: the quotes a budget stop waits on and its status.
+    quote_ids: tuple[str, ...] = ()
+    budget_status: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -203,6 +233,8 @@ class RunError:
             "stage": self.stage,
             "cause_code": self.cause_code,
             "retryable": self.retryable,
+            "quote_ids": list(self.quote_ids),
+            "budget_status": self.budget_status,
         }
 
 
@@ -318,8 +350,10 @@ def job_progress(
     ``since`` when given). A succeeded job that is entered again records no
     new checkpoints, so its previous attempt is shown with ``reused`` true.
     ``status`` decides the next stage to run after the last done one: active
-    while running, failed after a failure (unless there is no job yet);
-    optional stages a succeeded run did not reach are skipped.
+    while running, failed after a failure (unless there is no job yet),
+    waiting while awaiting a paid-API approval and blocked after a budget
+    block (BUDGET-01); optional stages a succeeded run did not reach are
+    skipped.
 
     ``disabled_stages`` are the optional stages the request turned off: they
     are skipped from the start and never chosen as the next stage. Without
@@ -386,6 +420,10 @@ def job_progress(
             state = StageState.ACTIVE
         elif index == next_index and status is RunStatus.FAILED:
             state = StageState.FAILED
+        elif index == next_index and status is RunStatus.AWAITING_APPROVAL:
+            state = StageState.WAITING
+        elif index == next_index and status is RunStatus.BLOCKED:
+            state = StageState.BLOCKED
         else:
             state = StageState.PENDING
         stages.append(StageProgress(stage.value, state, reached.get(stage.value)))
@@ -394,7 +432,13 @@ def job_progress(
         (
             stage.id
             for stage in stages
-            if stage.state in (StageState.ACTIVE, StageState.FAILED)
+            if stage.state
+            in (
+                StageState.ACTIVE,
+                StageState.FAILED,
+                StageState.WAITING,
+                StageState.BLOCKED,
+            )
         ),
         None,
     ) or next((stage.id for stage in stages if stage.state is StageState.PENDING), None)
@@ -534,7 +578,9 @@ class ScriptToVideoRunner:
                 stage=ScriptToVideoStage.SCRIPT_PARSED,
             )
         capabilities = self._service_provider().check_capabilities()
-        if not capabilities.supports_mode(request.production_mode):
+        # A mode stopped only by the budget policy is queued: the run then ends
+        # blocked with the budget code on its job (BUDGET-01).
+        if not capabilities.accepts_mode(request.production_mode):
             raise ScriptToVideoError(
                 capabilities.unavailable_reasons.get(
                     request.production_mode.value, "production mode unavailable"
@@ -580,6 +626,31 @@ class ScriptToVideoRunner:
                 )
                 self._worker.start()
             return run.snapshot(), True
+
+    def retry(self, run_id: str, *, actor: Actor) -> tuple[RunSnapshot, bool]:
+        """Submit the kept request of a stopped run again (BUDGET-01).
+
+        Only an awaiting-approval, blocked or failed run can be run again; its
+        content item must still be editable (D6). Like ``submit``, an equal
+        active run is returned with ``False``.
+        """
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise RunnerError(
+                    f"run {run_id} not found", code=RunnerErrorCode.RUN_NOT_FOUND
+                )
+            status = run.status
+            request = run.request
+            content_item_id = run.content_item_id
+        if status not in RETRYABLE_RUN_STATUSES:
+            raise RunnerError(
+                f"run {run_id} is {status.value}",
+                code=RunnerErrorCode.RUN_NOT_RETRYABLE,
+            )
+        if content_item_id is not None:
+            self._require_editable(content_item_id)
+        return self.submit(request, actor=actor)
 
     def _require_editable(self, content_item_id: str) -> None:
         with self._database.transaction() as connection:
@@ -669,7 +740,9 @@ class ScriptToVideoRunner:
             )
         if job.status is AIJobStatus.SUCCEEDED:
             return RunStatus.SUCCEEDED
-        if job.status in (AIJobStatus.FAILED, AIJobStatus.CANCELLED):
+        if job.status is AIJobStatus.FAILED:
+            return budget_stop_status(job.last_error) or RunStatus.FAILED
+        if job.status is AIJobStatus.CANCELLED:
             return RunStatus.FAILED
         return RunStatus.QUEUED
 
@@ -775,15 +848,20 @@ class ScriptToVideoRunner:
                 extra={"fields": {"run_id": run.run_id, **error.log_fields()}},
             )
             cause_code = getattr(error.__cause__, "code", None)
+            budget_status = getattr(error, "budget_status", None)
             self._finish(
                 run.run_id,
-                RunStatus.FAILED,
+                _RUN_STATUS_BY_CODE.get(error.code, RunStatus.FAILED),
                 error=RunError(
                     code=error.code,
                     message=error.user_message,
                     stage=error.stage.value if error.stage is not None else None,
                     cause_code=str(cause_code) if cause_code is not None else None,
                     retryable=False,
+                    quote_ids=tuple(getattr(error, "quote_ids", ())),
+                    budget_status=(
+                        budget_status.value if budget_status is not None else None
+                    ),
                 ),
             )
         except Exception:
@@ -849,6 +927,23 @@ class ScriptToVideoRunner:
             del self._runs[oldest.run_id]
 
 
+_RUN_STATUS_BY_CODE: Final[dict[str, RunStatus]] = {
+    ScriptToVideoErrorCode.AWAITING_PAID_APPROVAL.value: RunStatus.AWAITING_APPROVAL,
+    ScriptToVideoErrorCode.BUDGET_BLOCKED.value: RunStatus.BLOCKED,
+}
+
+
+def budget_stop_status(last_error: str | None) -> RunStatus | None:
+    """The run status of a job that failed with a budget code, else ``None``."""
+    if last_error is None:
+        return None
+    if last_error.startswith(PaidBudgetErrorCode.AWAITING_APPROVAL.value):
+        return RunStatus.AWAITING_APPROVAL
+    if any(last_error.startswith(code.value) for code in BLOCKING_CODES):
+        return RunStatus.BLOCKED
+    return None
+
+
 def _run_key(request: ScriptToVideoRequest, script_text: str) -> tuple[str, ...]:
     return (
         hashlib.sha256(script_text.encode("utf-8")).hexdigest(),
@@ -867,6 +962,7 @@ def _iso(moment: datetime | None) -> str | None:
 __all__ = [
     "EDITABLE_ITEM_STATUSES",
     "PIPELINE_STAGE_ORDER",
+    "RETRYABLE_RUN_STATUSES",
     "RunError",
     "RunProgress",
     "RunResult",
@@ -876,6 +972,7 @@ __all__ = [
     "RunnerErrorCode",
     "ScriptToVideoRunner",
     "StageState",
+    "budget_stop_status",
     "disabled_optional_stages",
     "job_as_dict",
     "job_progress",

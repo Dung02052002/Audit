@@ -52,6 +52,12 @@ resolved); the kill switch gate joins it later.
 background thread, resolving the service when a run starts; the main app shuts
 it down when the server stops. ``ContentItemViewService`` and
 ``SystemSettingsView`` are the read views of the local web app.
+``PaidApiBudgetService`` (BUDGET-01) keeps the paid-API policy and quotes over
+the database, with quotes open for ``Settings.paid_quote_ttl_minutes``;
+``PaidRequestGuard`` decides every AI provider call against it.
+``ScriptToVideoService`` gets the guard and keeps only guarded wrappers of its
+voice, image and video-clip providers; the ``VideoClipGenerator`` binding
+stays ``UnconfiguredVideoClipGenerator``.
 """
 
 from datetime import timedelta
@@ -110,6 +116,7 @@ from ai_youtube_agent.content.longform_service import LongFormProjectService
 from ai_youtube_agent.content.longform_subtitles import LongFormSubtitleRecorder
 from ai_youtube_agent.content.longform_thumbnail import LongFormThumbnailRecorder
 from ai_youtube_agent.content.originality_checker import OriginalityChecker
+from ai_youtube_agent.content.paid_api_budget_service import PaidApiBudgetService
 from ai_youtube_agent.content.policy_report import PolicyReporter
 from ai_youtube_agent.content.preview_artifact import PreviewArtifactService
 from ai_youtube_agent.content.preview_edit_loop import PreviewEditLoopService
@@ -201,6 +208,7 @@ from ai_youtube_agent.pipeline.orchestrator_audit import (
     OrchestratorAuditRecorder,
     OrchestratorAuditService,
 )
+from ai_youtube_agent.pipeline.paid_request_guard import PaidRequestGuard
 from ai_youtube_agent.pipeline.pilot_runner import ShortsPilotRunner
 from ai_youtube_agent.pipeline.pipeline_runner import PipelineRunner
 from ai_youtube_agent.pipeline.production_audit import ProductionReadinessAuditor
@@ -1183,6 +1191,18 @@ def build_container(settings: Settings | None = None) -> Container:
         lambda _c: SceneBreakdownPlanner(),
     )
     container.register(
+        PaidApiBudgetService,
+        lambda c: PaidApiBudgetService(
+            c.resolve(Database),
+            c.resolve(AuditLog),
+            quote_ttl=timedelta(minutes=c.resolve(Settings).paid_quote_ttl_minutes),
+        ),
+    )
+    container.register(
+        PaidRequestGuard,
+        lambda c: PaidRequestGuard(c.resolve(PaidApiBudgetService)),
+    )
+    container.register(
         ScriptToVideoService,
         lambda c: ScriptToVideoService(
             c.resolve(Database),
@@ -1192,6 +1212,7 @@ def build_container(settings: Settings | None = None) -> Container:
             image_generator=c.resolve(ImageGenerator),
             video_clip_generator=c.resolve(VideoClipGenerator),
             video_renderer=c.resolve(VideoRenderer),
+            paid_request_guard=c.resolve(PaidRequestGuard),
             script_analyzer=c.resolve(ScriptAnalyzer),
             scene_planner=c.resolve(SceneBreakdownPlanner),
             asset_registry=c.resolve(AssetRegistry),

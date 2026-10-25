@@ -22,6 +22,7 @@ import pytest
 
 from ai_youtube_agent.providers.mock_speech_synthesis import MockSpeechSynthesizer
 from ai_youtube_agent.providers.registry import EdgeTTSAdapter
+from ai_youtube_agent.providers.registry.tts_adapters import SpeechBoundary, TimedSpeech
 from ai_youtube_agent.providers.speech_synthesis import (
     SpeechRequest,
     SpeechSynthesisError,
@@ -560,3 +561,205 @@ def test_default_factory_builds_a_real_communicate_without_network() -> None:
         receive_timeout=60,
     )
     assert isinstance(communicate, edge_tts.Communicate)
+
+
+# -----------------------------------------------------------------------------
+# synthesize_timed: prosody and word boundaries (ANIM-01)
+# -----------------------------------------------------------------------------
+
+
+def word_event(
+    text: str, offset: int, duration: int, kind: str = "WordBoundary"
+) -> dict[str, Any]:
+    return {"type": kind, "offset": offset, "duration": duration, "text": text}
+
+
+def timed_chunks(mp3: bytes) -> list[dict[str, Any]]:
+    """Audio interleaved with word boundaries (100 ns ticks) and a sentence one."""
+    size = -(-len(mp3) // 2)
+    return [
+        word_event("Xin", 1_000_000, 2_500_000),
+        {"type": "audio", "data": mp3[:size]},
+        word_event("chào", 4_000_000, 3_000_000),
+        word_event("x", 0, 1, kind="SentenceBoundary"),
+        {"type": "audio", "data": mp3[size:]},
+        {"type": "unknown", "data": b"?"},
+    ]
+
+
+def test_synthesize_timed_returns_mp3_with_millisecond_word_boundaries(
+    mp3: bytes,
+) -> None:
+    factory = FakeFactory(chunks=timed_chunks(mp3))
+    adapter = adapter_with(factory)
+
+    timed = adapter.synthesize_timed(make_request(), rate="-6%", pitch="-4Hz")
+
+    assert isinstance(timed, TimedSpeech)
+    assert timed.audio == mp3
+    assert timed.speech.media_type == "audio/mpeg"
+    assert timed.duration_ms == 960
+    assert timed.boundaries == (
+        SpeechBoundary("WordBoundary", 100, 350, "Xin"),
+        SpeechBoundary("WordBoundary", 400, 700, "chào"),
+    )
+    assert (timed.rate, timed.pitch, timed.boundary) == ("-6%", "-4Hz", "WordBoundary")
+
+
+def test_synthesize_timed_sends_prosody_and_boundary_to_edge(mp3: bytes) -> None:
+    factory = FakeFactory(chunks=timed_chunks(mp3))
+    adapter = adapter_with(factory, timeout_seconds=7.9, overall_timeout_seconds=42.0)
+
+    adapter.synthesize_timed(make_request(), rate="-10%", pitch="-4Hz")
+
+    text, voice, kwargs = factory.calls[0]
+    assert (text, voice) == (TEXT, VOICE)
+    assert kwargs == {
+        "rate": "-10%",
+        "volume": "+0%",
+        "pitch": "-4Hz",
+        "boundary": "WordBoundary",
+        "connect_timeout": 7,
+        "receive_timeout": 42,
+    }
+
+
+def test_synthesize_timed_defaults_are_neutral_word_boundaries(mp3: bytes) -> None:
+    factory = FakeFactory(chunks=timed_chunks(mp3))
+
+    adapter_with(factory).synthesize_timed(make_request())
+
+    kwargs = factory.calls[0][2]
+    assert (kwargs["rate"], kwargs["pitch"], kwargs["boundary"]) == (
+        "+0%",
+        "+0Hz",
+        "WordBoundary",
+    )
+
+
+def test_synthesize_timed_can_ask_for_sentence_boundaries(mp3: bytes) -> None:
+    factory = FakeFactory(chunks=timed_chunks(mp3))
+
+    timed = adapter_with(factory).synthesize_timed(
+        make_request(), boundary="SentenceBoundary"
+    )
+
+    assert factory.calls[0][2]["boundary"] == "SentenceBoundary"
+    assert timed.boundaries == (SpeechBoundary("SentenceBoundary", 0, 0, "x"),)
+
+
+def test_synthesize_timed_keeps_malformed_boundaries_out(mp3: bytes) -> None:
+    chunks = [
+        word_event("ok", 10_000, 20_000),
+        {"type": "WordBoundary", "offset": "x", "duration": 1, "text": "bad"},
+        {"type": "WordBoundary", "offset": -5, "duration": 1, "text": "neg"},
+        {"type": "WordBoundary", "offset": 1, "duration": 1},
+        {"type": "WordBoundary", "offset": True, "duration": 1, "text": "bool"},
+        *audio_chunks(mp3),
+    ]
+
+    timed = adapter_with(FakeFactory(chunks=chunks)).synthesize_timed(make_request())
+
+    assert timed.boundaries == (SpeechBoundary("WordBoundary", 1, 3, "ok"),)
+
+
+def test_synthesize_still_passes_neutral_prosody_and_no_boundary(mp3: bytes) -> None:
+    factory = FakeFactory(chunks=audio_chunks(mp3))
+
+    adapter_with(factory).synthesize(make_request())
+
+    kwargs = factory.calls[0][2]
+    assert kwargs["rate"] == "+0%" and kwargs["pitch"] == "+0Hz"
+    assert "boundary" not in kwargs
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "voice_code"),
+    [
+        ({"rate": "slow"}, CODE.INVALID_REQUEST),
+        ({"rate": "-6"}, CODE.INVALID_REQUEST),
+        ({"pitch": "low"}, CODE.INVALID_REQUEST),
+        ({"pitch": "-4"}, CODE.INVALID_REQUEST),
+        ({"boundary": "PhonemeBoundary"}, CODE.INVALID_REQUEST),
+    ],
+)
+def test_synthesize_timed_rejects_bad_parameters_before_any_io(
+    kwargs: dict[str, str], voice_code: VoiceErrorCode
+) -> None:
+    factory = FakeFactory()
+
+    with pytest.raises(SpeechSynthesisError) as info:
+        adapter_with(factory).synthesize_timed(make_request(), **kwargs)
+
+    assert info.value.voice_code is voice_code
+    assert factory.calls == []
+
+
+def test_synthesize_timed_rejects_a_bad_voice_name() -> None:
+    factory = FakeFactory()
+
+    with pytest.raises(SpeechSynthesisError) as info:
+        adapter_with(factory).synthesize_timed(make_request(voice="mai"))
+
+    assert info.value.voice_code is CODE.VOICE_NOT_FOUND
+    assert factory.calls == []
+
+
+def test_synthesize_timed_maps_failures_like_synthesize(mp3: bytes) -> None:
+    no_audio = FakeFactory(chunks=[word_event("a", 1, 1)])
+    ctor = FakeFactory(ctor_error=ValueError("bad rate"))
+    stream = FakeFactory(chunks=timed_chunks(mp3), stream_error=TimeoutError())
+
+    codes = []
+    for factory in (no_audio, ctor, stream):
+        with pytest.raises(SpeechSynthesisError) as info:
+            adapter_with(factory).synthesize_timed(make_request())
+        codes.append(info.value.voice_code)
+
+    assert codes == [CODE.UNAVAILABLE, CODE.INVALID_REQUEST, CODE.TIMEOUT]
+
+
+def test_synthesize_timed_never_uses_the_fallback(mp3: bytes) -> None:
+    adapter = adapter_with(
+        FakeFactory(stream_error=TimeoutError()),
+        fallback=MockSpeechSynthesizer(),
+    )
+
+    with pytest.raises(SpeechSynthesisError):
+        adapter.synthesize_timed(make_request())
+
+
+def test_synthesize_timed_works_inside_a_running_event_loop(mp3: bytes) -> None:
+    adapter = adapter_with(FakeFactory(chunks=timed_chunks(mp3)))
+
+    async def inside_loop() -> int:
+        return len(adapter.synthesize_timed(make_request()).boundaries)
+
+    assert asyncio.run(inside_loop()) == 2
+
+
+def test_synthesize_timed_stops_a_stream_that_never_ends() -> None:
+    adapter = adapter_with(FakeFactory(hang=True), overall_timeout_seconds=0.05)
+
+    with pytest.raises(SpeechSynthesisError) as info:
+        adapter.synthesize_timed(make_request())
+
+    assert info.value.voice_code is CODE.TIMEOUT
+
+
+def test_the_real_communicate_accepts_the_timed_arguments_without_network() -> None:
+    pytest.importorskip("edge_tts")
+    factory: Callable[..., Any] = EdgeTTSAdapter()._resolve_factory()
+
+    communicate = factory(
+        TEXT,
+        VOICE,
+        rate="-6%",
+        volume="+0%",
+        pitch="-4Hz",
+        boundary="WordBoundary",
+        connect_timeout=8,
+        receive_timeout=60,
+    )
+
+    assert communicate is not None

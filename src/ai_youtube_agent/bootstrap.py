@@ -1180,7 +1180,7 @@ def build_container(settings: Settings | None = None) -> Container:
     )
     container.register(
         VideoClipGenerator,
-        lambda _c: UnconfiguredVideoClipGenerator(),
+        lambda c: _build_video_clip_generator(c),
     )
     container.register(
         ScriptAnalyzer,
@@ -1287,6 +1287,18 @@ def _build_speech_synthesizer(container: Container) -> SpeechSynthesizer:
     if kind is VoiceProviderKind.MOCK:
         return MockSpeechSynthesizer()
     raise ValueError(f"unknown voice provider {kind!r}")
+
+
+def _build_video_clip_generator(container: Container) -> VideoClipGenerator:
+    settings = container.resolve(Settings)
+    if settings.environment is Environment.TEST:
+        return UnconfiguredVideoClipGenerator()
+    from ai_youtube_agent.providers.registry.comfyui_video_adapter import (
+        ComfyUIVideoAdapter,
+    )
+
+    comfy_url = os.environ.get("COMFYUI_BASE_URL", "http://127.0.0.1:8188")
+    return ComfyUIVideoAdapter(base_url=comfy_url)
 
 
 def _build_video_renderer(container: Container) -> VideoRenderer:

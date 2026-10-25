@@ -2053,6 +2053,12 @@ class ScriptToVideoService:
                 "video_artifact_id": video_art.id,
                 "video_sha256": video_art.sha256,
                 "size_bytes": video_art.size_bytes,
+                "production_mode": story_bible.production_mode.value,
+                "synthesis_kind": (
+                    "video_ai_motion"
+                    if story_bible.production_mode is ProductionMode.AI_FILM
+                    else "story_video_slideshow"
+                ),
             },
             completed_stages,
         )
@@ -2175,6 +2181,12 @@ class ScriptToVideoService:
                 "video_artifact_id": video_art.id,
                 "video_sha256": video_art.sha256,
                 "size_bytes": video_art.size_bytes,
+                "production_mode": story_bible.production_mode.value,
+                "synthesis_kind": (
+                    "video_ai_motion"
+                    if story_bible.production_mode is ProductionMode.AI_FILM
+                    else "story_video_slideshow"
+                ),
             },
             completed_stages,
         )

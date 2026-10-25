@@ -1,0 +1,697 @@
+{
+  "schema_version": 1,
+  "id": "quan_an_nho_shorts",
+  "title": "Quán Ăn Nhỏ: bát phở đầu tiên",
+  "language": "vi-VN",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "duration_ms_range": [20000, 30000],
+    "fade_out_ms": 350
+  },
+  "style": {
+    "background_style_suffix": "flat 2D cartoon illustration, gouache children's book background, soft warm pastel palette, clean shapes, no people, no text, no letters, empty open foreground floor in the lower third, vertical composition",
+    "negative_prompt": "person, people, face, hands, text, letters, watermark, logo, photo, realistic, blurry, lowres, deformed, cluttered, stacked floors, isometric, floating objects, aerial view, many shelves, signboard, sign, banner, writing, typography, words, numbers",
+    "palette": {
+      "ink": "#3B2418",
+      "cream": "#FFF3D6",
+      "amber": "#E8B04B",
+      "red": "#D9433B",
+      "teal": "#2E7D74",
+      "wood": "#B06A34"
+    }
+  },
+  "voices": {
+    "narrator": { "voice_id": "vi-VN-HoaiMyNeural", "rate": "-6%", "pitch": "+0Hz" },
+    "customer": { "voice_id": "vi-VN-NamMinhNeural", "rate": "-10%", "pitch": "-4Hz" }
+  },
+  "audio": {
+    "target_lufs": -14,
+    "true_peak_db": -1.5,
+    "music": { "bpm": 84, "key": "C major" },
+    "duck_depth_db": 9,
+    "fade_out_ms": 500
+  },
+  "locations": [
+    {
+      "id": "front",
+      "prompt": "eye-level straight-on view of one small Vietnamese street eatery shopfront at ground level, open front with a wooden counter, a few red plastic stools, two paper lanterns, potted plants, yellow old Hanoi house walls, plain red fabric awning, quiet alley, soft dawn light",
+      "seed": 20261101,
+      "grades": ["dawn", "morning", "warm"]
+    },
+    {
+      "id": "kitchen",
+      "prompt": "eye-level straight-on view of one cozy small Vietnamese eatery kitchen room, one wooden shelf with bowls and jars on the back wall, a few utensils hanging on a warm brick wall, one hanging lamp, warm lamp light, simple uncluttered background, wooden counter along the bottom",
+      "seed": 20261102,
+      "grades": ["morning", "warm"]
+    }
+  ],
+  "characters": [
+    { "id": "mai", "rig": "mai" },
+    { "id": "chu_ba", "rig": "chu_ba" }
+  ],
+  "scenes": [
+    {
+      "id": "s1_hook",
+      "location": "front",
+      "grade": "dawn",
+      "mood": "sparse",
+      "min_duration_ms": 3800,
+      "ambience": ["street_dawn", "bubbling"],
+      "cast": [
+        { "character": "mai", "x": 0.62, "y_ground": 0.8, "facing": "front", "state": "standing" }
+      ],
+      "props": [
+        { "id": "counter", "kind": "counter", "at": [0.5, 0.8], "state": "default" },
+        { "id": "pot", "kind": "pot", "at": [0.34, 0.66], "state": "steaming" },
+        { "id": "sign", "kind": "sign", "at": [0.5, 0.12], "state": "default" }
+      ],
+      "lines": [
+        {
+          "id": "n1",
+          "voice": "narrator",
+          "text": "Sáng nay, quán của Mai vắng khách.",
+          "at": { "scene_ms": 350 },
+          "pause_after_ms": 200
+        }
+      ],
+      "actions": [
+        {
+          "id": "a1_look",
+          "character": "mai",
+          "kind": "look_at",
+          "at": { "scene_ms": 1600 },
+          "duration_ms": 700,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200,
+          "params": { "target": "street" }
+        },
+        {
+          "id": "a1_sigh",
+          "character": "mai",
+          "kind": "sigh",
+          "at": { "scene_ms": 2300 },
+          "duration_ms": 700,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200
+        },
+        {
+          "id": "a1_wipe",
+          "character": "mai",
+          "kind": "wipe_counter",
+          "at": { "scene_ms": 3000 },
+          "duration_ms": 800,
+          "ease_in_ms": 150,
+          "ease_out_ms": 150,
+          "params": { "prop": "counter", "swipes": 3 }
+        }
+      ],
+      "effects": [
+        {
+          "id": "e1_burst",
+          "kind": "steam_burst",
+          "at": { "scene_ms": 0 },
+          "duration_ms": 700,
+          "params": { "prop": "pot" }
+        },
+        {
+          "id": "e1_steam",
+          "kind": "steam_rise",
+          "at": { "scene_ms": 0 },
+          "duration_ms": 3800,
+          "params": { "prop": "pot" }
+        }
+      ],
+      "shots": [
+        {
+          "id": "s1a",
+          "start_ms": 0,
+          "framing": "EXTREME_CLOSE",
+          "focus": { "prop": "pot" },
+          "moves": [
+            {
+              "kind": "push_in",
+              "t0": 0,
+              "t1": 900,
+              "from": { "zoom": 3.4 },
+              "to": { "zoom": 3.6 },
+              "ease": "ease_out"
+            },
+            {
+              "kind": "pull_back",
+              "t0": 900,
+              "t1": 2800,
+              "to": { "framing": "WIDE" },
+              "ease": "ease_in_out"
+            },
+            {
+              "kind": "pan_to",
+              "t0": 900,
+              "t1": 2800,
+              "to": { "x": 0.52, "y": 0.52 },
+              "ease": "ease_in_out"
+            }
+          ]
+        }
+      ],
+      "transition_out": { "kind": "steam_dissolve", "duration_ms": 450 }
+    },
+    {
+      "id": "s2_memory",
+      "location": "kitchen",
+      "grade": "warm",
+      "mood": "tender",
+      "min_duration_ms": 6100,
+      "ambience": ["kitchen_hum", "stove_glow"],
+      "cast": [
+        { "character": "mai", "x": -0.04, "y_ground": 0.82, "facing": "right", "state": "standing" }
+      ],
+      "props": [
+        { "id": "stove", "kind": "stove", "at": [0.35, 0.78], "state": "default" },
+        { "id": "pot", "kind": "pot", "at": [0.35, 0.66], "state": "steaming" },
+        { "id": "ladle", "kind": "hanging_ladle", "at": [0.66, 0.52], "state": "default" }
+      ],
+      "lines": [
+        {
+          "id": "n2",
+          "voice": "narrator",
+          "text": "Chiếc muôi cũ này là của mẹ để lại.",
+          "at": { "scene_ms": 400 },
+          "pause_after_ms": 150
+        },
+        {
+          "id": "n3",
+          "voice": "narrator",
+          "text": "Mười năm rồi, Mai vẫn nấu theo công thức ấy.",
+          "at": { "line": "n2", "edge": "end" },
+          "pause_after_ms": 200
+        }
+      ],
+      "actions": [
+        {
+          "id": "a2_walk",
+          "character": "mai",
+          "kind": "walk",
+          "at": { "scene_ms": 0 },
+          "duration_ms": 1000,
+          "params": { "to": { "x": 0.5 } }
+        },
+        {
+          "id": "a2_reach",
+          "character": "mai",
+          "kind": "reach_take",
+          "at": { "scene_ms": 300 },
+          "duration_ms": 800,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200,
+          "params": { "prop": "ladle", "hand": "right" }
+        },
+        {
+          "id": "a2_smile",
+          "character": "mai",
+          "kind": "smile_big",
+          "at": { "line": "n2", "word": 3, "edge": "start" },
+          "duration_ms": 800,
+          "ease_in_ms": 200,
+          "ease_out_ms": 300
+        },
+        {
+          "id": "a2_stroke",
+          "character": "mai",
+          "kind": "stroke_prop",
+          "at": { "scene_ms": 2900 },
+          "duration_ms": 1500,
+          "ease_in_ms": 300,
+          "ease_out_ms": 300,
+          "params": { "prop": "ladle" }
+        },
+        {
+          "id": "a2_nod",
+          "character": "mai",
+          "kind": "nod",
+          "at": { "line": "n3", "word": 1, "edge": "start" },
+          "duration_ms": 700,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200
+        },
+        {
+          "id": "a2_door",
+          "character": "mai",
+          "kind": "look_at",
+          "at": { "scene_ms": 5300 },
+          "duration_ms": 600,
+          "ease_in_ms": 150,
+          "ease_out_ms": 150,
+          "params": { "target": "door", "sfx": "door_bell" }
+        }
+      ],
+      "shots": [
+        {
+          "id": "s2a",
+          "start_ms": 0,
+          "framing": "MEDIUM",
+          "focus": { "character": "mai", "part": "body" },
+          "moves": [{ "kind": "follow", "t0": 0, "t1": 2900 }]
+        },
+        {
+          "id": "s2b",
+          "start_ms": 2900,
+          "framing": "CLOSE_UP",
+          "focus": { "character": "mai", "part": "head" },
+          "moves": [
+            {
+              "kind": "push_in",
+              "t0": 0,
+              "t1": 3000,
+              "from": { "zoom": 2.2 },
+              "to": { "zoom": 2.6 },
+              "ease": "ease_in_out"
+            }
+          ]
+        }
+      ],
+      "transition_out": { "kind": "whip_pan", "duration_ms": 320, "direction": "right" }
+    },
+    {
+      "id": "s3_arrival",
+      "location": "front",
+      "grade": "morning",
+      "mood": "curious",
+      "min_duration_ms": 7100,
+      "ambience": ["street"],
+      "cast": [
+        { "character": "mai", "x": 0.38, "y_ground": 0.8, "facing": "front", "state": "standing" },
+        { "character": "chu_ba", "x": 1.15, "y_ground": 0.77, "facing": "left", "state": "standing" }
+      ],
+      "props": [
+        { "id": "counter", "kind": "counter", "at": [0.2, 0.8], "state": "default" },
+        { "id": "table", "kind": "table", "at": [0.6, 0.8], "state": "default" },
+        { "id": "stool", "kind": "stool", "at": [0.72, 0.77], "state": "default" }
+      ],
+      "lines": [
+        {
+          "id": "n4",
+          "voice": "narrator",
+          "text": "Bỗng một bác lớn tuổi bước vào, run vì lạnh.",
+          "at": { "scene_ms": 400 },
+          "pause_after_ms": 150
+        },
+        {
+          "id": "c1",
+          "voice": "customer",
+          "text": "Cháu ơi, cho bác một bát phở nóng nhé!",
+          "at": { "line": "n4", "edge": "end" },
+          "pause_after_ms": 200
+        }
+      ],
+      "actions": [
+        {
+          "id": "a3_walk",
+          "character": "chu_ba",
+          "kind": "walk",
+          "at": { "scene_ms": 200 },
+          "duration_ms": 2900,
+          "params": { "to": { "x": 0.72 } }
+        },
+        {
+          "id": "a3_shiver",
+          "character": "chu_ba",
+          "kind": "shiver",
+          "at": { "scene_ms": 200 },
+          "duration_ms": 3000,
+          "ease_in_ms": 300,
+          "ease_out_ms": 300
+        },
+        {
+          "id": "a3_look",
+          "character": "mai",
+          "kind": "look_at",
+          "at": { "scene_ms": 400 },
+          "duration_ms": 900,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200,
+          "params": { "target": "chu_ba" }
+        },
+        {
+          "id": "a3_welcome",
+          "character": "mai",
+          "kind": "welcome",
+          "at": { "line": "n4", "word": 5, "edge": "start" },
+          "duration_ms": 900,
+          "ease_in_ms": 250,
+          "ease_out_ms": 250
+        },
+        {
+          "id": "a3_sit",
+          "character": "chu_ba",
+          "kind": "sit",
+          "at": { "scene_ms": 3300 },
+          "duration_ms": 800,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200,
+          "params": { "prop": "stool" }
+        },
+        {
+          "id": "a3_nod",
+          "character": "mai",
+          "kind": "nod",
+          "at": { "line": "c1", "word": 5, "edge": "start" },
+          "duration_ms": 450,
+          "ease_in_ms": 150,
+          "ease_out_ms": 150
+        },
+        {
+          "id": "a3_thumbs",
+          "character": "mai",
+          "kind": "thumbs_up",
+          "at": { "line": "c1", "word": 7, "edge": "start" },
+          "duration_ms": 700,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200
+        },
+        {
+          "id": "a3_leave",
+          "character": "mai",
+          "kind": "walk",
+          "at": { "after_action": "a3_thumbs" },
+          "duration_ms": 1000,
+          "params": { "to": { "x": 0.05 } }
+        }
+      ],
+      "shots": [
+        {
+          "id": "s3a",
+          "start_ms": 0,
+          "framing": "WIDE",
+          "focus": { "characters": ["mai", "chu_ba"], "part": "body" }
+        },
+        {
+          "id": "s3b",
+          "start_ms": 3300,
+          "framing": "MEDIUM",
+          "focus": { "characters": ["mai", "chu_ba"], "part": "body" }
+        }
+      ],
+      "transition_out": { "kind": "cut", "duration_ms": 0 }
+    },
+    {
+      "id": "s4_cooking",
+      "location": "kitchen",
+      "grade": "warm",
+      "mood": "busy_warm",
+      "min_duration_ms": 5400,
+      "ambience": ["sizzle", "kitchen"],
+      "cast": [
+        { "character": "mai", "x": 0.4, "y_ground": 0.82, "facing": "right", "state": "standing" },
+        {
+          "character": "chu_ba",
+          "x": 0.72,
+          "y_ground": 0.77,
+          "facing": "left",
+          "state": "sitting",
+          "visible_in": ["front"]
+        }
+      ],
+      "props": [
+        { "id": "stove", "kind": "stove", "at": [0.55, 0.78], "state": "default", "location": "kitchen" },
+        { "id": "pot", "kind": "pot", "at": [0.6, 0.66], "state": "steaming", "location": "kitchen" },
+        { "id": "ladle", "kind": "ladle", "at": [0.42, 0.7], "state": "default", "location": "kitchen" },
+        { "id": "bowl", "kind": "bowl_pho", "at": [0.46, 0.72], "state": "empty", "location": "kitchen" },
+        { "id": "table", "kind": "table", "at": [0.6, 0.8], "state": "default", "location": "front" },
+        { "id": "stool", "kind": "stool", "at": [0.72, 0.77], "state": "default", "location": "front" }
+      ],
+      "lines": [
+        {
+          "id": "n5",
+          "voice": "narrator",
+          "text": "Mai chan nước dùng nóng hổi, thêm thịt, thêm hành.",
+          "at": { "scene_ms": 300 },
+          "pause_after_ms": 200
+        }
+      ],
+      "actions": [
+        {
+          "id": "a4_reach",
+          "character": "mai",
+          "kind": "reach_take",
+          "at": { "scene_ms": 300 },
+          "duration_ms": 700,
+          "ease_in_ms": 150,
+          "ease_out_ms": 150,
+          "params": { "prop": "bowl", "hand": "left" }
+        },
+        {
+          "id": "a4_ladle",
+          "character": "mai",
+          "kind": "ladle_to_bowl",
+          "at": { "line": "n5", "word": 2, "edge": "start" },
+          "duration_ms": 1100,
+          "ease_in_ms": 200,
+          "ease_out_ms": 250,
+          "params": { "from_prop": "ladle", "to_prop": "bowl" }
+        },
+        {
+          "id": "a4_beef",
+          "character": "mai",
+          "kind": "add_topping",
+          "at": { "line": "n5", "word": 7, "edge": "start" },
+          "duration_ms": 600,
+          "ease_in_ms": 150,
+          "ease_out_ms": 150,
+          "params": { "prop": "bowl", "topping": "beef" }
+        },
+        {
+          "id": "a4_herbs",
+          "character": "mai",
+          "kind": "add_topping",
+          "at": { "line": "n5", "word": 9, "edge": "start" },
+          "duration_ms": 600,
+          "ease_in_ms": 150,
+          "ease_out_ms": 150,
+          "params": { "prop": "bowl", "topping": "herbs" }
+        },
+        {
+          "id": "a4_carry",
+          "character": "mai",
+          "kind": "carry_bowl",
+          "at": { "scene_ms": 3500 },
+          "duration_ms": 1100,
+          "params": { "prop": "bowl", "to": { "x": 0.52 } }
+        },
+        {
+          "id": "a4_place",
+          "character": "mai",
+          "kind": "place_bowl",
+          "at": { "after_action": "a4_carry" },
+          "duration_ms": 800,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200,
+          "params": { "prop": "bowl", "to_prop": "table", "release": 0.7 }
+        },
+        {
+          "id": "a4_sniff",
+          "character": "chu_ba",
+          "kind": "sniff",
+          "at": { "scene_ms": 4600 },
+          "duration_ms": 750,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200
+        }
+      ],
+      "effects": [
+        {
+          "id": "e4_splash",
+          "kind": "broth_splash",
+          "at": { "line": "n5", "word": 3, "edge": "start" },
+          "duration_ms": 500,
+          "params": { "prop": "bowl" }
+        },
+        {
+          "id": "e4_burst",
+          "kind": "steam_burst",
+          "at": { "line": "n5", "word": 3, "edge": "start" },
+          "duration_ms": 600,
+          "params": { "prop": "bowl" }
+        }
+      ],
+      "shots": [
+        {
+          "id": "s4a",
+          "start_ms": 0,
+          "framing": "MEDIUM",
+          "focus": { "character": "mai", "part": "hands" }
+        },
+        {
+          "id": "s4b",
+          "start_ms": 3300,
+          "framing": "WIDE",
+          "location": "front",
+          "focus": { "character": "mai", "part": "body" },
+          "moves": [{ "kind": "follow", "t0": 0, "t1": 2000 }]
+        }
+      ],
+      "transition_out": { "kind": "cut", "duration_ms": 0 }
+    },
+    {
+      "id": "s5_payoff",
+      "location": "front",
+      "grade": "warm",
+      "mood": "resolved",
+      "min_duration_ms": 6600,
+      "ambience": ["street", "soft_chatter"],
+      "cast": [
+        { "character": "mai", "x": 0.43, "y_ground": 0.81, "facing": "right", "state": "standing" },
+        { "character": "chu_ba", "x": 0.72, "y_ground": 0.77, "facing": "left", "state": "sitting" }
+      ],
+      "props": [
+        { "id": "table", "kind": "table", "at": [0.6, 0.8], "state": "default" },
+        { "id": "stool", "kind": "stool", "at": [0.72, 0.77], "state": "default" },
+        { "id": "bowl", "kind": "bowl_pho", "at": [0.6, 0.74], "state": "full" },
+        { "id": "lantern_left", "kind": "lantern", "at": [0.15, 0.2], "state": "dim" },
+        { "id": "lantern_right", "kind": "lantern", "at": [0.85, 0.2], "state": "dim" },
+        { "id": "sign", "kind": "sign", "at": [0.5, 0.12], "state": "default" }
+      ],
+      "lines": [
+        {
+          "id": "n6",
+          "voice": "narrator",
+          "text": "Bác nếm thử, rồi mỉm cười.",
+          "at": { "scene_ms": 300 },
+          "pause_after_ms": 200
+        },
+        {
+          "id": "c2",
+          "voice": "customer",
+          "text": "Ngon như ngày xưa đấy!",
+          "at": { "line": "n6", "edge": "end" },
+          "pause_after_ms": 200
+        },
+        {
+          "id": "n7",
+          "voice": "narrator",
+          "text": "Quán nhỏ thôi, nhưng ấm cả buổi sáng.",
+          "at": { "line": "c2", "edge": "end" },
+          "pause_after_ms": 200
+        }
+      ],
+      "actions": [
+        {
+          "id": "a5_taste",
+          "character": "chu_ba",
+          "kind": "taste",
+          "at": { "line": "n6", "word": 1, "edge": "start" },
+          "duration_ms": 900,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200,
+          "params": { "prop": "bowl" }
+        },
+        {
+          "id": "a5_smile",
+          "character": "chu_ba",
+          "kind": "smile_big",
+          "at": { "after_action": "a5_taste" },
+          "duration_ms": 1000,
+          "ease_in_ms": 250,
+          "ease_out_ms": 300
+        },
+        {
+          "id": "a5_blush",
+          "character": "chu_ba",
+          "kind": "blush",
+          "at": { "after_action": "a5_taste" },
+          "duration_ms": 1200,
+          "ease_in_ms": 300,
+          "ease_out_ms": 300
+        },
+        {
+          "id": "a5_cover",
+          "character": "mai",
+          "kind": "cover_mouth",
+          "at": { "scene_ms": 2600 },
+          "duration_ms": 800,
+          "ease_in_ms": 200,
+          "ease_out_ms": 200
+        },
+        {
+          "id": "a5_wipe",
+          "character": "mai",
+          "kind": "wipe_eye",
+          "at": { "after_action": "a5_cover" },
+          "duration_ms": 700,
+          "ease_in_ms": 150,
+          "ease_out_ms": 200
+        },
+        {
+          "id": "a5_thumbs",
+          "character": "mai",
+          "kind": "thumbs_up",
+          "at": { "after_action": "a5_wipe" },
+          "duration_ms": 800,
+          "ease_in_ms": 200,
+          "ease_out_ms": 250
+        }
+      ],
+      "effects": [
+        {
+          "id": "e5_steam",
+          "kind": "steam_rise",
+          "at": { "scene_ms": 0 },
+          "duration_ms": 6600,
+          "params": { "prop": "bowl" }
+        },
+        {
+          "id": "e5_lanterns",
+          "kind": "lantern_glow",
+          "at": { "scene_ms": 4300 },
+          "duration_ms": 3000
+        },
+        {
+          "id": "e5_passersby",
+          "kind": "passersby",
+          "at": { "scene_ms": 4300 },
+          "duration_ms": 3000,
+          "params": { "count": 2 }
+        }
+      ],
+      "shots": [
+        {
+          "id": "s5a",
+          "start_ms": 0,
+          "framing": "CLOSE_UP",
+          "focus": { "character": "chu_ba", "part": "head" }
+        },
+        {
+          "id": "s5b",
+          "start_ms": 2600,
+          "framing": "MEDIUM",
+          "focus": { "characters": ["mai", "chu_ba"], "part": "body" }
+        },
+        {
+          "id": "s5c",
+          "start_ms": 4300,
+          "framing": "WIDE",
+          "focus": { "characters": ["mai", "chu_ba"], "part": "body" },
+          "moves": [
+            {
+              "kind": "pull_back",
+              "t0": 0,
+              "t1": 2300,
+              "from": { "zoom": 1.7 },
+              "to": { "framing": "WIDE" },
+              "ease": "ease_in_out"
+            },
+            {
+              "kind": "pan_to",
+              "t0": 0,
+              "t1": 2300,
+              "from": { "x": 0.5, "y": 0.56 },
+              "to": { "x": 0.5, "y": 0.5 },
+              "ease": "ease_in_out"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

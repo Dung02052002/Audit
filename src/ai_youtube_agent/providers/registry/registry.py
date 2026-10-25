@@ -282,6 +282,15 @@ def build_default_provider_registry(
         in ("true", "1")
     )
     video_api = VideoGenApiAdapter(is_enabled=vgen_flag)
-    registry.register(video_api, is_active=True)
+    registry.register(video_api, is_active=False)
+
+    # 7. Local ComfyUI Video Engine (0 VND, OpenVideoStudio / ComfyUI / LTX-Video / Wan2.1)
+    from ai_youtube_agent.providers.registry.comfyui_video_adapter import (
+        ComfyUIVideoAdapter,
+    )
+
+    comfy_video = ComfyUIVideoAdapter(base_url=c_url)
+    registry.register(comfy_video, is_active=True)
 
     return registry
+

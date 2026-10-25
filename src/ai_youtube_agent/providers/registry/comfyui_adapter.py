@@ -63,6 +63,12 @@ from ai_youtube_agent.providers.registry.models import (
 
 logger = get_logger(__name__)
 
+# Builds the whole workflow graph for a request and its sampler seed. Optional
+# hook of ``generate_with_job`` / ``save_to_directory`` for callers that need a
+# graph other than the default single-pass text2image one (for example a
+# two-pass hires fix); the default graph is used when no builder is passed.
+GraphBuilder = Callable[[ImageGenerationRequest, int], dict[str, Any]]
+
 DEFAULT_COMFYUI_CHECKPOINT: Final[str] = "sd_xl_base_1.0.safetensors"
 MAX_SEED: Final[int] = 2**63 - 1
 SIZE_TOLERANCE_PX: Final[int] = 8
@@ -409,6 +415,19 @@ class ComfyUIAdapter(BaseProviderAdapter, ImageGenerator):
             else f"Checkpoint '{self.default_model}' is not installed in ComfyUI.",
         )
 
+    def free_memory(self) -> bool:
+        """Ask ComfyUI to unload models and free VRAM (``POST /free``).
+
+        Best effort between retries of a job that ran out of memory: returns
+        ``True`` when the server accepted the request and never raises.
+        """
+        body = json.dumps({"unload_models": True, "free_memory": True}).encode("utf-8")
+        try:
+            response = self._request("POST", "/free", body=body)
+        except ComfyTransportError:
+            return False
+        return response.status == 200
+
     def check_credentials(self) -> CredentialCheckResult:
         # ComfyUI is primarily local without auth. If API key is configured, verify it.
         return CredentialCheckResult(
@@ -501,9 +520,16 @@ class ComfyUIAdapter(BaseProviderAdapter, ImageGenerator):
         return image
 
     def generate_with_job(
-        self, request: ImageGenerationRequest
+        self,
+        request: ImageGenerationRequest,
+        *,
+        graph_builder: GraphBuilder | None = None,
     ) -> tuple[GeneratedImage, ComfyJobRecord]:
-        """Run the full ComfyUI job and return the image with its job record."""
+        """Run the full ComfyUI job and return the image with its job record.
+
+        ``graph_builder(request, seed)`` replaces the default workflow graph;
+        the image must still come out at the size of ``request``.
+        """
         checkpoints = self._fetch_checkpoints()
         if self.default_model not in checkpoints:
             listed = ", ".join(checkpoints[:_MAX_LISTED_CHECKPOINTS]) or "none"
@@ -514,8 +540,9 @@ class ComfyUIAdapter(BaseProviderAdapter, ImageGenerator):
             )
 
         seed = derive_seed(request)
+        graph = graph_builder(request, seed) if graph_builder is not None else None
         start = self._clock()
-        prompt_id = self._queue_prompt(request, seed)
+        prompt_id = self._queue_prompt(request, seed, graph)
         logger.info(
             "ComfyUI job queued",
             extra={"fields": {"prompt_id": prompt_id, "seed": seed}},
@@ -632,10 +659,14 @@ class ComfyUIAdapter(BaseProviderAdapter, ImageGenerator):
         return image, record, stored
 
     def save_to_directory(
-        self, request: ImageGenerationRequest, directory: Path | str
+        self,
+        request: ImageGenerationRequest,
+        directory: Path | str,
+        *,
+        graph_builder: GraphBuilder | None = None,
     ) -> tuple[GeneratedImage, ComfyJobRecord, Path, Path]:
         """Generate a real ComfyUI image, save image + metadata JSON, and verify."""
-        image, record = self.generate_with_job(request)
+        image, record = self.generate_with_job(request, graph_builder=graph_builder)
         img_path, meta_path = self._persist_to_directory(
             request, image, record, Path(directory).resolve()
         )
@@ -723,11 +754,27 @@ class ComfyUIAdapter(BaseProviderAdapter, ImageGenerator):
             ) from exc
         return names
 
-    def _queue_prompt(self, request: ImageGenerationRequest, seed: int) -> str:
-        """POST the workflow and return the queued ``prompt_id`` (step 2)."""
+    def _queue_prompt(
+        self,
+        request: ImageGenerationRequest,
+        seed: int,
+        graph: dict[str, Any] | None = None,
+    ) -> str:
+        """POST the workflow and return the queued ``prompt_id`` (step 2).
+
+        ``graph`` is a ready workflow from a caller's ``graph_builder``; without
+        it the default text2image graph is built.
+        """
+        if graph is not None and (not isinstance(graph, dict) or not graph):
+            raise self._error(
+                ImageGeneratorErrorCode.INVALID_REQUEST,
+                "the custom workflow graph must be a non-empty dict.",
+            )
         payload = json.dumps(
             {
-                "prompt": self._build_prompt_graph(request, seed),
+                "prompt": graph
+                if graph is not None
+                else self._build_prompt_graph(request, seed),
                 "client_id": self.client_id,
             }
         ).encode("utf-8")

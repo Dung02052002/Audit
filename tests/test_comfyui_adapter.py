@@ -101,6 +101,7 @@ class FakeComfy:
     post: list[Any] = field(default_factory=list)
     history: list[Any] = field(default_factory=list)
     view: list[Any] = field(default_factory=list)
+    free: list[Any] = field(default_factory=list)
     calls: list[Call] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -113,6 +114,7 @@ class FakeComfy:
             json_response(history_done()),
         ]
         self.view = self.view or [HttpResponse(200, self.png)]
+        self.free = self.free or [HttpResponse(200, b"")]
 
     def request(
         self,
@@ -135,6 +137,8 @@ class FakeComfy:
             return self._next(self.history)
         if parts.path == "/view":
             return self._next(self.view)
+        if parts.path == "/free":
+            return self._next(self.free)
         return HttpResponse(404, b"{}")
 
     @staticmethod
@@ -1032,3 +1036,129 @@ def test_capabilities_image_gen_and_check_require_installed_checkpoint(
     assert "missing.safetensors" in (caps.reason or "")
     with pytest.raises(ProviderError):
         missing_adapter.check()
+
+
+# -----------------------------------------------------------------------------
+# Custom workflow graph hook (ANIM-01) and free_memory
+# -----------------------------------------------------------------------------
+
+
+def custom_graph(seed: int = 0) -> dict[str, Any]:
+    return {
+        "1": {"class_type": "Marker", "inputs": {"seed": seed}},
+        "9": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
+    }
+
+
+def posted_graph(fake: FakeComfy) -> dict[str, Any]:
+    post = next(call for call in fake.calls if call.path == "/prompt")
+    return json.loads(post.body or b"")["prompt"]
+
+
+def test_graph_builder_replaces_the_default_workflow(
+    fake: FakeComfy, make_adapter: Callable[..., ComfyUIAdapter]
+) -> None:
+    adapter = make_adapter()
+    request = make_request(seed_key="77")
+    seen: list[tuple[ImageGenerationRequest, int]] = []
+
+    def builder(req: ImageGenerationRequest, seed: int) -> dict[str, Any]:
+        seen.append((req, seed))
+        return custom_graph(seed)
+
+    image, record = adapter.generate_with_job(request, graph_builder=builder)
+
+    assert seen == [(request, 77)]
+    assert posted_graph(fake) == custom_graph(77)
+    assert record.seed == 77 and image.data == fake.png
+
+
+def test_without_a_builder_the_default_graph_is_still_posted(
+    fake: FakeComfy, make_adapter: Callable[..., ComfyUIAdapter]
+) -> None:
+    adapter = make_adapter()
+    request = make_request(seed_key="5")
+
+    adapter.generate_with_job(request)
+
+    assert posted_graph(fake) == adapter._build_prompt_graph(request, 5)
+
+
+def test_save_to_directory_passes_the_graph_builder(
+    fake: FakeComfy, make_adapter: Callable[..., ComfyUIAdapter], tmp_path: Path
+) -> None:
+    adapter = make_adapter()
+
+    _, record, img_path, meta_path = adapter.save_to_directory(
+        make_request(seed_key="9"),
+        tmp_path / "custom",
+        graph_builder=lambda req, seed: custom_graph(seed),
+    )
+
+    assert posted_graph(fake) == custom_graph(9)
+    assert img_path.read_bytes() == fake.png
+    assert json.loads(meta_path.read_text(encoding="utf-8"))["seed"] == 9
+    assert adapter.last_job == record
+
+
+def test_an_empty_custom_graph_is_rejected_before_any_submission(
+    fake: FakeComfy, make_adapter: Callable[..., ComfyUIAdapter]
+) -> None:
+    adapter = make_adapter()
+
+    with pytest.raises(ImageGenerationError) as info:
+        adapter.generate_with_job(make_request(), graph_builder=lambda req, seed: {})
+
+    assert info.value.error_code is CODES.INVALID_REQUEST
+    assert "/prompt" not in fake.paths()
+
+
+def test_a_custom_graph_failure_keeps_the_normal_error_mapping(
+    fake: FakeComfy, make_adapter: Callable[..., ComfyUIAdapter]
+) -> None:
+    fake.history = [
+        json_response(
+            {
+                "p1": {
+                    "status": {
+                        "status_str": "error",
+                        "messages": [
+                            [
+                                "execution_error",
+                                {
+                                    "node_type": "VAEEncode",
+                                    "exception_message": "CUDA out of memory",
+                                },
+                            ]
+                        ],
+                    },
+                    "outputs": {},
+                }
+            }
+        )
+    ]
+    adapter = make_adapter()
+
+    with pytest.raises(ImageGenerationError) as info:
+        adapter.generate_with_job(
+            make_request(), graph_builder=lambda req, seed: custom_graph(seed)
+        )
+
+    assert info.value.error_code is CODES.GENERATION_FAILED
+    assert "CUDA out of memory" in str(info.value)
+
+
+def test_free_memory_posts_to_free_and_never_raises(
+    fake: FakeComfy, make_adapter: Callable[..., ComfyUIAdapter]
+) -> None:
+    adapter = make_adapter()
+
+    assert adapter.free_memory() is True
+
+    call = fake.calls[-1]
+    assert (call.method, call.path) == ("POST", "/free")
+    assert json.loads(call.body or b"") == {"unload_models": True, "free_memory": True}
+    fake.free = [HttpResponse(500, b"")]
+    assert adapter.free_memory() is False
+    fake.free = [ComfyTransportError("down")]
+    assert adapter.free_memory() is False

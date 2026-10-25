@@ -92,8 +92,9 @@ export const S = {
     longform: "Video dài (16:9)",
   },
   mode: {
-    story_video: "Story video (ảnh cảnh + giọng đọc)",
-    ai_film: "AI Film (clip chuyển động)",
+    story_video: "Video ghép từ ảnh sinh AI (ảnh cảnh + pan/zoom + giọng đọc)",
+    ai_film: "Video AI sinh thực sự (clip chuyển động AI)",
+    animation_code: "Hoạt hình dựng bằng code",
   },
   sceneStatus: {
     planned: "Đã lên kế hoạch",
@@ -264,6 +265,12 @@ export const S = {
     thumbnail: "Thumbnail",
     download: "Tải MP4",
     videoFile: "File video",
+    synthesisKind: "Loại hình sản xuất",
+    synthesisModes: {
+      video_ai_motion: "Video AI sinh thực sự (clip chuyển động AI)",
+      story_video_slideshow: "Video ghép từ ảnh sinh AI (ảnh cảnh + hiệu ứng chuyển động/camera pan/zoom)",
+      animation_code: "Hoạt hình dựng bằng code",
+    },
     version: "Phiên bản",
     size: "Dung lượng",
     sha256: "SHA-256",

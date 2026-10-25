@@ -331,6 +331,12 @@ function resultsTab(detail) {
   const qc = checkpoints["qc.completed"];
   const voice = checkpoints["voice.generated"];
   const scenes = checkpoints["scenes.planned"];
+  const renderCheckpoint = checkpoints["video.rendered"] || {};
+  const synthesisLabel = renderCheckpoint.synthesis_kind
+    ? (S.item.synthesisModes[renderCheckpoint.synthesis_kind] || renderCheckpoint.synthesis_kind)
+    : (detail.item.metadata && detail.item.metadata.production_mode === "ai_film"
+        ? S.item.synthesisModes.video_ai_motion
+        : S.item.synthesisModes.story_video_slideshow);
   const others = ["audio", "subtitles", "thumbnail", "metadata"].filter((kind) => detail.artifacts[kind]);
   return el(
     "div",
@@ -340,6 +346,7 @@ function resultsTab(detail) {
           S.item.videoFile,
           linkButton(links.download(detail.item.id), S.item.download, { primary: true, download: true }),
           facts([
+            [S.item.synthesisKind, synthesisLabel],
             [S.item.version, `v${video.version}`],
             [S.item.size, formatBytes(video.size_bytes)],
             [S.item.mediaType, video.media_type],

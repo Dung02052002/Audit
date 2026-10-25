@@ -24,6 +24,7 @@ import urllib.request
 import wave
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,12 @@ EDGE_VOICE_PATTERN = re.compile(
 )
 CommunicateFactory = Callable[..., Any]
 
+BOUNDARY_KINDS = ("WordBoundary", "SentenceBoundary")
+_RATE_PATTERN = re.compile(r"[+-][0-9]{1,3}%")
+_PITCH_PATTERN = re.compile(r"[+-][0-9]{1,3}Hz")
+# Edge reports boundary offsets and durations in 100 ns ticks.
+_TICKS_PER_MS = 10_000
+
 _MISSING_LIBRARY_MESSAGE = (
     "The edge-tts library is not installed; run `uv sync --extra tts`. "
     "Edge TTS also requires internet access."
@@ -82,6 +89,35 @@ _FALLBACK_CODES = frozenset(
         VoiceErrorCode.RATE_LIMITED,
     }
 )
+
+
+@dataclass(frozen=True)
+class SpeechBoundary:
+    """One timing event of an Edge TTS stream, in milliseconds from audio start."""
+
+    kind: str
+    start_ms: int
+    end_ms: int
+    text: str
+
+
+@dataclass(frozen=True)
+class TimedSpeech:
+    """Edge TTS MP3 audio together with its word or sentence timings."""
+
+    speech: SynthesizedSpeech
+    boundaries: tuple[SpeechBoundary, ...]
+    boundary: str
+    rate: str
+    pitch: str
+
+    @property
+    def audio(self) -> bytes:
+        return self.speech.audio
+
+    @property
+    def duration_ms(self) -> int:
+        return self.speech.duration_ms
 
 
 class EdgeTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
@@ -335,6 +371,96 @@ class EdgeTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
             generated_at=datetime.now(UTC),
         )
 
+    def synthesize_timed(
+        self,
+        request: SpeechRequest,
+        *,
+        rate: str = "+0%",
+        pitch: str = "+0Hz",
+        boundary: str = "WordBoundary",
+    ) -> TimedSpeech:
+        """Synthesize real Edge TTS speech with a prosody and its boundary events.
+
+        ``rate`` (``"-6%"``) and ``pitch`` (``"-4Hz"``) are passed to Edge as they
+        are. The audio is always the Edge MP3 (no transcoding) and there is no
+        fallback synthesizer: a fallback has no timings, so errors are raised.
+        """
+        if not EDGE_VOICE_PATTERN.fullmatch(request.voice_id):
+            raise SpeechSynthesisError(
+                VoiceErrorCode.VOICE_NOT_FOUND,
+                f"'{request.voice_id}' is not an Edge neural voice name "
+                "(for example vi-VN-HoaiMyNeural).",
+                provider=self.name,
+            )
+        if not _RATE_PATTERN.fullmatch(rate) or not _PITCH_PATTERN.fullmatch(pitch):
+            raise SpeechSynthesisError(
+                VoiceErrorCode.INVALID_REQUEST,
+                "rate must look like '-6%' and pitch like '-4Hz'.",
+                provider=self.name,
+            )
+        if boundary not in BOUNDARY_KINDS:
+            raise SpeechSynthesisError(
+                VoiceErrorCode.INVALID_REQUEST,
+                f"boundary must be one of {', '.join(BOUNDARY_KINDS)}.",
+                provider=self.name,
+            )
+        factory = self._resolve_factory()
+        try:
+            communicate = factory(
+                request.text,
+                request.voice_id,
+                rate=rate,
+                volume="+0%",
+                pitch=pitch,
+                boundary=boundary,
+                connect_timeout=max(1, int(self.timeout_seconds)),
+                receive_timeout=max(1, int(self.overall_timeout_seconds)),
+            )
+        except (ValueError, TypeError) as exc:
+            raise SpeechSynthesisError(
+                VoiceErrorCode.INVALID_REQUEST,
+                "Edge TTS rejected the synthesis parameters "
+                f"({_safe_detail(exc, request.text)}).",
+                provider=self.name,
+            ) from exc
+        except Exception as exc:
+            raise self._map_failure(exc, request) from exc
+
+        try:
+            audio, events = self._run_stream_timed(communicate, boundary)
+        except Exception as exc:
+            raise self._map_failure(exc, request) from exc
+        if not audio:
+            raise SpeechSynthesisError(
+                VoiceErrorCode.UNAVAILABLE,
+                "Edge TTS answered but no audio was produced.",
+                provider=self.name,
+            )
+        try:
+            probe = probe_mp3_bytes(audio)
+        except MediaProbeError as exc:
+            raise SpeechSynthesisError(
+                VoiceErrorCode.UNAVAILABLE,
+                f"Edge TTS audio is not decodable MP3: {exc}",
+                provider=self.name,
+            ) from exc
+        speech = SynthesizedSpeech(
+            audio=audio,
+            media_type="audio/mpeg",
+            duration_ms=probe.duration_ms,
+            provider=self.name,
+            voice_id=request.voice_id,
+            characters=len(request.text),
+            generated_at=datetime.now(UTC),
+        )
+        return TimedSpeech(
+            speech=speech,
+            boundaries=events,
+            boundary=boundary,
+            rate=rate,
+            pitch=pitch,
+        )
+
     def synthesize_wav(self, request: SpeechRequest) -> SynthesizedSpeech:
         """Synthesize real Edge TTS speech and return 24 kHz mono s16 PCM WAV."""
         return self.with_wav_output().synthesize(request)
@@ -483,6 +609,40 @@ class EdgeTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
         with ThreadPoolExecutor(max_workers=1) as executor:
             return executor.submit(asyncio.run, bounded()).result()
 
+    def _run_stream_timed(
+        self, communicate: Any, boundary: str
+    ) -> tuple[bytes, tuple[SpeechBoundary, ...]]:
+        """Collect the audio and the ``boundary`` events within the overall timeout."""
+
+        async def collect() -> tuple[bytes, tuple[SpeechBoundary, ...]]:
+            chunks: list[bytes] = []
+            events: list[SpeechBoundary] = []
+            async for chunk in communicate.stream():
+                if not isinstance(chunk, dict):
+                    continue
+                kind = chunk.get("type")
+                if kind == "audio":
+                    data = chunk.get("data")
+                    if isinstance(data, bytes | bytearray):
+                        chunks.append(bytes(data))
+                elif kind == boundary:
+                    event = _boundary_event(chunk)
+                    if event is not None:
+                        events.append(event)
+            return b"".join(chunks), tuple(events)
+
+        async def bounded() -> tuple[bytes, tuple[SpeechBoundary, ...]]:
+            return await asyncio.wait_for(
+                collect(), timeout=self.overall_timeout_seconds
+            )
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(bounded())
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(asyncio.run, bounded()).result()
+
     def _map_failure(
         self, exc: Exception, request: SpeechRequest
     ) -> SpeechSynthesisError:
@@ -492,6 +652,29 @@ class EdgeTTSAdapter(BaseProviderAdapter, SpeechSynthesizer):
             f"{reason} ({_safe_detail(exc, request.text)})",
             provider=self.name,
         )
+
+
+def _boundary_event(chunk: dict[str, Any]) -> SpeechBoundary | None:
+    """Convert one Edge boundary chunk (100 ns ticks) to milliseconds."""
+    offset = chunk.get("offset")
+    duration = chunk.get("duration")
+    text = chunk.get("text")
+    if (
+        isinstance(offset, bool)
+        or isinstance(duration, bool)
+        or not isinstance(offset, int | float)
+        or not isinstance(duration, int | float)
+        or not isinstance(text, str)
+        or offset < 0
+        or duration < 0
+    ):
+        return None
+    return SpeechBoundary(
+        kind=str(chunk["type"]),
+        start_ms=round(offset / _TICKS_PER_MS),
+        end_ms=round((offset + duration) / _TICKS_PER_MS),
+        text=text,
+    )
 
 
 def _edge_tts_installed() -> bool:

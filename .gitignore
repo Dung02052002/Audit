@@ -34,3 +34,6 @@ artifacts/background_video_test/
 artifacts/provider_verification/
 artifacts/comfyui_demo_run/*/
 artifacts/free_ai_film_demo/
+artifacts/animation_film/
+artifacts/demo_output/
+artifacts/*.mp3

@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -73,6 +75,61 @@ MOTION_MODEL_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"svd.*\.safetensors", re.IGNORECASE),
     re.compile(r"cogvideox.*\.safetensors", re.IGNORECASE),
 )
+
+
+def _extract_combo_options(input_entry: Any) -> list[str]:
+    """Safely extract option strings from ComfyUI combo input descriptions.
+    
+    Supports:
+    - [["ckpt1", "ckpt2"], ...] (standard CheckpointLoaderSimple)
+    - ["COMBO", {"options": ["m1", "m2"]}] (AnimateDiff / custom node schemas)
+    - ["option1", "option2"] (flat list)
+    """
+    if not isinstance(input_entry, (list, tuple)) or not input_entry:
+        return []
+    first = input_entry[0]
+    if isinstance(first, list):
+        return [str(x) for x in first]
+    if len(input_entry) > 1 and isinstance(input_entry[1], dict):
+        opts = input_entry[1].get("options", [])
+        if isinstance(opts, list):
+            return [str(x) for x in opts]
+    if all(isinstance(x, str) for x in input_entry):
+        return [str(x) for x in input_entry]
+    return []
+
+
+def _transcode_to_mp4(input_bytes: bytes, fps: int = 8) -> bytes:
+    """Transcode video bytes (e.g. WEBM / VP9) to standard MP4 H.264 using FFmpeg."""
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as in_f:
+        in_path = Path(in_f.name)
+        in_path.write_bytes(input_bytes)
+    out_path = in_path.with_suffix(".mp4")
+    try:
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(in_path),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "veryfast",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+        res = subprocess.run(cmd, capture_output=True, check=False)
+        if res.returncode != 0 or not out_path.exists():
+            raise RuntimeError(f"FFmpeg transcode failed: {res.stderr.decode('utf-8', errors='replace')}")
+        return out_path.read_bytes()
+    finally:
+        if in_path.exists():
+            in_path.unlink(missing_ok=True)
+        if out_path.exists():
+            out_path.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
@@ -186,28 +243,52 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
             },
         )
 
-    def _list_checkpoints(self) -> tuple[list[str], str | None]:
-        """Query ComfyUI /object_info to fetch available checkpoints."""
+    def _inspect_comfy_models(self) -> tuple[list[str], list[str], str | None]:
+        """Fetch base diffusion checkpoints and motion modules from ComfyUI /object_info.
+
+        Returns:
+            (base_checkpoints, motion_modules, error_message)
+        """
         url = f"{self.base_url}/object_info"
         try:
             resp = self._request("GET", url)
             if resp.status != 200:
-                return [], f"ComfyUI returned HTTP {resp.status}"
+                return [], [], f"ComfyUI returned HTTP {resp.status}"
             data = json.loads(resp.body.decode("utf-8"))
-            loader_info = data.get("CheckpointLoaderSimple") or data.get("CheckpointLoader") or {}
+
+            # 1. Base checkpoints (SD 1.5, SDXL, LTX-Video standalone, etc.)
+            loader_info = (
+                data.get("CheckpointLoaderSimple")
+                or data.get("CheckpointLoader")
+                or {}
+            )
             input_info = loader_info.get("input", {}).get("required", {})
-            ckpt_names = input_info.get("ckpt_name", [[]])[0]
-            if isinstance(ckpt_names, list):
-                return [str(n) for n in ckpt_names], None
-            return [], None
+            ckpt_entry = input_info.get("ckpt_name")
+            base_ckpts = _extract_combo_options(ckpt_entry)
+
+            # 2. Motion modules (AnimateDiff-Evolved)
+            ade_info = data.get("ADE_LoadAnimateDiffModel") or {}
+            ade_input = ade_info.get("input", {}).get("required", {})
+            ade_entry = ade_input.get("model_name")
+            motion_modules = _extract_combo_options(ade_entry)
+
+            return base_ckpts, motion_modules, None
         except ComfyTransportError as exc:
-            return [], str(exc)
+            return [], [], str(exc)
         except Exception as exc:
-            return [], f"Lỗi kiểm tra ComfyUI: {exc}"
+            return [], [], f"Lỗi kiểm tra ComfyUI: {exc}"
+
+    def _list_checkpoints(self) -> tuple[list[str], str | None]:
+        """Query ComfyUI /object_info to fetch all available checkpoints and motion models."""
+        base_ckpts, motion_ckpts, err = self._inspect_comfy_models()
+        if err is not None:
+            return [], err
+        combined = list(dict.fromkeys(base_ckpts + motion_ckpts))
+        return combined, None
 
     def capabilities_video_clip(self) -> VideoClipGeneratorCapabilities:
         """Inspect actual runtime availability of ComfyUI and video models."""
-        checkpoints, err = self._list_checkpoints()
+        base_ckpts, motion_modules, err = self._inspect_comfy_models()
         if err is not None:
             return VideoClipGeneratorCapabilities(
                 provider_name=self.name,
@@ -220,18 +301,35 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 ),
             )
 
-        # Check if default_model or any known motion checkpoint is installed
+        # Priority 1: Check if AnimateDiff is available (motion module + base SD checkpoint)
         detected_model: str | None = None
-        if self.default_model in checkpoints:
-            detected_model = self.default_model
+        if motion_modules:
+            if base_ckpts:
+                detected_model = motion_modules[0]
+            else:
+                return VideoClipGeneratorCapabilities(
+                    provider_name=self.name,
+                    model_name=motion_modules[0],
+                    available=False,
+                    is_mock=False,
+                    reason=(
+                        f"Đã tìm thấy AnimateDiff motion module ({motion_modules[0]}), "
+                        f"nhưng thiếu base checkpoint SD 1.5 trong models/checkpoints."
+                    ),
+                )
         else:
-            for ckpt in checkpoints:
-                if any(p.search(ckpt) for p in MOTION_MODEL_PATTERNS):
-                    detected_model = ckpt
-                    break
+            # Priority 2: Standalone video diffusion / DiT model (LTX-Video, Wan2.1, SVD)
+            if self.default_model in base_ckpts:
+                detected_model = self.default_model
+            else:
+                for ckpt in base_ckpts:
+                    if any(p.search(ckpt) for p in MOTION_MODEL_PATTERNS):
+                        detected_model = ckpt
+                        break
 
         if detected_model is None:
-            available_list = ", ".join(checkpoints[:5]) if checkpoints else "không có checkpoint nào"
+            all_found = base_ckpts + motion_modules
+            available_list = ", ".join(all_found[:5]) if all_found else "không có checkpoint nào"
             return VideoClipGeneratorCapabilities(
                 provider_name=self.name,
                 model_name=self.default_model,
@@ -239,9 +337,9 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 is_mock=False,
                 reason=(
                     f"ComfyUI đang chạy nhưng chưa có checkpoint video "
-                    f"(LTX-Video 2B distilled / Wan2.1 1.3B / AnimateDiff). "
+                    f"(AnimateDiff SD1.5 / LTX-Video 2B distilled / Wan2.1 1.3B). "
                     f"Checkpoints hiện có: [{available_list}]. "
-                    f"Cần tải model video vào thư mục models/checkpoints để kích hoạt chế độ AI Film."
+                    f"Cần tải model video vào ComfyUI để kích hoạt chế độ AI Film."
                 ),
             )
 
@@ -270,7 +368,95 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
         seed: int,
     ) -> dict[str, Any]:
         """Build a ComfyUI execution graph for motion video generation."""
-        # Simple ComfyUI video workflow graph (compatible with standard video loader nodes)
+        is_animatediff = bool(
+            re.search(r"animatediff|mm_sd.*|v3_sd15.*", checkpoint, re.IGNORECASE)
+        )
+        # Cap batch_size to 16 frames per clip chunk for 6 GB VRAM budget
+        frame_count = max(8, int(request.fps * (request.duration_ms / 1000.0)))
+        frame_count = min(16, frame_count)
+
+        if is_animatediff:
+            base_ckpts, _, _ = self._inspect_comfy_models()
+            base_ckpt = base_ckpts[0] if base_ckpts else "v1-5-pruned-emaonly.safetensors"
+            return {
+                "1": {
+                    "class_type": "CheckpointLoaderSimple",
+                    "inputs": {"ckpt_name": base_ckpt},
+                },
+                "2": {
+                    "class_type": "ADE_LoadAnimateDiffModel",
+                    "inputs": {"model_name": checkpoint},
+                },
+                "3": {
+                    "class_type": "ADE_ApplyAnimateDiffModelSimple",
+                    "inputs": {"motion_model": ["2", 0]},
+                },
+                "4": {
+                    "class_type": "ADE_UseEvolvedSampling",
+                    "inputs": {
+                        "model": ["1", 0],
+                        "m_models": ["3", 0],
+                        "beta_schedule": "sqrt_linear (AnimateDiff)",
+                    },
+                },
+                "5": {
+                    "class_type": "CLIPTextEncode",
+                    "inputs": {"clip": ["1", 1], "text": request.prompt},
+                },
+                "6": {
+                    "class_type": "CLIPTextEncode",
+                    "inputs": {
+                        "clip": ["1", 1],
+                        "text": "blurry, low quality, deformed, distorted, bad anatomy, worst quality, static",
+                    },
+                },
+                "7": {
+                    "class_type": "EmptyLatentImage",
+                    "inputs": {
+                        "width": request.width,
+                        "height": request.height,
+                        "batch_size": frame_count,
+                    },
+                },
+                "8": {
+                    "class_type": "KSampler",
+                    "inputs": {
+                        "model": ["4", 0],
+                        "positive": ["5", 0],
+                        "negative": ["6", 0],
+                        "latent_image": ["7", 0],
+                        "seed": seed,
+                        "steps": 15,
+                        "cfg": 7.0,
+                        "sampler_name": "euler",
+                        "scheduler": "normal",
+                        "denoise": 1.0,
+                    },
+                },
+                "9": {
+                    "class_type": "VAEDecode",
+                    "inputs": {"samples": ["8", 0], "vae": ["1", 2]},
+                },
+                "10": {
+                    "class_type": "SaveWEBM",
+                    "inputs": {
+                        "filename_prefix": f"comfy_clip_{request.scene_id}",
+                        "codec": "vp9",
+                        "fps": float(request.fps),
+                        "crf": 26.0,
+                        "images": ["9", 0],
+                    },
+                },
+                "11": {
+                    "class_type": "SaveImage",
+                    "inputs": {
+                        "filename_prefix": f"comfy_clip_frames_{request.scene_id}",
+                        "images": ["9", 0],
+                    },
+                },
+            }
+
+        # Standalone video model workflow (LTX-Video / Wan2.1 / SVD)
         return {
             "1": {
                 "class_type": "CheckpointLoaderSimple",
@@ -289,7 +475,7 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 "inputs": {
                     "width": request.width,
                     "height": request.height,
-                    "batch_size": max(8, int(request.fps * (request.duration_ms / 1000.0))),
+                    "batch_size": frame_count,
                 },
             },
             "5": {
@@ -312,12 +498,13 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 "inputs": {"samples": ["5", 0], "vae": ["1", 2]},
             },
             "7": {
-                "class_type": "VHS_VideoCombine",
+                "class_type": "SaveWEBM",
                 "inputs": {
-                    "images": ["6", 0],
-                    "frame_rate": request.fps,
-                    "format": "video/h264-mp4",
                     "filename_prefix": f"comfy_clip_{request.scene_id}",
+                    "codec": "vp9",
+                    "fps": float(request.fps),
+                    "crf": 26.0,
+                    "images": ["6", 0],
                 },
             },
         }
@@ -433,7 +620,7 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                     f"Cannot download video output {filename}: HTTP {view_resp.status}",
                     provider=self.name,
                 )
-            clip_bytes = view_resp.body
+            raw_bytes = view_resp.body
         except ComfyTransportError as exc:
             raise VideoClipGenerationError(
                 VideoClipErrorCode.UNAVAILABLE,
@@ -441,7 +628,20 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 provider=self.name,
             ) from exc
 
-        # 4. Probe and verify real video MP4 bytes
+        # 4. Ensure valid MP4 container (transcode WEBM/VP9 if necessary)
+        if raw_bytes.startswith(b"\x00\x00\x00") and b"ftyp" in raw_bytes[:32]:
+            clip_bytes = raw_bytes
+        else:
+            try:
+                clip_bytes = _transcode_to_mp4(raw_bytes, fps=request.fps)
+            except Exception as exc:
+                raise VideoClipGenerationError(
+                    VideoClipErrorCode.GENERATION_FAILED,
+                    f"Transcoding video to MP4 failed: {exc}",
+                    provider=self.name,
+                ) from exc
+
+        # 5. Probe and verify real video MP4 bytes
         try:
             probe = probe_mp4(clip_bytes)
         except ValueError as exc:
@@ -470,9 +670,9 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
             data=clip_bytes,
             media_type=MP4_CLIP_MEDIA_TYPE,
             duration_ms=probe.duration_ms or request.duration_ms,
-            width=probe.width or request.width,
-            height=probe.height or request.height,
-            fps=probe.fps or request.fps,
+            width=request.width,
+            height=request.height,
+            fps=request.fps,
             sha256=hashlib.sha256(clip_bytes).hexdigest(),
             provider=self.name,
             model_name=checkpoint,
@@ -519,7 +719,7 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
         )
 
     def check_models(self) -> ModelCheckResult:
-        ckpts, err = self._list_checkpoints()
+        base_ckpts, motion_modules, err = self._inspect_comfy_models()
         if err:
             return ModelCheckResult(
                 valid=False,
@@ -528,12 +728,18 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 missing_models=(self.default_model,),
                 error_message=f"Không thể kiểm tra checkpoints: {err}",
             )
-        motion_ckpts = [c for c in ckpts if any(p.search(c) for p in MOTION_MODEL_PATTERNS)]
-        valid = bool(motion_ckpts) or (self.default_model in ckpts)
+        all_models = base_ckpts + motion_modules
+        motion_ckpts = [c for c in all_models if any(p.search(c) for p in MOTION_MODEL_PATTERNS)]
+        valid = (bool(motion_modules) and bool(base_ckpts)) or bool(motion_ckpts) or (self.default_model in base_ckpts)
+        active_model = (
+            motion_modules[0]
+            if (motion_modules and base_ckpts)
+            else (motion_ckpts[0] if motion_ckpts else self.default_model)
+        )
         return ModelCheckResult(
             valid=valid,
-            available_models=tuple(motion_ckpts),
-            default_model=self.default_model,
+            available_models=tuple(dict.fromkeys(motion_ckpts + motion_modules)),
+            default_model=active_model,
             missing_models=() if valid else (self.default_model,),
             error_message=None if valid else f"Chưa tìm thấy video motion checkpoint phù hợp ('{self.default_model}').",
         )

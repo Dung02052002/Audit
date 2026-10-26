@@ -99,6 +99,40 @@ def _extract_combo_options(input_entry: Any) -> list[str]:
     return []
 
 
+def _clean_motion_prompt(raw_prompt: str) -> str:
+    """Format prompt for SD 1.5 CLIP token budget, stripping bracketed metadata if present."""
+    m = re.match(
+        r"^\[(?P<meta>[^\]]*)\](?:\s*Setting:\s*(?P<setting>[^.]+?\.))?(?:\s*Characters:\s*(?P<chars>[^.]+?\.))?(?:\s*Action/Beat:\s*(?P<action>.*))?$",
+        raw_prompt,
+        re.DOTALL,
+    )
+    if m:
+        meta = m.group("meta") or ""
+        setting = (m.group("setting") or "").strip(". ")
+        chars = (m.group("chars") or "").strip(". ")
+        action = (m.group("action") or "").strip(". ")
+
+        shot_type = ""
+        for token in meta.split("|"):
+            t = token.strip()
+            if any(s in t for s in ("close_up", "medium_shot", "wide_shot", "establishing")):
+                shot_type = t
+                break
+
+        parts = []
+        if shot_type:
+            parts.append(f"{shot_type} of")
+        if chars:
+            parts.append(chars)
+        if action:
+            parts.append(action)
+        if setting:
+            parts.append(setting)
+        parts.append("cinematic lighting, photorealistic, 8k, masterpiece")
+        return ", ".join(p for p in parts if p)
+    return raw_prompt
+
+
 def _transcode_to_mp4(input_bytes: bytes, fps: int = 8) -> bytes:
     """Transcode video bytes (e.g. WEBM / VP9) to standard MP4 H.264 using FFmpeg."""
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as in_f:
@@ -375,6 +409,21 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
         frame_count = max(8, int(request.fps * (request.duration_ms / 1000.0)))
         frame_count = min(16, frame_count)
 
+        # For local SD 1.5 AnimateDiff generation, select native aspect-ratio latents within 6 GB VRAM budget (<= 262,144 pixels)
+        # Prevents aggressive center-cropping (cutting subjects in half or extreme face zooming) downstream.
+        if request.width > 0 and request.height > 0:
+            aspect = float(request.width) / float(request.height)
+            if aspect <= 0.65:  # Vertical portrait (e.g. 9:16 = 0.5625)
+                gen_width, gen_height = 384, 640  # 245,760 pixels
+            elif aspect >= 1.5:  # Horizontal landscape (e.g. 16:9 = 1.777)
+                gen_width, gen_height = 640, 384  # 245,760 pixels
+            else:
+                gen_width, gen_height = 512, 512  # 262,144 pixels
+        else:
+            gen_width, gen_height = 512, 512
+
+        clip_fps = 8.0 if is_animatediff else float(request.fps)
+
         if is_animatediff:
             base_ckpts, _, _ = self._inspect_comfy_models()
             base_ckpt = base_ckpts[0] if base_ckpts else "v1-5-pruned-emaonly.safetensors"
@@ -401,20 +450,26 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                 },
                 "5": {
                     "class_type": "CLIPTextEncode",
-                    "inputs": {"clip": ["1", 1], "text": request.prompt},
+                    "inputs": {"clip": ["1", 1], "text": _clean_motion_prompt(request.prompt)},
                 },
                 "6": {
                     "class_type": "CLIPTextEncode",
                     "inputs": {
                         "clip": ["1", 1],
-                        "text": "blurry, low quality, deformed, distorted, bad anatomy, worst quality, static",
+                        "text": (
+                            "extreme close-up, macro skin, skin pores, eye macro, cropped, cut off, out of frame, "
+                            "leaning back, backward bend, arching spine, contorted body, distorted neck, falling backwards, "
+                            "sliding feet, ice skating, hovering feet, floating, flying, deformed face, bad eyes, disfigured, "
+                            "bad teeth, bad anatomy, cross-eyed, mutated hands, extra fingers, fused fingers, blurry, "
+                            "low quality, worst quality, distorted, extra limbs, static, ugly, cartoon, 3d render"
+                        ),
                     },
                 },
                 "7": {
                     "class_type": "EmptyLatentImage",
                     "inputs": {
-                        "width": request.width,
-                        "height": request.height,
+                        "width": gen_width,
+                        "height": gen_height,
                         "batch_size": frame_count,
                     },
                 },
@@ -426,10 +481,10 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                         "negative": ["6", 0],
                         "latent_image": ["7", 0],
                         "seed": seed,
-                        "steps": 15,
-                        "cfg": 7.0,
-                        "sampler_name": "euler",
-                        "scheduler": "normal",
+                        "steps": 16,
+                        "cfg": 5.5,
+                        "sampler_name": "dpmpp_2m",
+                        "scheduler": "karras",
                         "denoise": 1.0,
                     },
                 },
@@ -442,7 +497,7 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
                     "inputs": {
                         "filename_prefix": f"comfy_clip_{request.scene_id}",
                         "codec": "vp9",
-                        "fps": float(request.fps),
+                        "fps": clip_fps,
                         "crf": 26.0,
                         "images": ["9", 0],
                     },
@@ -473,8 +528,8 @@ class ComfyUIVideoAdapter(BaseProviderAdapter, VideoClipGenerator):
             "4": {
                 "class_type": "EmptyLatentImage",
                 "inputs": {
-                    "width": request.width,
-                    "height": request.height,
+                    "width": gen_width,
+                    "height": gen_height,
                     "batch_size": frame_count,
                 },
             },

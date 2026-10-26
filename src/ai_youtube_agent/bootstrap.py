@@ -60,6 +60,7 @@ voice, image and video-clip providers; the ``VideoClipGenerator`` binding
 stays ``UnconfiguredVideoClipGenerator``.
 """
 
+import os
 from datetime import timedelta
 
 from ai_youtube_agent.content.analytics_freshness import AnalyticsFreshnessService
